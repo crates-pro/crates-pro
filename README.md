@@ -12,10 +12,10 @@ Here are some guidelines for contributing to this project:
 2. Suggest enhancements: If you have an idea to enhance or improve this project, you can suggest it by creating an issue on the issue tracker. Explain your enhancement in detail along with its use cases and benefits. I appreciate well-thought-out enhancement suggestions.
 3. Contribute code: If you want to develop and contribute code, follow these steps:
     - Choose an issue to work on. Issues labeled `good first issue` are suitable for newcomers. You can also look for issues marked `help wanted`.
-    - Fork the `Endor` repository and create a branch for your changes.
+    - Fork the `Crates Pro` repository and create a branch for your changes.
     - Make your changes and commit them with a clear commit message. Sign the [Developer Certificate of Origin](https://developercertificate.org/) (DCO) by adding a `Signed-off-by` line to your commit messages. This certifies that you wrote or have the right to submit the code you are contributing to the project.
     - Push your changes to GitHub and open a pull request.
-    - Respond to any feedback on your pull request. The `Endor` maintainers will review your changes and may request modifications before merging. Please ensure your code is properly formatted and follows the same style as the existing codebase.
+    - Respond to any feedback on your pull request. The `Crates Pro` maintainers will review your changes and may request modifications before merging. Please ensure your code is properly formatted and follows the same style as the existing codebase.
     - Once your pull request is merged, you will be listed as a contributor in the project repository and documentation.
 4. Write tutorials/blog posts: You can contribute by writing tutorials or blog posts to help users get started with this project. Submit your posts on the issue tracker for review and inclusion. High quality posts that provide value to users are highly appreciated.
 5. Improve documentation: If you find any gaps in the documentation or think any part can be improved, you can make changes to files in the documentation folder and submit a PR. Ensure the documentation is up-to-date with the latest changes.
