@@ -1,0 +1,3 @@
+[env]
+LGRAPH_CXX_COMPILER = "/usr/local/bin/g++"
+LGRAPH_C_COMPILER = "/usr/local/bin/gcc"

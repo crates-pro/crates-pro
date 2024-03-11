@@ -20,5 +20,3 @@ Cargo.lock
 .vscode/
 
 
-.cargo/
-.devcontainer
