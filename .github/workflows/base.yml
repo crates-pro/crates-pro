@@ -12,32 +12,39 @@ name: Base GitHub Action for Check, Test and Lints
 
 jobs:
 
-  check:
+  cargo-check:
     runs-on: ubuntu-latest
-    # 定义步骤
+
     steps:
-      - uses: actions/checkout@v3 # 检出你的仓库
-      - name: Run cargo check
-        uses: docker://xizheyin/crates-pro:latest
-        with:
-          args: cargo check
+      - uses: actions/checkout@v3
+
+      - name: Setup Docker and Run cargo check
+        run: |
+          docker pull xizheyin/crates-pro:latest
+          docker run --name rust-container -d -v ${{ github.workspace }}:/github/workspace --workdir /github/workspace xizheyin/crates-pro:latest tail -f /dev/null
+          docker exec rust-container sh -c "rustup default stable && cargo check"
+          docker stop rust-container
 
   clippy:
     runs-on: ubuntu-latest
     # 定义步骤
     steps:
       - uses: actions/checkout@v3 # 检出你的仓库
-      - name: Run cargo check
-        uses: docker://xizheyin/crates-pro:latest
-        with:
-          args: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Setup Docker and Run cargo clippy
+        run: |
+          docker pull xizheyin/crates-pro:latest
+          docker run --name rust-container -d -v ${{ github.workspace }}:/github/workspace --workdir /github/workspace xizheyin/crates-pro:latest tail -f /dev/null
+          docker exec rust-container sh -c "rustup default stable && cargo clippy --workspace --all-targets --all-features -- -D warnings"
+          docker stop rust-container
   
   doc:
     runs-on: ubuntu-latest
     # 定义步骤
     steps:
       - uses: actions/checkout@v3 # 检出你的仓库
-      - name: Run cargo check
-        uses: docker://xizheyin/crates-pro:latest
-        with:
-          args: cargo doc --workspace --all-targets --all-features
+      - name: Run cargo doc
+        run: |
+          docker pull xizheyin/crates-pro:latest
+          docker run --name rust-container -d -v ${{ github.workspace }}:/github/workspace --workdir /github/workspace xizheyin/crates-pro:latest tail -f /dev/null
+          docker exec rust-container sh -c "rustup default stable && cargo doc --workspace --all-targets --all-features -- -D warnings"
+          docker stop rust-container
