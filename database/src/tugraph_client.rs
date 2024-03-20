@@ -1,4 +1,3 @@
-use base64::encode;
 use neo4rs::*;
 use std::error::Error;
 use std::fs::File;
@@ -35,6 +34,7 @@ impl TuGraphClient {
     }
 
     /// Reset the database, be carefully
+    #[allow(dead_code)]
     pub(crate) async unsafe fn drop_database(&self) -> Result<(), Box<dyn Error>> {
         self.graph.run(query("CALL db.dropDB()")).await?;
         Ok(())
@@ -157,7 +157,11 @@ impl TuGraphClient {
 
         file.read_to_end(&mut buffer)?;
 
-        let plugin_content: &str = &encode(buffer);
+        use base64::engine::general_purpose::STANDARD;
+        use base64::Engine;
+        let engine = STANDARD;
+
+        let plugin_content: &str = &engine.encode(buffer);
 
         let query_string = format!(
             "CALL db.plugin.loadPlugin('{}', '{}', '{}', '{}', '{}', {}, '{}')",

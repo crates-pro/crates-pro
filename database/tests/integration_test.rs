@@ -8,7 +8,7 @@ use tokio::sync::oneshot;
 
 #[tokio::test]
 async fn test_server_responses() {
-    let (tx, rx) = oneshot::channel::<()>();
+    let (tx, _rx) = oneshot::channel::<()>();
 
     tokio::spawn(async move {
         let server = Arc::new(quary_server::Server::new());

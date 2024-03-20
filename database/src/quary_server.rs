@@ -5,6 +5,7 @@ use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex};
 
+#[derive(Default)]
 pub struct Server {
     shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
 }
@@ -55,13 +56,13 @@ impl Server {
         }
     }
 
-    async fn get_crate_info(Path(crate_name): Path<String>) -> axum::Json<CrateInfo> {
+    async fn get_crate_info(Path(_crate_name): Path<String>) -> axum::Json<CrateInfo> {
         // TODO: fill my logic
 
         axum::Json(CrateInfo::default())
     }
 
-    async fn get_crate_versions(Path(crate_name): Path<String>) -> axum::Json<Vec<CrateVersion>> {
+    async fn get_crate_versions(Path(_crate_name): Path<String>) -> axum::Json<Vec<CrateVersion>> {
         // TODO: fill my logic
 
         axum::Json(vec![CrateVersion::default()])
@@ -74,7 +75,6 @@ mod tests {
     use axum::{
         body::Body,
         http::{Request, StatusCode},
-        response::Response,
         routing::get,
         Router,
     };

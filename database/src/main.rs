@@ -1,4 +1,4 @@
-use std::{error::Error, future, sync::Arc};
+use std::{error::Error, sync::Arc};
 
 use database::quary_server::Server;
 
@@ -54,7 +54,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 mod tests {
 
     use neo4rs::*;
-    use tokio;
 
     /// This is the test to test whether the Tugraph is setup.
     #[tokio::test]
