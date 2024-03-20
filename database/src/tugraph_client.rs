@@ -155,7 +155,6 @@ impl TuGraphClient {
         let mut file = File::open(plugin_so_path)?;
         let mut buffer = Vec::new();
 
-        // 读取文件到buffer
         file.read_to_end(&mut buffer)?;
 
         let plugin_content: &str = &encode(buffer);
@@ -201,7 +200,7 @@ mod tests {
     use super::*;
     use tokio;
 
-    /// This is the test to test whether the
+    /// This is the test to test whether the TuGraph server is setup.
     #[tokio::test]
     async fn test_tugraph_client() {
         // build bolt config
@@ -268,7 +267,7 @@ mod tests {
             .await
             .unwrap();
 
-        // 这里可以添加具体的断言来校验`n`, `r`, `m`的值，例如：
+        // check
         if let Ok(Some(row)) = result.next().await {
             let n: Node = row.get("n").unwrap();
             assert_eq!(n.id(), 0);
@@ -280,7 +279,5 @@ mod tests {
         } else {
             panic!("Error no result");
         }
-
-        // 测试后的清理可以在这里进行
     }
 }

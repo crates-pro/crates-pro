@@ -78,7 +78,7 @@ mod tests {
         routing::get,
         Router,
     };
-    use tower::ServiceExt; // 提供`.oneshot`方法来发送请求
+    use tower::ServiceExt;
 
     async fn app() -> Router {
         Router::new()
@@ -100,8 +100,6 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
-
-        // 根据需要进行更多验收检查，例如检查响应体内容
     }
 
     #[tokio::test]
@@ -118,7 +116,5 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
-
-        // 这里同样可以加更多验收检查
     }
 }

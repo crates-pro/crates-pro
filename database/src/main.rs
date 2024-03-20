@@ -87,8 +87,6 @@ mod tests {
 
         let graph = Graph::connect(config).await.unwrap();
 
-        // 注意：在每次测试前后清理数据库是一个好习惯，
-        // 这里假设`graph.run`能正确处理数据库操作。
         graph.run(query("CALL db.dropDB()")).await.unwrap();
         graph.run(query("CALL db.createVertexLabel('person', 'id' , 'id' ,INT32, false, 'name' ,STRING, false)")).await.unwrap();
         graph
@@ -114,7 +112,6 @@ mod tests {
             .await
             .unwrap();
 
-        // 这里可以添加具体的断言来校验`n`, `r`, `m`的值，例如：
         if let Ok(Some(row)) = result.next().await {
             let n: Node = row.get("n").unwrap();
             assert_eq!(n.id(), 0);
@@ -126,7 +123,5 @@ mod tests {
         } else {
             panic!("Error no result");
         }
-
-        // 测试后的清理可以在这里进行
     }
 }
