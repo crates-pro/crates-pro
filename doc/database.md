@@ -196,9 +196,8 @@ erDiagram
 
 #### Steps
 
-1. open dev-containers and wait for compiling
-2. cd ../../workspace/
-3. In bash, you can input `/build/output/lgraph_server -c /build/output/lgraph_daemon.json -d restart` to start TuGraph Server.
+1. open dev-containers and wait for compiling.
+2. In bash, you can input `bash .devcontainer/setup.sh` to start TuGraph Server.
     - run `netstat -tuln | grep -E '7687|7070'` to check if it successes. The terminal will show 
       ```
       tcp        0      0 0.0.0.0:7687            0.0.0.0:*               LISTEN     
