@@ -9,7 +9,9 @@
         }
     },
     "forwardPorts": [
-        7070
+        7070,
+        7687,
+        3000
     ],
     "workspaceFolder": "/workspace/",
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/,type=bind",

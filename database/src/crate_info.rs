@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, Utc};
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
 /// Represents detailed information about a Rust crate.
@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// This structure includes metadata fields that describe a crate, such as its name,
 /// current version, description, and various URLs related to its documentation,
 /// repository, and license, along with a count of its dependencies.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct CrateInfo {
     /// The name of the crate.
     name: String,
@@ -59,7 +59,7 @@ impl CrateInfo {
 
 /// Represents a specific version of a Rust crate, including its
 /// release date and (optionally) a description.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct CrateVersion {
     /// The version string.
     version: String,

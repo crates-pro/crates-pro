@@ -1,86 +1,124 @@
-use crate::crate_info::{self, CrateInfo, CrateVersion};
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    routing::{delete, get, post, put},
-    Json, Router,
-};
-use chrono::Utc;
-use serde::{Deserialize, Serialize};
+use crate::crate_info::{CrateInfo, CrateVersion};
+use axum::{extract::Path, routing::get, Router};
 
-async fn hello_world() -> &'static str {
-    "Hello, world!"
+use std::error::Error;
+use std::sync::Arc;
+use tokio::sync::{oneshot, Mutex};
+
+pub struct Server {
+    shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
 }
 
-// 定义一个用户结构体
-#[derive(Serialize, Deserialize)]
-struct User {
-    id: u64,
-    name: String,
+impl Server {
+    pub fn new() -> Self {
+        Self {
+            shutdown_tx: Mutex::new(None),
+        }
+    }
+
+    /// start the server at localhost:3000
+    pub async fn start(self: &Arc<Self>) -> Result<(), Box<dyn Error>> {
+        let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+        let mut tx_lock = self.shutdown_tx.lock().await; // acquire lock
+        *tx_lock = Some(shutdown_tx);
+        drop(tx_lock); // drop lock explicitly
+
+        let app = Router::new()
+            .route("/crates/:name", get(Self::get_crate_info))
+            .route("/crates/:name/versions", get(Self::get_crate_versions));
+
+        let addr = "127.0.0.1:3000".parse().unwrap();
+        let server = axum::Server::bind(&addr)
+            .serve(app.into_make_service())
+            .with_graceful_shutdown(async {
+                shutdown_rx.await.ok();
+            });
+
+        println!("Server running at http://{}", addr);
+
+        server.await.map_err(|e| e.into())
+    }
+
+    /// close the server
+    pub async fn close(self: &Arc<Self>) -> Result<(), Box<dyn Error>> {
+        let maybe_tx = {
+            let mut lock = self.shutdown_tx.lock().await;
+            lock.take()
+        };
+
+        if let Some(tx) = maybe_tx {
+            tx.send(())
+                .map_err(|_| "Failed to send shutdown signal".into())
+        } else {
+            Err("Shutdown signal already sent or server not started.".into())
+        }
+    }
+
+    async fn get_crate_info(Path(crate_name): Path<String>) -> axum::Json<CrateInfo> {
+        // TODO: fill my logic
+
+        axum::Json(CrateInfo::default())
+    }
+
+    async fn get_crate_versions(Path(crate_name): Path<String>) -> axum::Json<Vec<CrateVersion>> {
+        // TODO: fill my logic
+
+        axum::Json(vec![CrateVersion::default()])
+    }
 }
 
-async fn list_users() -> &'static str {
-    "Returning list of users..."
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+        response::Response,
+        routing::get,
+        Router,
+    };
+    use tower::ServiceExt; // 提供`.oneshot`方法来发送请求
 
-async fn create_user(Json(payload): Json<User>) -> (StatusCode, &'static str) {
-    println!("Creating user: {}", payload.name);
-    (StatusCode::CREATED, "User created")
-}
+    async fn app() -> Router {
+        Router::new()
+            .route("/crates/:name", get(Server::get_crate_info))
+            .route("/crates/:name/versions", get(Server::get_crate_versions))
+    }
 
-async fn update_user(Json(payload): Json<User>) -> &'static str {
-    println!("Updating user: {}", payload.name);
-    "User updated"
-}
+    #[tokio::test]
+    async fn test_get_crate_info() {
+        let router = app().await;
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/crates/test_crate")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-async fn delete_user() -> &'static str {
-    "User deleted"
-}
+        assert_eq!(response.status(), StatusCode::OK);
 
-async fn get_crate_info(Path(crate_name): Path<String>) -> axum::Json<CrateInfo> {
-    // TODO: fill my logic
-    let info = CrateInfo::new(
-        crate_name,
-        "1.0.0".to_string(),
-        Some("A utility crate".to_string()),
-        Some("https://docs.rs/my_crate".to_string()),
-        Some("https://github.com/example/my_crate".to_string()),
-        Some("MIT".to_string()),
-        5,
-    );
-    axum::Json(info)
-}
+        // 根据需要进行更多验收检查，例如检查响应体内容
+    }
 
-async fn get_crate_versions(Path(crate_name): Path<String>) -> axum::Json<Vec<CrateVersion>> {
-    // TODO: this is a demo
-    let versions = vec![
-        CrateVersion::new(
-            "0.1.0".to_string(),
-            Utc::now().date_naive(),
-            Some("Initial release".to_string()),
-        ),
-        CrateVersion::new(
-            "0.1.1".to_string(),
-            Utc::now().date_naive(),
-            Some("Fixed minor bugs".to_string()),
-        ),
-    ];
+    #[tokio::test]
+    async fn test_get_crate_versions() {
+        let router = app().await;
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/crates/test_crate/versions")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    axum::Json(versions)
-}
+        assert_eq!(response.status(), StatusCode::OK);
 
-// 提供一个公共函数来启动服务器
-pub async fn start_quary_server() {
-    // 创建路由
-    let app = Router::new()
-        .route("/users", get(list_users).post(create_user))
-        .route("/users/:id", put(update_user).delete(delete_user))
-        .route("/crates/:name", get(get_crate_info))
-        .route("/crates/:name/versions", get(get_crate_versions));
-
-    // 运行应用
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+        // 这里同样可以加更多验收检查
+    }
 }
