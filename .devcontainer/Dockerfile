@@ -25,5 +25,6 @@ RUN cmake -S ./tugraph-db -B build && cmake --build build --target lgraph_server
 # Create a workspace directory within the container for code development
 WORKDIR /workspace
 
+COPY . .
 
-CMD ["bash", "-c", "cd /build/output && ./lgraph_server -c ./lgraph_daemon.json -d restart"]
+RUN bash ./setup.sh
