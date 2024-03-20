@@ -12,46 +12,32 @@ name: Base GitHub Action for Check, Test and Lints
 
 jobs:
 
-  cargo-check:
+  check:
     runs-on: ubuntu-latest
-
+    # 定义步骤
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3 # 检出你的仓库
+      - name: Run cargo check
+        uses: docker://xizheyin/crates-pro:latest
         with:
-          submodules: 'recursive'
-          
-      - name: Build Docker Container
-        run: docker build . -f .devcontainer/Dockerfile -t my-dev-container
-
-      - name: Run cargo check inside the Docker Container
-        run: docker run --rm my-dev-container /bin/sh -c "cargo check --workspace --all-targets --all-features"
+          args: cargo check
 
   clippy:
     runs-on: ubuntu-latest
+    # 定义步骤
     steps:
-    - uses: actions/checkout@v2
-      with:
-        submodules: 'recursive'
-
-    - name: Build Docker Container
-      run: docker build . -f .devcontainer/Dockerfile -t my-dev-container
-
-    - name: Install clippy and Run checks inside the Docker Container
-      run: |
-        docker run --rm my-dev-container /bin/sh -c "\
-          rustup component add clippy && \
-          cargo clippy --workspace --all-targets --all-features -- -D warnings"
-  
-  cargo-doc:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3 # 检出你的仓库
+      - name: Run cargo check
+        uses: docker://xizheyin/crates-pro:latest
         with:
-          submodules: 'recursive'
-          
-      - name: Build Docker Container
-        run: docker build . -f .devcontainer/Dockerfile -t my-dev-container
-
-      - name: Run cargo check inside the Docker Container
-        run: docker run --rm my-dev-container /bin/sh -c "cargo doc --workspace --all-targets --all-features"
+          args: cargo clippy --workspace --all-targets --all-features -- -D warnings
+  
+  doc:
+    runs-on: ubuntu-latest
+    # 定义步骤
+    steps:
+      - uses: actions/checkout@v3 # 检出你的仓库
+      - name: Run cargo check
+        uses: docker://xizheyin/crates-pro:latest
+        with:
+          args: cargo doc --workspace --all-targets --all-features
