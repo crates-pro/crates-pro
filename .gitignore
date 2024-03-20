@@ -20,3 +20,5 @@ Cargo.lock
 .vscode/
 
 lgraph.pid
+
+.cargo/
