@@ -42,7 +42,7 @@ jobs:
           rustup component add clippy && \
           cargo clippy --workspace --all-targets --all-features -- -D warnings"
   
-  cargo-check:
+  cargo-doc:
     runs-on: ubuntu-latest
 
     steps:
