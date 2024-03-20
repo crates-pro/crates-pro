@@ -11,11 +11,17 @@ on: [ push, pull_request ]
 name: Base GitHub Action for Check, Test and Lints
 
 jobs:
+
+
   check:
     name: Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Set C and C++ Compiler Env
+        run: |
+          echo "LGRAPH_CXX_COMPILER=$(which g++)" >> $GITHUB_ENV
+          echo "LGRAPH_C_COMPILER=$(which gcc)" >> $GITHUB_ENV
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -30,6 +36,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Set C and C++ Compiler Env
+        run: |
+          echo "LGRAPH_CXX_COMPILER=$(which g++)" >> $GITHUB_ENV
+          echo "LGRAPH_C_COMPILER=$(which gcc)" >> $GITHUB_ENV
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -46,6 +56,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Set C and C++ Compiler Env
+        run: |
+          echo "LGRAPH_CXX_COMPILER=$(which g++)" >> $GITHUB_ENV
+          echo "LGRAPH_C_COMPILER=$(which gcc)" >> $GITHUB_ENV
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
