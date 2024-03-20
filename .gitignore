@@ -18,3 +18,5 @@ Cargo.lock
 
 # VS Code
 .vscode/
+
+lgraph.pid
