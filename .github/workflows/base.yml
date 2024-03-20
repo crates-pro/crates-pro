@@ -12,59 +12,46 @@ name: Base GitHub Action for Check, Test and Lints
 
 jobs:
 
-
-  check:
-    name: Check
+  cargo-check:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v2
-      - name: Set C and C++ Compiler Env
-        run: |
-          echo "LGRAPH_CXX_COMPILER=$(which g++)" >> $GITHUB_ENV
-          echo "LGRAPH_C_COMPILER=$(which gcc)" >> $GITHUB_ENV
-      - uses: actions-rs/toolchain@v1
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: check
+          submodules: 'recursive'
+          
+      - name: Build Docker Container
+        run: docker build . -f .devcontainer/Dockerfile -t my-dev-container
+
+      - name: Run cargo check inside the Docker Container
+        run: docker run --rm my-dev-container /bin/sh -c "cargo check --workspace --all-targets --all-features"
 
   clippy:
-    name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Set C and C++ Compiler Env
-        run: |
-          echo "LGRAPH_CXX_COMPILER=$(which g++)" >> $GITHUB_ENV
-          echo "LGRAPH_C_COMPILER=$(which gcc)" >> $GITHUB_ENV
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: rustup component add clippy
-      - uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --workspace --all-targets --all-features -- -D warnings
+    - uses: actions/checkout@v2
+      with:
+        submodules: 'recursive'
+
+    - name: Build Docker Container
+      run: docker build . -f .devcontainer/Dockerfile -t my-dev-container
+
+    - name: Install clippy and Run checks inside the Docker Container
+      run: |
+        docker run --rm my-dev-container /bin/sh -c "\
+          rustup component add clippy && \
+          cargo clippy --workspace --all-targets --all-features -- -D warnings"
   
-  doc:
-    name: Doc
+  cargo-check:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v2
-      - name: Set C and C++ Compiler Env
-        run: |
-          echo "LGRAPH_CXX_COMPILER=$(which g++)" >> $GITHUB_ENV
-          echo "LGRAPH_C_COMPILER=$(which gcc)" >> $GITHUB_ENV
-      - uses: actions-rs/toolchain@v1
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: doc
+          submodules: 'recursive'
+          
+      - name: Build Docker Container
+        run: docker build . -f .devcontainer/Dockerfile -t my-dev-container
+
+      - name: Run cargo check inside the Docker Container
+        run: docker run --rm my-dev-container /bin/sh -c "cargo doc --workspace --all-targets --all-features"
