@@ -25,7 +25,7 @@
     "customizations": {
         "vscode": {
             "extensions": [
-                "rust-lang.rust-analyzer",
+                "rust-lang.rust-analyzer@0.3.1850",
                 "tamasfe.even-better-toml",
                 "llvm-vs-code-extensions.vscode-clangd",
                 "twxs.cmake",

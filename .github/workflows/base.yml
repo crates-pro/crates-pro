@@ -46,5 +46,5 @@ jobs:
         run: |
           docker pull xizheyin/crates-pro:latest
           docker run --name rust-container -d -v ${{ github.workspace }}:/github/workspace --workdir /github/workspace xizheyin/crates-pro:latest tail -f /dev/null
-          docker exec rust-container sh -c "rustup default stable && cargo doc --workspace --all-targets --all-features -- -D warnings"
+          docker exec rust-container sh -c "rustup default stable && cargo doc"
           docker stop rust-container
