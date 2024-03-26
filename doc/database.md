@@ -8,23 +8,6 @@ Our aim is to create a graph database model that effectively represents the depe
 - **Storage**: Represent crates and their version information. This is achieved by distinguishing between crate metadata and specific version information through two types of nodes (CrateMaster and CrateVersion).
 - **Computation**: Track dependencies. Dependencies between different crate versions are represented using edges, allowing for the tracking and querying of whether a version of a crate directly or indirectly depends on a specific version of another crate.
 
-### Node Design
-
-- **CrateMaster**: Represents a master node of a crate, storing metadata related to the crate.
-  - Attributes:
-    - crate_name: String, the name of the crate.
-    - description: String, a brief introduction or description of the crate.
-    - repository_url: String, the source code repository URL of the crate.
-    - license: String, indicates the license of the crate.
-  - Usage: Allows users to query the master node by crate name, obtaining an overview of the crate.
-- **CrateVersion**: Represents a specific version of a crate, containing information unique to that version.
-  - Attributes:
-    - version: String, the version number of this crate version.
-    - deps_spec: String, the specification of dependencies for this version, which can be a version number or a range.
-    - published_date: DateTime, the release date of the version.
-    - features: String Array, a list of features for this crate version.
-    - ...
-  - Usage: Stores detailed information for each version, supporting identification of subtle differences between versions.
 
 ### Edge Design
 
@@ -207,3 +190,21 @@ erDiagram
 | version_id | BIGINT    | NULL        |             |
 | created_at | TIMESTAMP | NOT NULL    |             |
 | updated_at | TIMESTAMP | NOT NULL    |             |
+
+
+### Usage
+
+#### Steps
+
+1. open dev-containers and wait for compiling.
+2. In bash, you can input `bash .devcontainer/setup.sh` to start TuGraph Server.
+    - run `netstat -tuln | grep -E '7687|7070'` to check if it successes. The terminal will show 
+      ```
+      tcp        0      0 0.0.0.0:7687            0.0.0.0:*               LISTEN     
+      tcp        0      0 0.0.0.0:7070            0.0.0.0:*               LISTEN 
+      ```
+    - run `cargo test test_tugraph_setup` to test it.
+4. Then, you can code and test it.
+    - The bolt port is 7687, and HTTP port is 7070
+    - Open http://localhost:7070 in your browser. The username is `admin`, and the password is `73@TuGraph`.
+5. `cargo test` to run all the tests.
