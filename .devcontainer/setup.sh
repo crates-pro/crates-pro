@@ -1,11 +1,7 @@
 #!/bin/bash
 
 
-
-
-
-
-# 写入内容到 lgraph_daemon.json 文件
+# write contents into lgraph_daemon.json 
 cat << EOF > /build/output/lgraph_daemon.json
 {
   "directory": "/var/lib/lgraph/data",

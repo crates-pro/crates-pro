@@ -4,14 +4,14 @@ name = "database"
 version = "0.1.0"
 
 [dependencies]
-axum = "0.5" # 检查最新版本
-base64 = "0.21.7" 
-chrono = {version = "0.4.34", features = ["serde"]} 
-hyper = "1.2" 
-neo4rs = "0.7.1" 
-reqwest = {version = "0.11", features = ["json", "blocking"]} 
-serde = {version = "1.0", features = ["derive"]} 
-serde_json = "1.0" 
-tokio = {version = "1", features = ["full"]} 
-tower = "0.4" 
+axum = "0.7"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+hyper = "1.2"
+neo4rs = "0.7.1"
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.36", features = ["full"] }
+tower = "0.4"
 tugraph = "0.1.4"

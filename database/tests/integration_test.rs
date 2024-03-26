@@ -18,11 +18,11 @@ async fn test_server_responses() {
             .unwrap_or_else(|e| eprintln!("Server error: {}", e));
     });
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
     let client = reqwest::Client::new();
 
-    // 替换以下 URL 和路径为你的实际 API 路径
+
     let resp = client
         .get("http://localhost:3000/crates/test_crate")
         .send()

@@ -4,6 +4,7 @@ use axum::{extract::Path, routing::get, Router};
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex};
+use std::net::SocketAddr;
 
 #[derive(Default)]
 pub struct Server {
@@ -25,20 +26,21 @@ impl Server {
         *tx_lock = Some(shutdown_tx);
         drop(tx_lock); // drop lock explicitly
 
-        let app = Router::new()
+        // TODO: add router
+        let router = Router::new()
             .route("/crates/:name", get(Self::get_crate_info))
             .route("/crates/:name/versions", get(Self::get_crate_versions));
 
-        let addr = "127.0.0.1:3000".parse().unwrap();
-        let server = axum::Server::bind(&addr)
-            .serve(app.into_make_service())
+        let addr = SocketAddr::from(([127,0,0,1], 3000));
+        let tcp = tokio::net::TcpListener::bind(&addr).await.unwrap();
+        axum::serve(tcp, router)
             .with_graceful_shutdown(async {
                 shutdown_rx.await.ok();
-            });
+            }).await?;
 
         println!("Server running at http://{}", addr);
 
-        server.await.map_err(|e| e.into())
+        Ok(())
     }
 
     /// close the server

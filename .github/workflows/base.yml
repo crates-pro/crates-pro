@@ -14,7 +14,6 @@ jobs:
 
   cargo-check:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v3
 
@@ -27,9 +26,8 @@ jobs:
 
   clippy:
     runs-on: ubuntu-latest
-    # 定义步骤
     steps:
-      - uses: actions/checkout@v3 # 检出你的仓库
+      - uses: actions/checkout@v3 
       - name: Setup Docker and Run cargo clippy
         run: |
           docker pull xizheyin/crates-pro:latest
@@ -39,9 +37,8 @@ jobs:
   
   doc:
     runs-on: ubuntu-latest
-    # 定义步骤
     steps:
-      - uses: actions/checkout@v3 # 检出你的仓库
+      - uses: actions/checkout@v3 
       - name: Run cargo doc
         run: |
           docker pull xizheyin/crates-pro:latest

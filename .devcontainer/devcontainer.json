@@ -25,11 +25,13 @@
     "customizations": {
         "vscode": {
             "extensions": [
-                "rust-lang.rust-analyzer@0.3.1850",
+                "rust-lang.rust-analyzer@0.3.1850", // The version should be below 0.3.1850, or it won't work
                 "tamasfe.even-better-toml",
                 "llvm-vs-code-extensions.vscode-clangd",
                 "twxs.cmake",
-                "ms-vscode.cmake-tools"
+                "ms-vscode.cmake-tools",
+                "ms-azuretools.vscode-docker",
+                "natqe.reload"
             ]
         }
     }
