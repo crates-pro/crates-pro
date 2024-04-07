@@ -66,7 +66,7 @@ fn track_dependency(graph: &mut Graph, req: &str) -> Result<String, Box<dyn Erro
         }
     }
 
-    return Ok("0".to_string());
+    Ok("0".to_string())
 }
 
 struct Version {
