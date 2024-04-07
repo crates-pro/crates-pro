@@ -22,7 +22,6 @@ async fn test_server_responses() {
 
     let client = reqwest::Client::new();
 
-
     let resp = client
         .get("http://localhost:3000/crates/test_crate")
         .send()

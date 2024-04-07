@@ -77,6 +77,22 @@ erDiagram
 
 ### Table Details
 
+#### program
+
+| Column        | Type         | Constraints | Description                                         |
+|---------------|--------------|-------------|-----------------------------------------------------|
+| id            | BIGINT       | PRIMARY KEY |                                                     |
+| name          | VARCHAR(255) | NOT NULL    |                                                     |
+| namespace     | VARCHAR(255) | NULL        |                                                     |
+| repository    | TEXT         | NULL        | The git repository url from GitHub or other service |
+| documentation | TEXT         | NULL        | The documentation url                               |
+| categories    | TEXT         | NULL        |                                                     |
+| keywords      | TEXT         | NULL        |                                                     |
+| download      | BIGINT       | NOT NULL    | The download count from crates.io                   |
+| registry      | VARCHAR(255) | NOT NULL    | Default registry is crates.io                       |
+| created_at    | TIMESTAMP    | NOT NULL    |                                                     |
+| updated_at    | TIMESTAMP    | NOT NULL    |                                                     |
+
 #### crate
 
 | Column        | Type         | Constraints | Description                                         |
@@ -105,8 +121,6 @@ erDiagram
 | dep_sloc   | BIGINT       | NOT NULL    | Source lines of code of dependencies |
 | features   | TEXT         | NULL        | Cargo features                       |
 | sbom       | TEXT         | NULL        | Software Bill of Materials           |
-| created_at | TIMESTAMP    | NOT NULL    |                                      |
-| updated_at | TIMESTAMP    | NOT NULL    |                                      |
 
 #### info
 
@@ -118,8 +132,7 @@ erDiagram
 | description   | TEXT         | NULL        |             |
 | authors       | TEXT         | NULL        |             |
 | size          | BIGINT       | NOT NULL    |             |
-| created_at    | TIMESTAMP    | NOT NULL    |             |
-| updated_at    | TIMESTAMP    | NOT NULL    |             |
+
 
 #### application
 
@@ -138,8 +151,18 @@ erDiagram
 |------------|-----------|-------------|-------------|
 | id         | BIGINT    | PRIMARY KEY |             |
 | app_id     | BIGINT    | NOT NULL    |             |
+
+
+#### version
+
+| Column     | Type      | Constraints | Description |
+|------------|-----------|-------------|-------------|
+| id         | BIGINT    | PRIMARY KEY |             |
+| app_id     | BIGINT    | NOT NULL    |             |
 | created_at | TIMESTAMP | NOT NULL    |             |
 | updated_at | TIMESTAMP | NOT NULL    |             |
+
+
 
 #### security
 
@@ -150,6 +173,7 @@ erDiagram
 | version_id | BIGINT    | NULL        |             |
 | created_at | TIMESTAMP | NOT NULL    |             |
 | updated_at | TIMESTAMP | NOT NULL    |             |
+
 
 #### productivity
 
