@@ -1,7 +1,14 @@
 
 [workspace]
 members = [
-  "database", # contains APIs for data quaries
+  "crates_sync",
+  "database",    # contains APIs for data quaries
 ]
 
 resolver = "2" # use resolver of version 2
+
+
+[workspace.dependencies]
+serde = "1.0.197"
+chrono = "0.4.37"
+sea-orm = "0.12.15"
