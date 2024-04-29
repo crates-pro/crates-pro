@@ -85,53 +85,17 @@ erDiagram
 | name          | VARCHAR(255) | NOT NULL    |                                                     |
 | namespace     | VARCHAR(255) | NULL        |                                                     |
 | repository    | TEXT         | NULL        | The git repository url from GitHub or other service |
-| documentation | TEXT         | NULL        | The documentation url                               |
 | categories    | TEXT         | NULL        |                                                     |
 | keywords      | TEXT         | NULL        |                                                     |
-| download      | BIGINT       | NOT NULL    | The download count from crates.io                   |
-| registry      | VARCHAR(255) | NOT NULL    | Default registry is crates.io                       |
-| created_at    | TIMESTAMP    | NOT NULL    |                                                     |
-| updated_at    | TIMESTAMP    | NOT NULL    |                                                     |
+| documentation | String       | NULL        |                                                     |
 
-#### crate
+#### library
 
 | Column        | Type         | Constraints | Description                                         |
 |---------------|--------------|-------------|-----------------------------------------------------|
 | id            | BIGINT       | PRIMARY KEY |                                                     |
-| name          | VARCHAR(255) | NOT NULL    |                                                     |
-| namespace     | VARCHAR(255) | NULL        |                                                     |
-| repository    | TEXT         | NULL        | The git repository url from GitHub or other service |
-| documentation | TEXT         | NULL        | The documentation url                               |
-| categories    | TEXT         | NULL        |                                                     |
-| keywords      | TEXT         | NULL        |                                                     |
 | download      | BIGINT       | NOT NULL    | The download count from crates.io                   |
-| registry      | VARCHAR(255) | NOT NULL    | Default registry is crates.io                       |
-| created_at    | TIMESTAMP    | NOT NULL    |                                                     |
-| updated_at    | TIMESTAMP    | NOT NULL    |                                                     |
-
-#### crate_version
-
-| Column     | Type         | Constraints | Description                          |
-|------------|--------------|-------------|--------------------------------------|
-| id         | BIGINT       | PRIMARY KEY |                                      |
-| crate_id   | BIGINT       | NOT NULL    |                                      |
-| version    | VARCHAR(255) | NOT NULL    |                                      |
-| license    | VARCHAR(255) | NOT NULL    |                                      |
-| sloc       | BIGINT       | NOT NULL    | Source lines of code                 |
-| dep_sloc   | BIGINT       | NOT NULL    | Source lines of code of dependencies |
-| features   | TEXT         | NULL        | Cargo features                       |
-| sbom       | TEXT         | NULL        | Software Bill of Materials           |
-
-#### info
-
-| Column        | Type         | Constraints | Description |
-|---------------|--------------|-------------|-------------|
-| id            | BIGINT       | PRIMARY KEY |             |
-| version_id    | BIGINT       | NOT NULL    |             |
-| edition       | VARCHAR(255) | NULL        |             |
-| description   | TEXT         | NULL        |             |
-| authors       | TEXT         | NULL        |             |
-| size          | BIGINT       | NOT NULL    |             |
+| cratesio_web  | VARCHAR(255) | NOT NULL    | Default registry is crates.io                       |
 
 
 #### application
@@ -140,10 +104,23 @@ erDiagram
 |---------------|--------------|-------------|-----------------------------------------------------|
 | id            | BIGINT       | PRIMARY KEY |                                                     |
 | repository    | TEXT         | NULL        | The git repository url from GitHub or other service |
-| documentation | TEXT         | NULL        | The documentation url                               |
 | name          | VARCHAR(255) | NOT NULL    |                                                     |
-| created_at    | TIMESTAMP    | NOT NULL    |                                                     |
-| updated_at    | TIMESTAMP    | NOT NULL    |                                                     |
+
+#### library_version
+
+| Column        | Type         | Constraints | Description                          |
+|---------------|--------------|-------------|--------------------------------------|
+| id            | BIGINT       | PRIMARY KEY |                                      |
+| crate_id      | BIGINT       | NOT NULL    |                                      |
+| version       | VARCHAR(255) | NOT NULL    |                                      |
+| documentation | String       | NULL        |  Different version has different doc |
+| license       | VARCHAR(255) | NOT NULL    |                                      |
+| sloc          | BIGINT       | NOT NULL    | Source lines of code                 |
+| dep_sloc      | BIGINT       | NOT NULL    | Source lines of code of dependencies |
+| features      | TEXT         | NULL        | Cargo features                       |
+| sbom          | TEXT         | NULL        | Software Bill of Materials           |
+
+
 
 #### app_version
 

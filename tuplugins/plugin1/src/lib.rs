@@ -13,7 +13,7 @@ fn track_dependency(graph: &mut Graph, req: &str) -> Result<String, Box<dyn Erro
     // its format is "person_name,movie_title"
     // parse from req to get person_name and movie_title
     let (from_version, to_version) = parse_req(req)?;
-    let from_name_and_version = from_version.name + &from_version.version;
+    let from_name_and_version = from_version.name + "-" + &from_version.version;
     let to_name_and_version = to_version.name + &to_version.version;
 
     // create read only transaction
@@ -21,7 +21,7 @@ fn track_dependency(graph: &mut Graph, req: &str) -> Result<String, Box<dyn Erro
 
     // require the start node
     let mut from_version_iter = ro_txn.vertex_index_iter_ids_from(
-        "Version",
+        "version",
         "name_and_version",
         &FieldData::String(from_name_and_version.clone()),
         &FieldData::String(from_name_and_version),
@@ -30,7 +30,7 @@ fn track_dependency(graph: &mut Graph, req: &str) -> Result<String, Box<dyn Erro
 
     // require the end node
     let mut to_version_iter = ro_txn.vertex_index_iter_ids_from(
-        "Version",
+        "version",
         "name_and_version",
         &FieldData::String(to_name_and_version.clone()),
         &FieldData::String(to_name_and_version),
