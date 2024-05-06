@@ -1,8 +1,8 @@
 //! Integration test for our server
 //!
+extern crate router;
 
-extern crate database;
-use database::quary_server;
+use router::quary_server;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 

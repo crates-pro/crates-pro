@@ -1,0 +1,10 @@
+[package]
+edition = "2021"
+name = "tubackend"
+version = "0.1.0"
+
+[dependencies]
+neo4rs = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1.36", features = ["full"] }
+base64 = { workspace = true }
