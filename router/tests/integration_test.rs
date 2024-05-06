@@ -1,8 +1,8 @@
 //! Integration test for our server
 //!
+extern crate router;
 
-extern crate database;
-use database::quary_server;
+use router::quary_server;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 
@@ -21,7 +21,6 @@ async fn test_server_responses() {
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     let client = reqwest::Client::new();
-
 
     let resp = client
         .get("http://localhost:3000/crates/test_crate")

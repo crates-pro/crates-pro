@@ -1,10 +1,9 @@
-use crate::crate_info::{CrateInfo, CrateVersion};
 use axum::{extract::Path, routing::get, Router};
-
+use model::crate_info::{Application, Library, Program, Version};
 use std::error::Error;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex};
-use std::net::SocketAddr;
 
 #[derive(Default)]
 pub struct Server {
@@ -29,14 +28,17 @@ impl Server {
         // TODO: add router
         let router = Router::new()
             .route("/crates/:name", get(Self::get_crate_info))
-            .route("/crates/:name/versions", get(Self::get_crate_versions));
+            .route("/crates/:name/versions", get(Self::get_crate_versions))
+            .route("/libs/:name", get(Self::get_lib_info))
+            .route("/apps/:name", get(Self::get_app_info));
 
-        let addr = SocketAddr::from(([127,0,0,1], 3000));
+        let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
         let tcp = tokio::net::TcpListener::bind(&addr).await.unwrap();
         axum::serve(tcp, router)
             .with_graceful_shutdown(async {
                 shutdown_rx.await.ok();
-            }).await?;
+            })
+            .await?;
 
         println!("Server running at http://{}", addr);
 
@@ -58,16 +60,27 @@ impl Server {
         }
     }
 
-    async fn get_crate_info(Path(_crate_name): Path<String>) -> axum::Json<CrateInfo> {
+    async fn get_crate_info(Path(_crate_name): Path<String>) -> axum::Json<Program> {
         // TODO: fill my logic
 
-        axum::Json(CrateInfo::default())
+        axum::Json(Program::default())
     }
 
-    async fn get_crate_versions(Path(_crate_name): Path<String>) -> axum::Json<Vec<CrateVersion>> {
+    async fn get_crate_versions(Path(_crate_name): Path<String>) -> axum::Json<Vec<Version>> {
         // TODO: fill my logic
 
-        axum::Json(vec![CrateVersion::default()])
+        axum::Json(vec![Version::default()])
+    }
+
+    async fn get_lib_info(Path(_crate_name): Path<String>) -> axum::Json<Library> {
+        // TODO: fill my logic
+
+        axum::Json(Library::default())
+    }
+    async fn get_app_info(Path(_crate_name): Path<String>) -> axum::Json<Application> {
+        // TODO: fill my logic
+
+        axum::Json(Application::default())
     }
 }
 

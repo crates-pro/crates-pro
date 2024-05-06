@@ -1,4 +1,5 @@
 use neo4rs::*;
+use serde_json::Map;
 use std::error::Error;
 use std::fs::File;
 use std::io::Read;
@@ -146,11 +147,11 @@ impl TuGraphClient {
         plugin_name: &str,
         plugin_so_path: &str,
     ) -> Result<(), Box<dyn Error>> {
-        let plugin_type: &str = "so";
-        let plugin_description: &str = "";
-        let read_only: bool = false;
-        let version: &str = "1";
-        let code_type: &str = "so";
+        let plugin_type: &str = "CPP";
+        let plugin_description: &str = "plugin";
+        let read_only: bool = true;
+        let version: &str = "v1";
+        let code_type: &str = "SO";
 
         let mut file = File::open(plugin_so_path)?;
         let mut buffer = Vec::new();
@@ -174,7 +175,70 @@ impl TuGraphClient {
             version
         );
 
+        self.graph.run(query(&query_string)).await.unwrap();
+
+        println!("load plugin {}", plugin_name);
+        Ok(())
+    }
+
+    /// list the info of loaded plugins
+    ///
+    /// # param
+    /// * `plugin_type` -
+    /// * `plugin_version` -
+    pub async fn list_plugin(
+        &self,
+        plugin_type: &str,
+        plugin_version: &str,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
+        let query_string = format!(
+            "CALL db.plugin.listPlugin('{}', '{}')",
+            plugin_type, plugin_version
+        );
+
+        let mut result = self.graph.execute(query(&query_string)).await?;
+        // println!("{:?}", result.next().await);
+        let mut plugins = Vec::new();
+
+        while let Some(row) = result.next().await? {
+            let desc: Map<_, _> = row.get("plugin_description").unwrap();
+            let name = desc
+                .get("name")
+                .unwrap()
+                .to_string()
+                .trim_matches('"')
+                .to_string();
+            plugins.push(name);
+        }
+        Ok(plugins)
+    }
+
+    /// Deletes a plugin based on its type and name.
+    ///
+    /// # Parameters
+    /// * `plugin_type` - The type of the plugin to delete (e.g., "CPP", "PY").
+    /// * `plugin_name` - The name of the plugin to delete.
+    ///
+    /// # Returns
+    /// Returns `Ok(())` if the plugin was successfully deleted, or an error if the operation fails.
+    ///
+    /// # Errors
+    /// Returns an error if the delete operation cannot be executed or if the database responds with an error.
+    pub async fn delete_plugin(
+        &self,
+        plugin_type: &str,
+        plugin_name: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let query_string = format!(
+            "CALL db.plugin.deletePlugin('{}', '{}')",
+            plugin_type, plugin_name
+        );
+
+        // Executes the query.
+        // In a real-world scenario, you should handle potential errors properly,
+        // e.g., if the plugin does not exist or if the arguments are invalid.
         self.graph.run(query(&query_string)).await?;
+        println!("delete plugin {}", plugin_name);
         Ok(())
     }
 
@@ -283,5 +347,50 @@ mod tests {
         } else {
             panic!("Error no result");
         }
+    }
+
+    /// This is the test to test whether the TuGraph server is setup.
+    #[tokio::test]
+    async fn test_tugraph_client_load_plugin() {
+        // build bolt config
+        let client_ = TuGraphClient::new("bolt://localhost:7687", "admin", "73@TuGraph", "default")
+            .await
+            .unwrap();
+
+        let _ = client_
+            .graph
+            .run(query(
+                "CALL dbms.graph.createGraph('t2', 'description', 2045)",
+            ))
+            .await;
+
+        let client = TuGraphClient::new("bolt://localhost:7687", "admin", "73@TuGraph", "t2")
+            .await
+            .unwrap();
+
+        // unsafe {
+        //     client.drop_database().await.unwrap();
+        // }
+
+        let graphs = client.list_graphs().await.unwrap();
+        println!("{:?}", graphs);
+
+        let plugins = client.list_plugin("CPP", "v1").await.unwrap();
+        println!("{:?}", plugins);
+
+        for plugin in plugins {
+            client.delete_plugin("CPP", &plugin).await.unwrap();
+        }
+
+        client
+            .load_plugin(
+                "trace_dependencies1",
+                "/workspace/target/release/libplugin1.so",
+            )
+            .await
+            .unwrap();
+
+        let plugins = client.list_plugin("CPP", "v1").await.unwrap();
+        assert!(plugins.len() == 1);
     }
 }

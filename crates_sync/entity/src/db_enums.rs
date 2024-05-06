@@ -23,4 +23,3 @@ pub enum CrateType {
     #[sea_orm(string_value = "application")]
     Application,
 }
-
