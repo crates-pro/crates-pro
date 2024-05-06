@@ -25,7 +25,7 @@ pub(crate) fn extract_all_tags(
             let tree = commit.tree().expect("Couldn't get the tree");
 
             println!("Tag: {}", tag_name);
-            match find_and_parse_cargo_toml(&repo, &tree) {
+            match find_and_parse_cargo_toml(repo, &tree) {
                 Some(deps) => {
                     println!("Dependencies:");
                     for (name, version) in deps {

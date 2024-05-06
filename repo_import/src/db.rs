@@ -22,10 +22,10 @@ pub(crate) async fn clone_repos_from_pg(clone_dir: &str) -> Result<(), String> {
     // rayon parallel iter, make it faster
     krates.par_iter().for_each(|krate| {
         let mega_url = &krate.mega_url;
-        let namespace = &extract_namespace(&mega_url).expect("Failed to parse URL");
+        let namespace = &extract_namespace(mega_url).expect("Failed to parse URL");
         let path = PathBuf::from(clone_dir).join(namespace);
         println!("Cloning repo into {:?} from URL {}", path, mega_url);
-        if let Ok(_) = Repository::clone(mega_url, clone_dir) {
+        if Repository::clone(mega_url, clone_dir).is_ok() {
             println!("Successfully cloned {}", mega_url);
         } else {
             println!("Failed to clone {}", mega_url);
