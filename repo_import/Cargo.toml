@@ -9,7 +9,7 @@ edition = "2021"
 git2 = "0.18.3"
 toml = "0.5"
 sea-orm = { workspace = true }
-sea-query = "0.24"
+sea-query = "0.30"
 entity = { path = "../crates_sync/entity" }
 rayon = "1.5"
 sqlx = { version = "0.7", features = ["runtime-tokio", "postgres"] }
