@@ -1,6 +1,7 @@
 use sea_orm::{DeriveActiveEnum, EnumIter};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum)]
+#[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Deserialize, Serialize)]
 #[sea_orm(rs_type = "String", db_type = "String(Some(1))")]
 pub enum RepoSyncStatus {
     #[sea_orm(string_value = "syncing")]
@@ -15,7 +16,7 @@ pub enum RepoSyncStatus {
     Analysed,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum)]
+#[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Deserialize, Serialize)]
 #[sea_orm(rs_type = "String", db_type = "String(Some(1))")]
 pub enum CrateType {
     #[sea_orm(string_value = "lib")]

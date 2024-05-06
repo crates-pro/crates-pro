@@ -5,5 +5,17 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "crates_sync"
+path = "src/lib.rs"
+
+
 [dependencies]
 entity = { path = "./entity" }
+sea-orm = { workspace = true, features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+    "macros",
+] }
+tracing = { workspace = true }
+serde = { workspace = true }
