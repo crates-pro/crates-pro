@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+crates_sync = { path = "../crates_sync" }
 tokio = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }

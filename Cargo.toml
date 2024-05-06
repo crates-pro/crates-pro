@@ -21,6 +21,7 @@ resolver = "2" # use resolver of version 2
 model = { path = "model" }
 router = { path = "router" }
 tubackend = { path = "tubackend" }
+dotenvy = { workspace = true }
 
 
 [workspace.dependencies]
@@ -38,3 +39,6 @@ tower = "0.4"
 tugraph = "0.1.4"
 crates_sync = { path = "crates_sync" }
 model = { path = "model" }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+dotenvy = "0.15.7"
