@@ -1,4 +1,4 @@
-use router::run_quary_server;
+use backend::run_quary_server;
 
 fn main() {
     dotenvy::dotenv().ok();

@@ -9,8 +9,8 @@ members = [
   "crates_sync",       # data collection hub'
   "repo_import",       # extract repo and import data into tugraph
   "model",             # internal info struct,such as `crate info` `library info` `app info`
-  "router",            # the restful server exposed to front
-  "tubackend",         # tugraph client, deal with the quary from router
+  "backend",           # the restful server exposed to front
+  "tudriver",          # tugraph client, deal with the quary from router
   "tuplugins/plugin1", # tugraph plugins, deal with concret logics
 ]
 
@@ -19,8 +19,8 @@ resolver = "2" # use resolver of version 2
 
 [dependencies]
 model = { path = "model" }
-router = { path = "router" }
-tubackend = { path = "tubackend" }
+backend = { path = "backend" }
+tudriver = { path = "tudriver" }
 dotenvy = { workspace = true }
 
 

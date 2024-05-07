@@ -1,23 +1,16 @@
-use entity::repo_sync_status;
+use crates_sync::{init::database_connection, query::MegaStorage};
 use git2::Repository;
 use rayon::prelude::*;
-use sea_orm::EntityTrait;
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 use url::Url;
 
 /// clone repo locally
 /// 1. Get mega url from postgress
 /// 2. Clone git repositories from mega, reserving the namespace as path where they are cloned
 pub(crate) async fn clone_repos_from_pg(clone_dir: &str) -> Result<(), String> {
-    let db_url = "postgres://user:password@localhost/db_name";
-    let db_conn = sea_orm::Database::connect(db_url)
-        .await
-        .expect("Database connection failed");
-
-    let krates = repo_sync_status::Entity::find()
-        .all(&db_conn)
-        .await
-        .expect("Failed to execute query");
+    let database_conn = database_connection().await;
+    let repo_sync: MegaStorage = MegaStorage::new(Arc::new(database_conn));
+    let krates: Vec<crates_sync::repo_sync_model::RepoSync> = repo_sync.get_all_repos().await;
 
     // rayon parallel iter, make it faster
     krates.par_iter().for_each(|krate| {
