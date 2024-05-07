@@ -4,7 +4,6 @@ use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use tracing::log;
 
 pub async fn database_connection() -> DatabaseConnection {
-    
     let db_url = env::var("MEGA_DB_POSTGRESQL_URL").expect("DATABASE_URL is not set in .env file");
 
     let mut opt = ConnectOptions::new(db_url.to_owned());

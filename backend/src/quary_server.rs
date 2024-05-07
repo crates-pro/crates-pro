@@ -1,5 +1,4 @@
-use axum::{extract::{Path, State}, routing::get, Router};
-use crates_sync::{init::database_connection, query::MegaStorage, repo_sync_model::RepoSync};
+use axum::{extract::Path, routing::get, Router};
 use model::crate_info::{Application, Library, Program, Version};
 use std::error::Error;
 use std::net::SocketAddr;
@@ -9,11 +8,6 @@ use tokio::sync::{oneshot, Mutex};
 #[derive(Default)]
 pub struct Server {
     shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
-}
-
-#[derive(Clone)]
-pub struct AppState {
-    pub storage: Arc<MegaStorage>,
 }
 
 impl Server {
@@ -31,19 +25,12 @@ impl Server {
         *tx_lock = Some(shutdown_tx);
         drop(tx_lock); // drop lock explicitly
 
-        let connection = Arc::new(database_connection().await);
-        let state = AppState {
-            storage: Arc::new(MegaStorage::new(connection)),
-        };
-
         // TODO: add router
         let router = Router::new()
             .route("/crates/:name", get(Self::get_crate_info))
             .route("/crates/:name/versions", get(Self::get_crate_versions))
             .route("/libs/:name", get(Self::get_lib_info))
-            .route("/apps/:name", get(Self::get_app_info))
-            .route("/repos/all", get(Self::get_all_repos))
-            .with_state(state);
+            .route("/apps/:name", get(Self::get_app_info));
 
         let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
         let tcp = tokio::net::TcpListener::bind(&addr).await.unwrap();
@@ -94,11 +81,6 @@ impl Server {
         // TODO: fill my logic
 
         axum::Json(Application::default())
-    }
-
-    async fn get_all_repos(state: State<AppState>) -> axum::Json<Vec<RepoSync>> {
-        let res = state.storage.get_all_repos().await;
-        axum::Json(res)
     }
 }
 

@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use entity::{db_enums::{CrateType, RepoSyncStatus}, repo_sync_status};
+use entity::{
+    db_enums::{CrateType, RepoSyncStatus},
+    repo_sync_status,
+};
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct RepoSync {
@@ -18,7 +21,7 @@ impl From<repo_sync_status::Model> for RepoSync {
             crate_name: value.crate_name,
             mega_url: value.mega_url,
             crate_type: value.crate_type,
-            status: value.status
+            status: value.status,
         }
     }
 }
