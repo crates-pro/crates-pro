@@ -23,3 +23,10 @@ csv = "1.1.0"
 serde_json = { workspace = true }
 serde = { workspace = true }
 url = "2.2.2"
+dotenvy = { workspace = true }
+log = { workspace = true }
+pretty_env_logger = { workspace = true }
+walkdir = "2.3"
+lazy_static = "1.4.0"
+once_cell = "1.8.0"
+structopt = { workspace = true }
