@@ -4,6 +4,7 @@ use model::crate_info::{Application, Library, Program, UProgram};
 use serde::Serialize;
 use serde_json::json;
 use std::error::Error;
+use std::fmt::Debug;
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 use toml::Value;
@@ -157,13 +158,31 @@ pub fn from_cargo_toml<P: AsRef<Path>>(
     Ok(program)
 }
 
-pub(crate) fn write_into_csv<T: Serialize + Default>(
+fn get_fields<T: Serialize>(item: &T) -> Vec<String> {
+    let mut fields = Vec::new();
+    let json = json!(item);
+    if let serde_json::Value::Object(map) = json {
+        fields = map
+            .values()
+            .map(|value| {
+                match value {
+                    serde_json::Value::String(s) => s.clone(), // 直接使用字符串值。
+                    // 对于其他类型，使用`to_string`，这将丢弃原始serde_json的编码方式。
+                    _ => value.to_string().trim_matches('"').to_owned(),
+                }
+            })
+            .collect::<Vec<_>>();
+    }
+    fields
+}
+
+pub(crate) fn write_into_csv<T: Serialize + Default + Debug>(
     csv_path: PathBuf,
     programs: Vec<T>,
 ) -> Result<(), Box<dyn Error>> {
     // open the csv
 
-    let serialized = serde_json::to_value(&T::default())?;
+    let serialized = serde_json::to_value(&T::default()).unwrap();
 
     // 将JSON值转换为对象并提取字段名
     if let serde_json::Value::Object(map) = serialized {
@@ -172,40 +191,35 @@ pub(crate) fn write_into_csv<T: Serialize + Default>(
 
         debug!("{:?}", field_names);
 
-        write_to_csv(field_names, csv_path.to_str().unwrap())?;
+        write_to_csv(field_names, csv_path.to_str().unwrap(), false).unwrap();
     }
-
-    let file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(csv_path.clone())?;
-    let mut wtr = Writer::from_writer(file);
 
     for program in &programs {
         let fields = get_fields(program);
-        wtr.write_record(&fields)?;
+        let fields = fields.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+
+        debug!("{:?}", fields);
+        write_to_csv(fields, csv_path.to_str().unwrap(), true).unwrap();
     }
 
     Ok(())
 }
 
-fn get_fields<T: Serialize>(item: &T) -> Vec<String> {
-    let mut fields = Vec::new();
+fn write_to_csv(data: Vec<&str>, file_path: &str, append: bool) -> Result<(), Box<dyn Error>> {
+    let file = if append {
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(file_path)?
+    } else {
+        OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(file_path)?
+    };
 
-    let json = json!(item);
-
-    if let serde_json::Value::Object(map) = json {
-        for (_key, value) in map {
-            fields.push(value.to_string());
-        }
-    }
-
-    fields
-}
-
-fn write_to_csv(data: Vec<&str>, file_path: &str) -> Result<(), Box<dyn Error>> {
-    // 打开文件准备写入
-    let mut wtr = Writer::from_path(file_path)?;
+    let mut wtr = Writer::from_writer(file);
 
     // 将data作为单独的记录写入
     wtr.write_record(&data)?;
