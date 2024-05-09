@@ -108,8 +108,6 @@ fn import_from_local_repositories() {
 
     fs::create_dir_all(tugraph_import_files.clone()).unwrap_or_else(|e| error!("Error: {}", e));
 
-    //println!("{:?}", programs);
-
     // write into csv
     write_into_csv(tugraph_import_files.join("program.csv"), programs).unwrap();
     write_into_csv(tugraph_import_files.join("library.csv"), libraries).unwrap();
