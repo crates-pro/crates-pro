@@ -2,6 +2,7 @@ mod cli;
 mod dep;
 mod git;
 mod info;
+mod utils;
 
 extern crate pretty_env_logger;
 #[macro_use]
@@ -36,12 +37,11 @@ async fn main() {
     }
 }
 
-/// FIXME: support extracting recursively
+/// support extracting recursively
 fn import_from_local_repositories() {
-    info!("Importing from local repositories...");
+    info!("Importing from local repositories in {}", CLONE_CRATES_DIR);
 
-    let repo_dir = CLONE_CRATES_DIR;
-
+    // structure in crates_info.rs
     let mut programs: Vec<Program> = vec![];
     let mut libraries: Vec<Library> = vec![];
     let mut applications: Vec<Application> = vec![];
@@ -49,18 +49,19 @@ fn import_from_local_repositories() {
     let mut application_versions: Vec<ApplicationVersion> = vec![];
     let mut versions: Vec<Version> = vec![];
 
-    // traverse all the owner name dir in /mnt/crates/crates_file/
-    for owner_entry in fs::read_dir(repo_dir).unwrap() {
+    // traverse all the owner name dir in /mnt/crates/local_crates_file/
+    for owner_entry in fs::read_dir(CLONE_CRATES_DIR).unwrap() {
         let owner_path = owner_entry.unwrap().path();
         if owner_path.is_dir() {
             for repo_entry in fs::read_dir(&owner_path).unwrap() {
                 let repo_path = repo_entry.unwrap().path();
+
                 if repo_path.is_dir() {
                     if let Ok(repo) = Repository::open(&repo_path) {
                         // INFO: Start to Parse
                         trace!("Processing repo: {}", repo_path.display());
                         // extract_dependencies
-                        print_all_tags(&repo);
+                        print_all_tags(&repo, false);
 
                         //reset, maybe useless
                         hard_reset_to_head(&repo).unwrap();
@@ -70,7 +71,7 @@ fn import_from_local_repositories() {
                         for (program, uprogram) in pms {
                             programs.push(program.clone());
 
-                            let is_lib = match uprogram {
+                            let _is_lib = match uprogram {
                                 UProgram::Library(l) => {
                                     libraries.push(l);
                                     true
@@ -81,8 +82,7 @@ fn import_from_local_repositories() {
                                 }
                             };
 
-                            let uversions: Vec<UVersion> =
-                                extract_all_tags(&repo, program.id, program.name, is_lib);
+                            let uversions: Vec<UVersion> = extract_all_tags(&repo);
                             for v in uversions {
                                 match v {
                                     UVersion::LibraryVersion(l) => {
@@ -130,5 +130,5 @@ fn import_from_local_repositories() {
 async fn import_from_mega(mega_url_base: &str) {
     info!("Importing from MEGA...");
     let _ = clone_repos_from_pg(mega_url_base, CLONE_CRATES_DIR).await;
-    import_from_local_repositories();
+    import_from_local_repositories()
 }

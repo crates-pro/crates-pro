@@ -8,6 +8,7 @@ use std::fmt::Debug;
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 use toml::Value;
+use url::Url;
 use uuid::Uuid;
 use walkdir::WalkDir;
 
@@ -108,10 +109,10 @@ fn is_crate_lib(crate_path: &str) -> Result<bool, String> {
     for target in &package.targets {
         let target_types: Vec<_> = target.kind.to_vec();
 
-        debug!(
-            "Package Name: {} - Target: {} - Types: {:?}",
-            package.name, target.name, target_types
-        );
+        // debug!(
+        //     "Package Name: {} - Target: {} - Types: {:?}",
+        //     package.name, target.name, target_types
+        // );
 
         // 判断当前target是否是 lib 或 bin
         // 注意：一个包可以同时包含多个类型的目标
@@ -119,7 +120,7 @@ fn is_crate_lib(crate_path: &str) -> Result<bool, String> {
         //     println!("{} is a library crate.", package.name);
         // }
         if target_types.contains(&"bin".to_string()) {
-            println!("{} is a binary crate.", package.name);
+            //println!("{} is a binary crate.", package.name);
             return Ok(false);
         }
     }
@@ -191,7 +192,7 @@ pub(crate) fn write_into_csv<T: Serialize + Default + Debug>(
 
         debug!("{:?}", field_names);
 
-        write_to_csv(field_names, csv_path.to_str().unwrap(), false).unwrap();
+        write_to_csv(field_names, csv_path.to_str().unwrap(), false)?;
     }
 
     for program in &programs {
@@ -199,7 +200,7 @@ pub(crate) fn write_into_csv<T: Serialize + Default + Debug>(
         let fields = fields.iter().map(|s| s.as_str()).collect::<Vec<_>>();
 
         debug!("{:?}", fields);
-        write_to_csv(fields, csv_path.to_str().unwrap(), true).unwrap();
+        write_to_csv(fields, csv_path.to_str().unwrap(), true)?;
     }
 
     Ok(())
@@ -227,4 +228,43 @@ fn write_to_csv(data: Vec<&str>, file_path: &str, append: bool) -> Result<(), Bo
     // 确保所有内容都被刷新到文件
     wtr.flush()?;
     Ok(())
+}
+
+/// An auxiliary function
+///
+/// Extracts namespace e.g. "tokio-rs/tokio" from the git url https://www.github.com/tokio-rs/tokio
+pub(crate) fn extract_namespace(url_str: &str) -> Result<String, String> {
+    /// auxiliary function
+    fn remove_dot_git_suffix(input: &str) -> String {
+        if input.ends_with(".git") {
+            input.replace(".git", "")
+        } else {
+            input.to_string()
+        }
+    }
+
+    let url = Url::parse(url_str).map_err(|e| format!("Failed to parse URL {}: {}", url_str, e))?;
+
+    // /tokio-rs/tokio
+    let path_segments = url
+        .path_segments()
+        .ok_or("Cannot extract path segments from URL")?;
+
+    let segments: Vec<&str> = path_segments.collect();
+
+    // github URLs is of the format "/user/repo"
+    if segments.len() < 2 {
+        return Err(format!(
+            "URL {} does not include a namespace and a repository name",
+            url_str
+        ));
+    }
+
+    // join owner name and repo name
+    let namespace = format!(
+        "{}/{}",
+        segments[segments.len() - 2],
+        segments[segments.len() - 1]
+    );
+    Ok(remove_dot_git_suffix(&namespace))
 }
