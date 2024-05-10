@@ -4,7 +4,7 @@ use git2::{build::CheckoutBuilder, ObjectType, Repository};
 use std::{path::PathBuf, sync::Arc};
 use url::Url;
 
-use crate::info;
+use crate::{info::extract_namespace, utils::insert_info};
 
 /// clone repo locally
 /// 1. Get mega url from postgres
@@ -18,27 +18,37 @@ pub(crate) async fn clone_repos_from_pg(
     let repo_sync: MegaStorage = MegaStorage::new(Arc::new(database_conn));
     let mut krates: Vec<crates_sync::repo_sync_model::RepoSync> = repo_sync.get_all_repos().await;
     krates.sort_by_key(|x| x.mega_url.clone());
-    let krates: Vec<&crates_sync::repo_sync_model::RepoSync> = krates.iter().take(10).collect();
+
+    // FIXME: test code
+    let krates: Vec<&crates_sync::repo_sync_model::RepoSync> = krates.iter().take(100).collect();
 
     // rayon parallel iter, make it faster
     krates.iter().for_each(|krate| {
         //krates.par_iter().for_each(|krate| {
-        let mega_url = &krate.mega_url;
-        // FIXME:
-        let mega_url_base = Url::parse(mega_url_base)
-            .unwrap_or_else(|_| panic!("Failed to parse mega url base: {}", &mega_url_base));
-        let mega_url = mega_url_base
-            .join(mega_url)
-            .expect("Failed to join url path");
 
-        let namespace = remove_dot_git_suffix(
-            &extract_namespace(mega_url.as_ref()).expect("Failed to parse URL"),
-        );
+        // mega_url = base + path
+        let mega_url = {
+            let mega_url_base = Url::parse(mega_url_base)
+                .unwrap_or_else(|_| panic!("Failed to parse mega url base: {}", &mega_url_base));
+            let mega_url_path = &krate.mega_url;
+            mega_url_base
+                .join(mega_url_path)
+                .expect("Failed to join url path")
+        };
 
-        let path = PathBuf::from(clone_dir).join(namespace);
+        // namespace such as tokio-rs/tokio
+        let namespace = extract_namespace(mega_url.as_ref()).expect("Failed to parse URL");
+
+        // The path the repo will be cloned into
+        let path = PathBuf::from(clone_dir).join(namespace.clone());
 
         clone(&path, mega_url.as_ref());
+
+        // finish cloning, store namespace ...
+        insert_info(path.to_str().unwrap().to_string(), namespace.clone());
     });
+
+    trace!("Finish clone all the repos\n");
 
     Ok(())
 }
@@ -55,91 +65,67 @@ fn clone(path: &PathBuf, url: &str) {
     }
 }
 
+/// Deprecated.
+
+/// If it migrate from a different system,
+/// the git record will change, and this is the reset function.
 pub(crate) fn hard_reset_to_head(repo: &Repository) -> Result<(), git2::Error> {
-    // 获取当前HEAD指向的提交
     let head = repo.head()?;
     let commit = repo.find_commit(
         head.target()
             .ok_or(git2::Error::from_str("HEAD does not point to a commit"))?,
     )?;
 
-    // 获取当前提交的树
+    // commit tree
     let tree = commit.tree()?;
 
-    // 创建CheckoutBuilder，设置为强制检出，以确保工作目录的变更
+    // Create CheckoutBuilder, set to force checkout to ensure changes to the working directory
     let mut checkout_opts = CheckoutBuilder::new();
     checkout_opts.force();
 
-    // 正确地将tree转换为Object再进行检出
+    // Correctly convert tree to Object before checking out the
     let tree_obj = tree.into_object();
     repo.checkout_tree(&tree_obj as &git2::Object, Some(&mut checkout_opts))?;
     Ok(())
 }
 
-pub(crate) fn print_all_tags(repo: &Repository) {
+pub(crate) fn print_all_tags(repo: &Repository, v: bool) {
     let tags = repo.tag_names(None).unwrap();
+
+    // for tag in tags.iter() {
+    //     println!("tags: {}", tag.unwrap());
+    // }
+
+    let mut s = "".to_string();
     for tag_name in tags.iter().flatten() {
         let tag_ref = repo
             .find_reference(&format!("refs/tags/{}", tag_name))
             .unwrap();
-        // 解析标签指向的对象
-        if let Ok(tag_object) = tag_ref.peel_to_tag() {
-            // Annotated 标签
-            let target_commit = tag_object.target().unwrap().peel_to_commit().unwrap();
-            println!(
-                "Annotated Tag: {}, Commit: {}, Message: {}",
-                tag_name,
-                target_commit.id(),
-                tag_object.message().unwrap_or("No message")
-            );
+
+        if v {
+            if let Ok(tag_object) = tag_ref.peel_to_tag() {
+                // Annotated tag
+                let target_commit = tag_object.target().unwrap().peel_to_commit().unwrap();
+                debug!(
+                    "Annotated Tag: {}, Commit: {}, Message: {}",
+                    tag_name,
+                    target_commit.id(),
+                    tag_object.message().unwrap_or("No message")
+                );
+            } else {
+                // 轻量级标签可能不能直接转换为 annotated 标签对象
+                // 直接获取引用指向的提交
+                let commit_object = tag_ref.peel(ObjectType::Commit).unwrap();
+                let commit = commit_object
+                    .into_commit()
+                    .expect("Failed to peel into commit");
+                debug!("Lightweight Tag: {}, Commit: {}", tag_name, commit.id());
+                // 轻量级标签没有存储消息
+            }
         } else {
-            // 轻量级标签可能不能直接转换为 annotated 标签对象
-            // 直接获取引用指向的提交
-            let commit_object = tag_ref.peel(ObjectType::Commit).unwrap();
-            let commit = commit_object
-                .into_commit()
-                .expect("Failed to peel into commit");
-            println!("Lightweight Tag: {}, Commit: {}", tag_name, commit.id());
-            // 轻量级标签没有存储消息
+            s += &format!("{}, ", tag_name);
         }
     }
-}
 
-/// An auxiliary function
-///
-/// Extracts namespace e.g. "tokio-rs/tokio" from the git url https://www.github.com/tokio-rs/tokio
-fn extract_namespace(url_str: &str) -> Result<String, String> {
-    let url = Url::parse(url_str).map_err(|e| format!("Failed to parse URL {}: {}", url_str, e))?;
-
-    // /tokio-rs/tokio
-    let path_segments = url
-        .path_segments()
-        .ok_or("Cannot extract path segments from URL")?;
-
-    let segments: Vec<&str> = path_segments.collect();
-
-    // github URLs is of the format "/user/repo"
-    if segments.len() < 2 {
-        return Err(format!(
-            "URL {} does not include a namespace and a repository name",
-            url_str
-        ));
-    }
-
-    // join owner name and repo name
-    let namespace = format!(
-        "{}/{}",
-        segments[segments.len() - 2],
-        segments[segments.len() - 1]
-    );
-    Ok(namespace)
-}
-
-/// auxiliary function
-fn remove_dot_git_suffix(input: &str) -> String {
-    if input.ends_with(".git") {
-        input.replace(".git", "")
-    } else {
-        input.to_string()
-    }
+    debug!("TAGS {:?} tags: {}", repo.path(), s);
 }

@@ -1,72 +1,78 @@
 use git2::Repository;
 use git2::{TreeWalkMode, TreeWalkResult};
-use model::crate_info::{ApplicationVersion, LibraryVersion, UVersion};
+use model::crate_info::UVersion;
 use toml::Value;
-pub(crate) fn extract_all_tags(
-    repo: &Repository,
-    id: String,
-    name: String,
-    is_lib: bool,
-) -> Vec<UVersion> {
-    let mut versions: Vec<UVersion> = vec![];
+
+#[allow(unused)]
+#[derive(Debug, Default, Clone)]
+pub(crate) struct Dependencies {
+    pub(crate) crate_name: String,
+    pub(crate) version: String,
+    pub(crate) dependencies: Vec<(String, String)>,
+}
+
+/// a git repo contains different crates
+pub(crate) fn extract_all_tags(repo: &Repository) -> Vec<UVersion> {
+    let versions: Vec<UVersion> = vec![];
     let tags = repo.tag_names(None).expect("Could not retrieve tags");
 
-    for tag_name in tags.iter() {
-        if let Some(tag_name) = tag_name {
-            let obj = repo
-                .revparse_single(&("refs/tags/".to_owned() + tag_name))
-                .expect("Couldn't find tag object");
-            let tag = obj.as_tag().expect("Couldn't convert to tag");
-            let commit = tag
-                .target()
+    for tag_name in tags.iter().flatten() {
+        let obj = repo
+            .revparse_single(&("refs/tags/".to_owned() + tag_name))
+            .expect("Couldn't find tag object");
+        println!("{:?}", obj);
+
+        // 尝试将对象作为注释标签处理
+        let commit = if let Some(tag) = obj.as_tag() {
+            tag.target()
                 .expect("Couldn't get tag target")
                 .peel_to_commit()
-                .expect("Couldn't peel to commit");
-            let tree = commit.tree().expect("Couldn't get the tree");
-
-            println!("Tag: {}", tag_name);
-            match find_and_parse_cargo_toml(repo, &tree) {
-                Some(deps) => {
-                    println!("Dependencies:");
-                    for (name, version) in deps {
-                        println!("{}: {}", name, version);
-                    }
-                }
-                None => println!("Could not find Cargo.toml"),
-            }
-        }
-
-        let version = tag_name.unwrap_or("-").to_string();
-
-        if is_lib {
-            let version = LibraryVersion {
-                id: id.clone(),
-                name: name.clone(),
-                version,
-                documentation: "???".to_string(), // FIXME:
-            };
-            versions.push(UVersion::LibraryVersion(version));
+                .expect("Couldn't peel to commit")
+        } else if let Some(commit) = obj.as_commit() {
+            commit.clone()
         } else {
-            let version = ApplicationVersion {
-                id: id.clone(),
-                name: name.clone(),
-                version,
-            };
-            versions.push(UVersion::ApplicationVersion(version));
-        }
+            panic!("Error!");
+        };
+
+        let tree = commit.tree().expect("Couldn't get the tree"); // for each version of the git repo
+
+        // FIXME: deal with different formats
+        // parse the version, walk all the packages
+        let _all_packages_dependencies = find_and_parse_cargo_toml(repo, &tree);
+
+        // let version = tag_name.to_string();
+        // if is_lib {
+        //     let version = LibraryVersion {
+        //         id: id.clone(),
+        //         name: name.clone(),
+        //         version,
+        //         documentation: "???".to_string(),
+        //     };
+        //     versions.push(UVersion::LibraryVersion(version));
+        // } else {
+        //     let version = ApplicationVersion {
+        //         id: id.clone(),
+        //         name: name.clone(),
+        //         version,
+        //     };
+        //     versions.push(UVersion::ApplicationVersion(version));
+        // }
     }
 
     versions
 }
+
+/// for a given commit(version), walk all the package
 fn find_and_parse_cargo_toml<'repo>(
     repo: &'repo Repository,
     tree: &'repo git2::Tree,
-) -> Option<Vec<(String, String)>> {
-    let mut deps = Vec::new();
+) -> Vec<Dependencies> {
+    let mut res = Vec::new();
 
     // Walk the tree to find Cargo.toml
     tree.walk(TreeWalkMode::PreOrder, |_, entry| {
         if entry.name() == Some("Cargo.toml") {
+            // for each Cargo.toml in repo of given commit
             let obj = entry
                 .to_object(repo)
                 .expect("Failed to convert TreeEntry to Object");
@@ -74,30 +80,52 @@ fn find_and_parse_cargo_toml<'repo>(
             let content =
                 std::str::from_utf8(blob.content()).expect("Cargo.toml content is not valid UTF-8");
 
+            //println!("xxx");
             match content.parse::<Value>() {
                 Ok(toml) => {
-                    if let Some(dep_table) = toml.get("dependencies") {
-                        if let Some(deps_table) = dep_table.as_table() {
-                            for (name, val) in deps_table {
-                                if let Some(version) = val.as_str() {
-                                    deps.push((name.clone(), version.to_owned()));
+                    //println!("yyy: {:#?}", toml);
+                    if let Some(package) = toml.get("package") {
+                        if let Some(crate_name) = package.get("name") {
+                            //println!("zzz");
+                            let crate_name = crate_name.as_str().unwrap().to_string();
+                            let version = package
+                                .get("version")
+                                .unwrap()
+                                .as_str()
+                                .unwrap()
+                                .to_string();
+
+                            let mut dependencies = vec![];
+
+                            if let Some(dep_table) = toml.get("dependencies") {
+                                if let Some(deps_table) = dep_table.as_table() {
+                                    for (name, val) in deps_table {
+                                        if let Some(version) = val.as_str() {
+                                            //FIXME:
+                                            dependencies.push((name.clone(), version.to_owned()));
+                                        }
+                                    }
                                 }
                             }
+
+                            let dependencies = Dependencies {
+                                crate_name,
+                                version,
+                                dependencies,
+                            };
+                            println!("{:?}", dependencies);
+                            res.push(dependencies)
                         }
                     }
                 }
                 Err(_) => println!("Failed to parse Cargo.toml for {:?}", entry.name()),
             }
 
-            return TreeWalkResult::Abort; // Found the file, stop walking
+            return TreeWalkResult::Ok; // Found the file, stop walking
         }
         TreeWalkResult::Ok
     })
     .expect("Failed to walk the tree");
 
-    if deps.is_empty() {
-        None
-    } else {
-        Some(deps)
-    }
+    res
 }

@@ -12,17 +12,17 @@ pub struct Program {
     /// The name of the crate.
     pub name: String,
     /// An optional description of the crate.
-    description: Option<String>,
+    pub description: Option<String>,
     /// The namespace of the crate, such tokio-rs/tokio
-    namespace: Option<String>,
+    pub namespace: Option<String>,
     /// The current version of the crate.
-    max_version: Option<String>,
+    pub max_version: Option<String>,
     /// An optional URL pointing to the crate's source code repository.
-    github_url: Option<String>,
+    pub github_url: Option<String>,
     /// mega URL
-    mega_url: Option<String>,
+    pub mega_url: Option<String>,
     /// An optional URL pointing to the crate's documentation.
-    doc_url: Option<String>,
+    pub doc_url: Option<String>,
 }
 
 impl Program {
