@@ -11,7 +11,7 @@ extern crate lazy_static;
 
 use crate::info::extract_info_local;
 use crate::info::write_into_csv;
-use crate::{dep::extract_all_tags, git::print_all_tags};
+use crate::{dep::parse_all_versions_of_a_repo, git::print_all_tags};
 use cli::{Cli, Command};
 use git::{clone_repos_from_pg, hard_reset_to_head};
 use git2::Repository;
@@ -60,7 +60,6 @@ fn import_from_local_repositories() {
                     if let Ok(repo) = Repository::open(&repo_path) {
                         // INFO: Start to Parse
                         trace!("Processing repo: {}", repo_path.display());
-                        // extract_dependencies
                         print_all_tags(&repo, false);
 
                         //reset, maybe useless
@@ -81,18 +80,18 @@ fn import_from_local_repositories() {
                                     false
                                 }
                             };
+                        }
 
-                            let uversions: Vec<UVersion> = extract_all_tags(&repo);
-                            for v in uversions {
-                                match v {
-                                    UVersion::LibraryVersion(l) => {
-                                        library_versions.push(l.clone());
-                                        versions.push(Version::new(&(l.name + &l.version)));
-                                    }
-                                    UVersion::ApplicationVersion(a) => {
-                                        application_versions.push(a.clone());
-                                        versions.push(Version::new(&(a.name + &a.version)));
-                                    }
+                        let uversions: Vec<UVersion> = parse_all_versions_of_a_repo(&repo);
+                        for v in uversions {
+                            match v {
+                                UVersion::LibraryVersion(l) => {
+                                    library_versions.push(l.clone());
+                                    versions.push(Version::new(&(l.name + &l.version)));
+                                }
+                                UVersion::ApplicationVersion(a) => {
+                                    application_versions.push(a.clone());
+                                    versions.push(Version::new(&(a.name + &a.version)));
                                 }
                             }
                         }

@@ -4,7 +4,7 @@ use git2::{build::CheckoutBuilder, ObjectType, Repository};
 use std::{path::PathBuf, sync::Arc};
 use url::Url;
 
-use crate::{info::extract_namespace, utils::insert_info};
+use crate::{info::extract_namespace, utils::insert_namespace_by_repo_path};
 
 /// clone repo locally
 /// 1. Get mega url from postgres
@@ -45,7 +45,8 @@ pub(crate) async fn clone_repos_from_pg(
         clone(&path, mega_url.as_ref());
 
         // finish cloning, store namespace ...
-        insert_info(path.to_str().unwrap().to_string(), namespace.clone());
+
+        insert_namespace_by_repo_path(path.to_str().unwrap().to_string(), namespace.clone());
     });
 
     trace!("Finish clone all the repos\n");

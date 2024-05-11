@@ -12,6 +12,8 @@ use url::Url;
 use uuid::Uuid;
 use walkdir::WalkDir;
 
+use crate::utils::{get_namespace_by_repo_path, insert_program_by_name};
+
 // Given a project path, parse the metadata
 pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, UProgram)> {
     trace!("Parse repo {:?}", local_repo_path);
@@ -28,7 +30,7 @@ pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, UPro
     };
 
     // walk the directories of the project
-    for entry in WalkDir::new(local_repo_path)
+    for entry in WalkDir::new(local_repo_path.clone())
         .min_depth(min_depth) // owner/proj/Cargo.toml
         .max_depth(max_depth) // workspace: owner/proj/Cargo.toml
         .into_iter()
@@ -55,7 +57,9 @@ pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, UPro
                     };
 
                     debug!("Found Crate: {}, islib: {}", name, islib);
-                    let program = from_cargo_toml(entry_path, &id).unwrap();
+                    let program =
+                        from_cargo_toml(local_repo_path.clone(), entry_path.to_path_buf(), &id)
+                            .unwrap();
 
                     let uprogram = if islib {
                         UProgram::Library(Library::new(&id.to_string(), &name, -1, None))
@@ -64,6 +68,7 @@ pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, UPro
                     };
 
                     debug!("program: {:?}, uprogram: {:?}", program, uprogram);
+                    insert_program_by_name(name.clone(), (program.clone(), uprogram.clone()));
 
                     res.push((program, uprogram));
                 }
@@ -97,7 +102,6 @@ fn parse_crate_name(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
 }
 
 fn is_crate_lib(crate_path: &str) -> Result<bool, String> {
-    // 获取当前项目的 cargo 元数据
     let metadata = MetadataCommand::new()
         .manifest_path(PathBuf::from(crate_path).join("Cargo.toml"))
         .exec()
@@ -109,16 +113,6 @@ fn is_crate_lib(crate_path: &str) -> Result<bool, String> {
     for target in &package.targets {
         let target_types: Vec<_> = target.kind.to_vec();
 
-        // debug!(
-        //     "Package Name: {} - Target: {} - Types: {:?}",
-        //     package.name, target.name, target_types
-        // );
-
-        // 判断当前target是否是 lib 或 bin
-        // 注意：一个包可以同时包含多个类型的目标
-        // if target_types.contains(&"lib".to_string()) {
-        //     println!("{} is a library crate.", package.name);
-        // }
         if target_types.contains(&"bin".to_string()) {
             //println!("{} is a binary crate.", package.name);
             return Ok(false);
@@ -128,16 +122,14 @@ fn is_crate_lib(crate_path: &str) -> Result<bool, String> {
     Ok(true)
 }
 
-pub fn from_cargo_toml<P: AsRef<Path>>(
-    path: P,
+pub fn from_cargo_toml(
+    local_repo_path: PathBuf,
+    cargo_toml_path: PathBuf,
     id: &str,
 ) -> Result<Program, Box<dyn std::error::Error>> {
-    // 读取Cargo.toml文件内容
-    let content = fs::read_to_string(path)?;
-    // 解析TOML内容到toml::Value
+    let content = fs::read_to_string(cargo_toml_path)?;
     let parsed = content.parse::<Value>()?;
 
-    // 解析并构造Program实例，这里简化处理，实际情况可能需要更复杂的逻辑来提取和处理信息
     let program = Program::new(
         id.to_string(),
         parsed["package"]["name"]
@@ -149,11 +141,11 @@ pub fn from_cargo_toml<P: AsRef<Path>>(
             .unwrap_or(&Value::String(String::default()))
             .as_str()
             .map(String::from),
-        None, // 通常Cargo.toml中不包含namespace信息，可能需要其他途径获取
+        get_namespace_by_repo_path(local_repo_path.to_str().unwrap()),
         parsed["package"]["version"].as_str().map(String::from),
-        None, // 需要从其他地方获取
-        None, // 需要从其他地方获取
-        None, // 需要从其他地方获取
+        None,
+        None,
+        None,
     );
 
     Ok(program)
@@ -222,10 +214,8 @@ fn write_to_csv(data: Vec<&str>, file_path: &str, append: bool) -> Result<(), Bo
 
     let mut wtr = Writer::from_writer(file);
 
-    // 将data作为单独的记录写入
     wtr.write_record(&data)?;
 
-    // 确保所有内容都被刷新到文件
     wtr.flush()?;
     Ok(())
 }
