@@ -4,65 +4,71 @@ use git2::{build::CheckoutBuilder, ObjectType, Repository};
 use std::{path::PathBuf, sync::Arc};
 use url::Url;
 
-use crate::{info::extract_namespace, utils::insert_namespace_by_repo_path};
+use crate::{metadata_info::extract_namespace, utils::insert_namespace_by_repo_path, ImportDriver};
 
-/// clone repo locally
-/// 1. Get mega url from postgres
-/// 2. Clone git repositories from mega, reserving the namespace as path where they are cloned
-pub(crate) async fn clone_repos_from_pg(
-    mega_url_base: &str,
-    clone_dir: &str,
-) -> Result<(), String> {
-    // read from postgres sql
-    let database_conn = database_connection().await;
-    let repo_sync: MegaStorage = MegaStorage::new(Arc::new(database_conn));
-    let mut krates: Vec<crates_sync::repo_sync_model::RepoSync> = repo_sync.get_all_repos().await;
-    krates.sort_by_key(|x| x.mega_url.clone());
+impl ImportDriver {
+    /// clone repo locally
+    /// 1. Get mega url from postgres
+    /// 2. Clone git repositories from mega, reserving the namespace as path where they are cloned
+    pub(crate) async fn clone_repos_from_pg(
+        &mut self,
+        mega_url_base: &str,
+        clone_dir: &str,
+    ) -> Result<(), String> {
+        // read from postgres sql
+        let database_conn = database_connection().await;
+        let repo_sync: MegaStorage = MegaStorage::new(Arc::new(database_conn));
+        let mut krates: Vec<crates_sync::repo_sync_model::RepoSync> =
+            repo_sync.get_all_repos().await;
+        krates.sort_by_key(|x| x.mega_url.clone());
 
-    // FIXME: test code
-    let krates: Vec<&crates_sync::repo_sync_model::RepoSync> = krates.iter().take(100).collect();
+        // FIXME: test code
+        let krates: Vec<&crates_sync::repo_sync_model::RepoSync> =
+            krates.iter().take(100).collect();
 
-    // rayon parallel iter, make it faster
-    krates.iter().for_each(|krate| {
-        //krates.par_iter().for_each(|krate| {
+        // rayon parallel iter, make it faster
+        krates.iter().for_each(|krate| {
+            //krates.par_iter().for_each(|krate| {
 
-        // mega_url = base + path
-        let mega_url = {
-            let mega_url_base = Url::parse(mega_url_base)
-                .unwrap_or_else(|_| panic!("Failed to parse mega url base: {}", &mega_url_base));
-            let mega_url_path = &krate.mega_url;
-            mega_url_base
-                .join(mega_url_path)
-                .expect("Failed to join url path")
-        };
+            // mega_url = base + path
+            let mega_url = {
+                let mega_url_base = Url::parse(mega_url_base).unwrap_or_else(|_| {
+                    panic!("Failed to parse mega url base: {}", &mega_url_base)
+                });
+                let mega_url_path = &krate.mega_url;
+                mega_url_base
+                    .join(mega_url_path)
+                    .expect("Failed to join url path")
+            };
 
-        // namespace such as tokio-rs/tokio
-        let namespace = extract_namespace(mega_url.as_ref()).expect("Failed to parse URL");
+            // namespace such as tokio-rs/tokio
+            let namespace = extract_namespace(mega_url.as_ref()).expect("Failed to parse URL");
 
-        // The path the repo will be cloned into
-        let path = PathBuf::from(clone_dir).join(namespace.clone());
+            // The path the repo will be cloned into
+            let path = PathBuf::from(clone_dir).join(namespace.clone());
 
-        clone(&path, mega_url.as_ref());
+            self.clone(&path, mega_url.as_ref());
 
-        // finish cloning, store namespace ...
+            // finish cloning, store namespace ...
 
-        insert_namespace_by_repo_path(path.to_str().unwrap().to_string(), namespace.clone());
-    });
+            insert_namespace_by_repo_path(path.to_str().unwrap().to_string(), namespace.clone());
+        });
 
-    trace!("Finish clone all the repos\n");
+        trace!("Finish clone all the repos\n");
 
-    Ok(())
-}
+        Ok(())
+    }
 
-fn clone(path: &PathBuf, url: &str) {
-    if !path.is_dir() {
-        info!("Cloning repo into {:?} from URL {}", path, url);
-        match Repository::clone(url, path) {
-            Ok(_) => info!("Successfully cloned into {:?}", path),
-            Err(e) => panic!("Failed to clone {}: {:?}", url, e),
+    fn clone(&mut self, path: &PathBuf, url: &str) {
+        if !path.is_dir() {
+            info!("Cloning repo into {:?} from URL {}", path, url);
+            match Repository::clone(url, path) {
+                Ok(_) => info!("Successfully cloned into {:?}", path),
+                Err(e) => error!("Failed to clone {}: {:?}", url, e),
+            }
+        } else {
+            warn!("Directory {:?} is not empty, skipping clone", path);
         }
-    } else {
-        warn!("Directory {:?} is not empty, skipping clone", path);
     }
 }
 

@@ -11,6 +11,5 @@ pub(crate) struct Cli {
 
 #[derive(StructOpt)]
 pub(crate) enum Command {
-    Local,
     Mega,
 }

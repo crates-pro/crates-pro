@@ -1,19 +1,19 @@
 mod cli;
-mod dep;
 mod git;
-mod info;
+mod metadata_info;
 mod utils;
+mod version_info;
 
 extern crate pretty_env_logger;
 #[macro_use]
 extern crate log;
 extern crate lazy_static;
 
-use crate::info::extract_info_local;
-use crate::info::write_into_csv;
-use crate::{dep::parse_all_versions_of_a_repo, git::print_all_tags};
+use crate::metadata_info::extract_info_local;
+use crate::metadata_info::write_into_csv;
+use crate::{git::print_all_tags, version_info::parse_all_versions_of_a_repo};
 use cli::{Cli, Command};
-use git::{clone_repos_from_pg, hard_reset_to_head};
+use git::hard_reset_to_head;
 use git2::Repository;
 use log::*;
 use model::crate_info::*;
@@ -31,103 +31,133 @@ async fn main() {
     dotenvy::dotenv().ok();
     pretty_env_logger::init();
 
+    let mut driver = ImportDriver::default();
+
     match cli.command {
-        Command::Local => import_from_local_repositories(),
-        Command::Mega => import_from_mega(&cli.mega_base).await,
+        Command::Mega => driver.import_from_mega(&cli.mega_base).await,
     }
 }
 
-/// support extracting recursively
-fn import_from_local_repositories() {
-    info!("Importing from local repositories in {}", CLONE_CRATES_DIR);
+#[derive(Debug, Default)]
+struct ImportDriver {
+    // data to write into
+    programs: Vec<Program>,
+    libraries: Vec<Library>,
+    applications: Vec<Application>,
+    library_versions: Vec<LibraryVersion>,
+    application_versions: Vec<ApplicationVersion>,
+    versions: Vec<Version>,
+}
 
-    // structure in crates_info.rs
-    let mut programs: Vec<Program> = vec![];
-    let mut libraries: Vec<Library> = vec![];
-    let mut applications: Vec<Application> = vec![];
-    let mut library_versions: Vec<LibraryVersion> = vec![];
-    let mut application_versions: Vec<ApplicationVersion> = vec![];
-    let mut versions: Vec<Version> = vec![];
+impl ImportDriver {
+    /// Import data from mega
+    /// It first clone the repositories locally from mega
+    async fn import_from_mega(&mut self, mega_url_base: &str) {
+        info!("Importing from MEGA...");
+        let _ = self
+            .clone_repos_from_pg(mega_url_base, CLONE_CRATES_DIR)
+            .await;
+        self.parse_local_repositories()
+    }
 
-    // traverse all the owner name dir in /mnt/crates/local_crates_file/
-    for owner_entry in fs::read_dir(CLONE_CRATES_DIR).unwrap() {
-        let owner_path = owner_entry.unwrap().path();
-        if owner_path.is_dir() {
-            for repo_entry in fs::read_dir(&owner_path).unwrap() {
-                let repo_path = repo_entry.unwrap().path();
+    /// support extracting recursively
+    fn parse_local_repositories(&mut self) {
+        // traverse all the owner name dir in /mnt/crates/local_crates_file/
+        for owner_entry in fs::read_dir(CLONE_CRATES_DIR).unwrap() {
+            let owner_path = owner_entry.unwrap().path();
+            if owner_path.is_dir() {
+                for repo_entry in fs::read_dir(&owner_path).unwrap() {
+                    let repo_path = repo_entry.unwrap().path();
 
-                if repo_path.is_dir() {
-                    if let Ok(repo) = Repository::open(&repo_path) {
-                        // INFO: Start to Parse
-                        trace!("Processing repo: {}", repo_path.display());
-                        print_all_tags(&repo, false);
+                    if repo_path.is_dir() {
+                        if let Ok(repo) = Repository::open(&repo_path) {
+                            // INFO: Start to Parse a git repository
+                            trace!("");
+                            trace!("Processing repo: {}", repo_path.display());
 
-                        //reset, maybe useless
-                        hard_reset_to_head(&repo).unwrap();
+                            print_all_tags(&repo, false);
 
-                        let pms = extract_info_local(repo_path);
+                            //reset, maybe useless
+                            hard_reset_to_head(&repo).unwrap();
 
-                        for (program, uprogram) in pms {
-                            programs.push(program.clone());
+                            let pms = extract_info_local(repo_path);
+                            println!("{:?}", pms);
 
-                            let _is_lib = match uprogram {
-                                UProgram::Library(l) => {
-                                    libraries.push(l);
-                                    true
-                                }
-                                UProgram::Application(a) => {
-                                    applications.push(a);
-                                    false
-                                }
-                            };
-                        }
+                            for (program, uprogram) in pms {
+                                self.programs.push(program.clone());
 
-                        let uversions: Vec<UVersion> = parse_all_versions_of_a_repo(&repo);
-                        for v in uversions {
-                            match v {
-                                UVersion::LibraryVersion(l) => {
-                                    library_versions.push(l.clone());
-                                    versions.push(Version::new(&(l.name + &l.version)));
-                                }
-                                UVersion::ApplicationVersion(a) => {
-                                    application_versions.push(a.clone());
-                                    versions.push(Version::new(&(a.name + &a.version)));
+                                let _is_lib = match uprogram {
+                                    UProgram::Library(l) => {
+                                        self.libraries.push(l);
+                                        true
+                                    }
+                                    UProgram::Application(a) => {
+                                        self.applications.push(a);
+                                        false
+                                    }
+                                };
+                            }
+
+                            let uversions: Vec<UVersion> = parse_all_versions_of_a_repo(&repo);
+                            for v in uversions {
+                                match v {
+                                    UVersion::LibraryVersion(l) => {
+                                        self.library_versions.push(l.clone());
+                                        self.versions.push(Version::new(&(l.name + &l.version)));
+                                    }
+                                    UVersion::ApplicationVersion(a) => {
+                                        self.application_versions.push(a.clone());
+                                        self.versions.push(Version::new(&(a.name + &a.version)));
+                                    }
                                 }
                             }
+                        } else {
+                            println!("Not a git repo! {:?}", repo_path);
                         }
-                    } else {
-                        println!("Not a git repo! {:?}", repo_path);
                     }
                 }
             }
         }
+
+        self.write_tugraph_import_files();
     }
 
-    let tugraph_import_files = PathBuf::from(TUGRAPH_IMPORT_FILES);
+    /// write data base into tugraph import files
+    fn write_tugraph_import_files(&self) {
+        let tugraph_import_files = PathBuf::from(TUGRAPH_IMPORT_FILES);
 
-    fs::create_dir_all(tugraph_import_files.clone()).unwrap_or_else(|e| error!("Error: {}", e));
+        fs::create_dir_all(tugraph_import_files.clone()).unwrap_or_else(|e| error!("Error: {}", e));
 
-    // write into csv
-    write_into_csv(tugraph_import_files.join("program.csv"), programs).unwrap();
-    write_into_csv(tugraph_import_files.join("library.csv"), libraries).unwrap();
-    write_into_csv(tugraph_import_files.join("application.csv"), applications).unwrap();
-    write_into_csv(
-        tugraph_import_files.join("library_version.csv"),
-        library_versions,
-    )
-    .unwrap();
-    write_into_csv(
-        tugraph_import_files.join("application_version.csv"),
-        application_versions,
-    )
-    .unwrap();
-    write_into_csv(tugraph_import_files.join("version.csv"), versions).unwrap();
-}
-
-/// Import data from mega
-/// It first clone the repositories locally from mega
-async fn import_from_mega(mega_url_base: &str) {
-    info!("Importing from MEGA...");
-    let _ = clone_repos_from_pg(mega_url_base, CLONE_CRATES_DIR).await;
-    import_from_local_repositories()
+        // write into csv
+        write_into_csv(
+            tugraph_import_files.join("program.csv"),
+            self.programs.clone(),
+        )
+        .unwrap();
+        write_into_csv(
+            tugraph_import_files.join("library.csv"),
+            self.libraries.clone(),
+        )
+        .unwrap();
+        write_into_csv(
+            tugraph_import_files.join("application.csv"),
+            self.applications.clone(),
+        )
+        .unwrap();
+        write_into_csv(
+            tugraph_import_files.join("library_version.csv"),
+            self.library_versions.clone(),
+        )
+        .unwrap();
+        write_into_csv(
+            tugraph_import_files.join("application_version.csv"),
+            self.application_versions.clone(),
+        )
+        .unwrap();
+        write_into_csv(
+            tugraph_import_files.join("version.csv"),
+            self.versions.clone(),
+        )
+        .unwrap();
+    }
 }
