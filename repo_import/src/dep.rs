@@ -1,11 +1,9 @@
-use std::path::PathBuf;
-
 use git2::Repository;
 use git2::{TreeWalkMode, TreeWalkResult};
 use model::crate_info::{ApplicationVersion, LibraryVersion, UProgram, UVersion};
 use toml::Value;
 
-use crate::utils::{get_program_by_name, PROGRAM_HASHMAP};
+use crate::utils::get_program_by_name;
 
 #[allow(unused)]
 #[derive(Debug, Default, Clone)]
