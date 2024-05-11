@@ -80,11 +80,6 @@ pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, UPro
     res
 }
 
-fn exists_cargo_toml(path: &Path) -> bool {
-    let cargo_toml_path = path.join("Cargo.toml");
-    cargo_toml_path.is_file()
-}
-
 // 解析Cargo.toml文件来确定crate的名称和是否为库
 fn parse_crate_name(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
     let content = fs::read_to_string(path)?;
