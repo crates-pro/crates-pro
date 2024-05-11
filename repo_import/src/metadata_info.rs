@@ -23,16 +23,16 @@ pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, UPro
 
     // It is possible that there is no Cargo.toml file in the project root directory,
     // so the root directories are one level down
-    let (min_depth, max_depth) = if exists_cargo_toml(&local_repo_path) {
-        (1, 2)
-    } else {
-        (2, 3)
-    };
+    // let (min_depth, max_depth) = if exists_cargo_toml(&local_repo_path) {
+    //     (1, 2)
+    // } else {
+    //     (2, 3)
+    // };
 
     // walk the directories of the project
     for entry in WalkDir::new(local_repo_path.clone())
-        .min_depth(min_depth) // owner/proj/Cargo.toml
-        .max_depth(max_depth) // workspace: owner/proj/Cargo.toml
+        //.min_depth(min_depth) // owner/proj/Cargo.toml
+        //.max_depth(max_depth) // workspace: owner/proj/Cargo.toml
         .into_iter()
         .filter_map(|x| x.ok())
     {
@@ -78,11 +78,6 @@ pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, UPro
     }
 
     res
-}
-
-fn exists_cargo_toml(path: &Path) -> bool {
-    let cargo_toml_path = path.join("Cargo.toml");
-    cargo_toml_path.is_file()
 }
 
 // 解析Cargo.toml文件来确定crate的名称和是否为库
