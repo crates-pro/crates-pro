@@ -1,6 +1,6 @@
 use cargo_metadata::MetadataCommand;
 use csv::Writer;
-use model::crate_info::{Application, Library, Program, UProgram};
+use model::crate_info::{Application, HasType, Library, Program, UProgram};
 use serde::Serialize;
 use serde_json::json;
 use std::error::Error;
@@ -15,7 +15,7 @@ use walkdir::WalkDir;
 use crate::utils::{get_namespace_by_repo_path, insert_program_by_name};
 
 // Given a project path, parse the metadata
-pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, UProgram)> {
+pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, HasType, UProgram)> {
     trace!("Parse repo {:?}", local_repo_path);
     let mut res = vec![];
 
@@ -67,10 +67,18 @@ pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, UPro
                         UProgram::Application(Application::new(id.to_string(), &name))
                     };
 
-                    debug!("program: {:?}, uprogram: {:?}", program, uprogram);
+                    let has_type = HasType {
+                        SRC_ID: program.id.clone(),
+                        DST_ID: program.id.clone(),
+                    };
+
+                    debug!(
+                        "program: {:?}, has_type: {:?}, uprogram: {:?}",
+                        program, has_type, uprogram
+                    );
                     insert_program_by_name(name.clone(), (program.clone(), uprogram.clone()));
 
-                    res.push((program, uprogram));
+                    res.push((program, has_type, uprogram));
                 }
                 Err(e) => error!("Error parsing name {}: {}", entry_path.display(), e),
             }

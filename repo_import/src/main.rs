@@ -41,12 +41,19 @@ async fn main() {
 #[derive(Debug, Default)]
 struct ImportDriver {
     // data to write into
+    /// vertex
     programs: Vec<Program>,
     libraries: Vec<Library>,
     applications: Vec<Application>,
     library_versions: Vec<LibraryVersion>,
     application_versions: Vec<ApplicationVersion>,
     versions: Vec<Version>,
+
+    /// node
+    has_type: Vec<HasType>,
+    has_version: Vec<HasVersion>,
+    has_dep_version: Vec<HasDepVersion>,
+    depends_on: Vec<DependsOn>,
 }
 
 impl ImportDriver {
@@ -68,58 +75,66 @@ impl ImportDriver {
             if owner_path.is_dir() {
                 for repo_entry in fs::read_dir(&owner_path).unwrap() {
                     let repo_path = repo_entry.unwrap().path();
-
-                    if repo_path.is_dir() {
-                        if let Ok(repo) = Repository::open(&repo_path) {
-                            // INFO: Start to Parse a git repository
-                            trace!("");
-                            trace!("Processing repo: {}", repo_path.display());
-
-                            print_all_tags(&repo, false);
-
-                            //reset, maybe useless
-                            hard_reset_to_head(&repo).unwrap();
-
-                            let pms = extract_info_local(repo_path);
-                            println!("{:?}", pms);
-
-                            for (program, uprogram) in pms {
-                                self.programs.push(program.clone());
-
-                                let _is_lib = match uprogram {
-                                    UProgram::Library(l) => {
-                                        self.libraries.push(l);
-                                        true
-                                    }
-                                    UProgram::Application(a) => {
-                                        self.applications.push(a);
-                                        false
-                                    }
-                                };
-                            }
-
-                            let uversions: Vec<UVersion> = parse_all_versions_of_a_repo(&repo);
-                            for v in uversions {
-                                match v {
-                                    UVersion::LibraryVersion(l) => {
-                                        self.library_versions.push(l.clone());
-                                        self.versions.push(Version::new(&(l.name + &l.version)));
-                                    }
-                                    UVersion::ApplicationVersion(a) => {
-                                        self.application_versions.push(a.clone());
-                                        self.versions.push(Version::new(&(a.name + &a.version)));
-                                    }
-                                }
-                            }
-                        } else {
-                            println!("Not a git repo! {:?}", repo_path);
-                        }
-                    }
+                    self.parse_a_local_repo(repo_path);
                 }
             }
-        }
 
-        self.write_tugraph_import_files();
+            self.write_tugraph_import_files();
+        }
+    }
+
+    fn parse_a_local_repo(&mut self, repo_path: PathBuf) {
+        if repo_path.is_dir() {
+            if let Ok(repo) = Repository::open(&repo_path) {
+                // INFO: Start to Parse a git repository
+                trace!("");
+                trace!("Processing repo: {}", repo_path.display());
+
+                print_all_tags(&repo, false);
+
+                //reset, maybe useless
+                hard_reset_to_head(&repo).unwrap();
+
+                let pms = extract_info_local(repo_path);
+                println!("{:?}", pms);
+
+                for (program, has_type, uprogram) in pms {
+                    self.programs.push(program.clone());
+                    self.has_type.push(has_type.clone());
+
+                    let _is_lib = match uprogram {
+                        UProgram::Library(l) => {
+                            self.libraries.push(l);
+                            true
+                        }
+                        UProgram::Application(a) => {
+                            self.applications.push(a);
+                            false
+                        }
+                    };
+                }
+
+                let (uversions, depends_on) = parse_all_versions_of_a_repo(&repo);
+                for (has_version, uv, v, has_dep) in uversions {
+                    match uv {
+                        UVersion::LibraryVersion(l) => {
+                            self.library_versions.push(l.clone());
+                        }
+                        UVersion::ApplicationVersion(a) => {
+                            self.application_versions.push(a.clone());
+                        }
+                    }
+                    self.has_version.push(has_version);
+                    self.versions.push(v);
+                    self.has_dep_version.push(has_dep);
+                }
+                for dep_on in depends_on {
+                    self.depends_on.push(dep_on);
+                }
+            } else {
+                println!("Not a git repo! {:?}", repo_path);
+            }
+        }
     }
 
     /// write data base into tugraph import files
