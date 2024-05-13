@@ -4,7 +4,7 @@ use git2::{build::CheckoutBuilder, ObjectType, Repository};
 use std::{path::PathBuf, sync::Arc};
 use url::Url;
 
-use crate::{metadata_info::extract_namespace, utils::insert_namespace_by_repo_path, ImportDriver};
+use crate::{utils::extract_namespace, utils::insert_namespace_by_repo_path, ImportDriver};
 
 impl ImportDriver {
     /// clone repo locally

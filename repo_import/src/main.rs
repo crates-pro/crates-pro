@@ -10,7 +10,7 @@ extern crate log;
 extern crate lazy_static;
 
 use crate::metadata_info::extract_info_local;
-use crate::metadata_info::write_into_csv;
+use crate::utils::write_into_csv;
 use crate::{git::print_all_tags, version_info::parse_all_versions_of_a_repo};
 use cli::{Cli, Command};
 use git::hard_reset_to_head;
