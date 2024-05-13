@@ -49,10 +49,16 @@ struct ImportDriver {
     application_versions: Vec<ApplicationVersion>,
     versions: Vec<Version>,
 
-    /// node
-    has_type: Vec<HasType>,
-    has_version: Vec<HasVersion>,
-    has_dep_version: Vec<HasDepVersion>,
+    /// edge
+    has_lib_type: Vec<HasType>,
+    has_app_type: Vec<HasType>,
+
+    lib_has_version: Vec<HasVersion>,
+    app_has_version: Vec<HasVersion>,
+
+    lib_has_dep_version: Vec<HasDepVersion>,
+    app_has_dep_version: Vec<HasDepVersion>,
+
     depends_on: Vec<DependsOn>,
 }
 
@@ -100,15 +106,16 @@ impl ImportDriver {
 
                 for (program, has_type, uprogram) in pms {
                     self.programs.push(program.clone());
-                    self.has_type.push(has_type.clone());
 
                     let _is_lib = match uprogram {
                         UProgram::Library(l) => {
                             self.libraries.push(l);
+                            self.has_lib_type.push(has_type.clone());
                             true
                         }
                         UProgram::Application(a) => {
                             self.applications.push(a);
+                            self.has_app_type.push(has_type.clone());
                             false
                         }
                     };
@@ -119,14 +126,17 @@ impl ImportDriver {
                     match uv {
                         UVersion::LibraryVersion(l) => {
                             self.library_versions.push(l.clone());
+                            self.lib_has_version.push(has_version);
+                            self.lib_has_dep_version.push(has_dep);
                         }
                         UVersion::ApplicationVersion(a) => {
                             self.application_versions.push(a.clone());
+                            self.app_has_version.push(has_version);
+                            self.app_has_dep_version.push(has_dep);
                         }
                     }
-                    self.has_version.push(has_version);
+
                     self.versions.push(v);
-                    self.has_dep_version.push(has_dep);
                 }
                 for dep_on in depends_on {
                     self.depends_on.push(dep_on);
@@ -174,5 +184,36 @@ impl ImportDriver {
             self.versions.clone(),
         )
         .unwrap();
+
+        // edge
+        let _ = write_into_csv(
+            tugraph_import_files.join("has_lib_type.csv"),
+            self.has_lib_type.clone(),
+        );
+        let _ = write_into_csv(
+            tugraph_import_files.join("has_app_type.csv"),
+            self.has_app_type.clone(),
+        );
+        let _ = write_into_csv(
+            tugraph_import_files.join("lib_has_version.csv"),
+            self.lib_has_version.clone(),
+        );
+        let _ = write_into_csv(
+            tugraph_import_files.join("app_has_version.csv"),
+            self.app_has_version.clone(),
+        );
+
+        let _ = write_into_csv(
+            tugraph_import_files.join("lib_has_dep_version.csv"),
+            self.lib_has_dep_version.clone(),
+        );
+        let _ = write_into_csv(
+            tugraph_import_files.join("app_has_dep_version.csv"),
+            self.app_has_dep_version.clone(),
+        );
+        let _ = write_into_csv(
+            tugraph_import_files.join("depends_on.csv"),
+            self.depends_on.clone(),
+        );
     }
 }
