@@ -161,28 +161,28 @@ impl Version {
 }
 
 #[allow(non_snake_case)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct HasType {
     pub SRC_ID: String,
     pub DST_ID: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct HasVersion {
     pub SRC_ID: String,
     pub DST_ID: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct HasDepVersion {
     pub SRC_ID: String,
     pub DST_ID: String,
 }
 
 #[allow(non_snake_case)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct DependsOn {
     pub SRC_ID: String,
     pub DST_ID: String,
