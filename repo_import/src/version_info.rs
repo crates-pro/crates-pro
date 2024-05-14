@@ -56,8 +56,6 @@ pub(crate) fn parse_all_versions_of_a_repo(
         for dependencies in all_packages_dependencies {
             let name = dependencies.crate_name;
             let version = dependencies.version;
-            //println!("{:#?}", PROGRAM_HASHMAP.lock().unwrap());
-            //debug!("{}", name);
             let (program, uprogram) = match get_program_by_name(&name) {
                 Some((program, uprogram)) => (program, uprogram),
                 None => {
@@ -157,13 +155,10 @@ fn parse_a_repo_of_a_version<'repo>(
 }
 
 fn parse_a_package_of_a_version(cargo_toml_content: &str) -> Option<Dependencies> {
-    //println!("xxx");
     match cargo_toml_content.parse::<Value>() {
         Ok(toml) => {
-            //println!("yyy: {:#?}", toml);
             if let Some(package) = toml.get("package") {
                 if let Some(crate_name) = package.get("name") {
-                    //println!("zzz");
                     let crate_name = crate_name.as_str().unwrap().to_string();
                     let version = package
                         .get("version")
