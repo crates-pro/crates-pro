@@ -9,9 +9,9 @@ extern crate pretty_env_logger;
 extern crate log;
 extern crate lazy_static;
 
+use crate::git::print_all_tags;
 use crate::metadata_info::extract_info_local;
 use crate::utils::write_into_csv;
-use crate::{git::print_all_tags, version_info::parse_all_versions_of_a_repo};
 use cli::{Cli, Command};
 use git::hard_reset_to_head;
 use git2::Repository;
@@ -20,6 +20,7 @@ use model::crate_info::*;
 use std::fs;
 use std::path::PathBuf;
 use structopt::StructOpt;
+use version_info::VersionParser;
 
 const CLONE_CRATES_DIR: &str = "/mnt/crates/local_crates_file/";
 const TUGRAPH_IMPORT_FILES: &str = "./tugraph_import_files/";
@@ -60,6 +61,8 @@ struct ImportDriver {
     app_has_dep_version: Vec<HasDepVersion>,
 
     depends_on: Vec<DependsOn>,
+
+    version_parser: VersionParser,
 }
 
 impl ImportDriver {
@@ -84,7 +87,7 @@ impl ImportDriver {
                     self.parse_a_local_repo(repo_path);
                 }
             }
-
+            self.filter();
             self.write_tugraph_import_files();
         }
     }
@@ -121,7 +124,7 @@ impl ImportDriver {
                     };
                 }
 
-                let (uversions, depends_on) = parse_all_versions_of_a_repo(&repo);
+                let (uversions, depends_on) = self.parse_all_versions_of_a_repo(&repo);
                 for (has_version, uv, v, has_dep) in uversions {
                     match uv {
                         UVersion::LibraryVersion(l) => {
@@ -143,6 +146,25 @@ impl ImportDriver {
                 }
             } else {
                 println!("Not a git repo! {:?}", repo_path);
+            }
+        }
+    }
+
+    fn filter(&mut self) {
+        for edge in &mut self.depends_on {
+            let dst = edge.SRC_ID.clone();
+            let v = dst.split('/').collect::<Vec<_>>();
+            let dep_name = v[0];
+            let dep_version = v[1];
+
+            match self
+                .version_parser
+                .find_latest_matching_version(dep_name, dep_version)
+            {
+                Some(actual_ver) => {
+                    edge.DST_ID = dep_name.to_string() + "/" + &actual_ver;
+                }
+                None => *edge = DependsOn::default(),
             }
         }
     }
