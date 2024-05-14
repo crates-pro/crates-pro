@@ -1,4 +1,4 @@
-use crate::utils::get_program_by_name;
+use crate::utils::{get_program_by_name, name_join_version};
 use crate::ImportDriver;
 use git2::Repository;
 use git2::{TreeWalkMode, TreeWalkResult};
@@ -73,13 +73,13 @@ impl ImportDriver {
                 };
 
                 let dep_version = Version {
-                    name_and_version: name.clone() + "/" + &version,
+                    name_and_version: name_join_version(&name, &version),
                 };
 
                 #[allow(non_snake_case)]
                 let SRC_ID = program.id.clone();
                 #[allow(non_snake_case)]
-                let DST_ID = name.clone() + "/" + &version;
+                let DST_ID = name_join_version(&name, &version);
                 let has_dep_version = HasDepVersion { SRC_ID, DST_ID };
 
                 let islib = matches!(uprogram, UProgram::Library(_));
@@ -112,10 +112,10 @@ impl ImportDriver {
 
                 for (dependency_name, dependency_version) in dependencies.dependencies {
                     #[allow(non_snake_case)]
-                    let SRC_ID = name.clone() + "/" + &version;
+                    let SRC_ID = name_join_version(&name, &version);
 
                     #[allow(non_snake_case)]
-                    let DST_ID = dependency_name + "/" + &dependency_version;
+                    let DST_ID = name_join_version(&dependency_name, &dependency_version);
                     let depends_on = DependsOn { SRC_ID, DST_ID };
                     depends_on_vec.push(depends_on);
                 }

@@ -52,7 +52,7 @@ pub(crate) fn write_into_csv<T: Serialize + Default + Debug>(
         //let field_names: Vec<String> = map.keys().cloned().collect();
         let field_names: Vec<&str> = map.keys().map(|s| s.as_str()).collect();
 
-        debug!("{:?}", field_names);
+        //debug!("{:?}", field_names);
 
         write_to_csv(field_names, csv_path.to_str().unwrap(), false)?;
     }
@@ -61,7 +61,7 @@ pub(crate) fn write_into_csv<T: Serialize + Default + Debug>(
         let fields = get_fields(program);
         let fields = fields.iter().map(|s| s.as_str()).collect::<Vec<_>>();
 
-        debug!("{:?}", fields);
+        //debug!("{:?}", fields);
         write_to_csv(fields, csv_path.to_str().unwrap(), true)?;
     }
 
@@ -142,4 +142,8 @@ pub(crate) fn extract_namespace(url_str: &str) -> Result<String, String> {
         segments[segments.len() - 1]
     );
     Ok(remove_dot_git_suffix(&namespace))
+}
+
+pub(crate) fn name_join_version(crate_name: &str, version: &str) -> String {
+    crate_name.to_string() + "/" + version
 }

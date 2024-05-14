@@ -20,6 +20,7 @@ use model::crate_info::*;
 use std::fs;
 use std::path::PathBuf;
 use structopt::StructOpt;
+use utils::name_join_version;
 use version_info::VersionParser;
 
 const CLONE_CRATES_DIR: &str = "/mnt/crates/local_crates_file/";
@@ -87,9 +88,9 @@ impl ImportDriver {
                     self.parse_a_local_repo(repo_path);
                 }
             }
-            self.filter();
-            self.write_tugraph_import_files();
         }
+        self.filter();
+        self.write_tugraph_import_files();
     }
 
     fn parse_a_local_repo(&mut self, repo_path: PathBuf) {
@@ -151,8 +152,11 @@ impl ImportDriver {
     }
 
     fn filter(&mut self) {
+        let mut new_depends_on = vec![];
+
         for edge in &mut self.depends_on {
-            let dst = edge.SRC_ID.clone();
+            let dst = edge.DST_ID.clone();
+
             let v = dst.split('/').collect::<Vec<_>>();
             let dep_name = v[0];
             let dep_version = v[1];
@@ -162,11 +166,18 @@ impl ImportDriver {
                 .find_latest_matching_version(dep_name, dep_version)
             {
                 Some(actual_ver) => {
-                    edge.DST_ID = dep_name.to_string() + "/" + &actual_ver;
+                    edge.DST_ID = name_join_version(dep_name, &actual_ver);
+                    new_depends_on.push(edge.clone());
                 }
-                None => *edge = DependsOn::default(),
+                None => {
+                    if !dst.is_empty() {
+                        warn!("missing dependency {}", dst);
+                    }
+                }
             }
         }
+
+        self.depends_on = new_depends_on;
     }
 
     /// write data base into tugraph import files
