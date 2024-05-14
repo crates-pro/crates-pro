@@ -120,14 +120,11 @@ pub(crate) fn print_all_tags(repo: &Repository, v: bool) {
                     tag_object.message().unwrap_or("No message")
                 );
             } else {
-                // 轻量级标签可能不能直接转换为 annotated 标签对象
-                // 直接获取引用指向的提交
                 let commit_object = tag_ref.peel(ObjectType::Commit).unwrap();
                 let commit = commit_object
                     .into_commit()
                     .expect("Failed to peel into commit");
                 debug!("Lightweight Tag: {}, Commit: {}", tag_name, commit.id());
-                // 轻量级标签没有存储消息
             }
         } else {
             s += &format!("{}, ", tag_name);

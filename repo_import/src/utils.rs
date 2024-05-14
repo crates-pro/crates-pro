@@ -48,7 +48,6 @@ pub(crate) fn write_into_csv<T: Serialize + Default + Debug>(
 
     let serialized = serde_json::to_value(&T::default()).unwrap();
 
-    // 将JSON值转换为对象并提取字段名
     if let serde_json::Value::Object(map) = serialized {
         //let field_names: Vec<String> = map.keys().cloned().collect();
         let field_names: Vec<&str> = map.keys().map(|s| s.as_str()).collect();
@@ -97,12 +96,9 @@ fn get_fields<T: Serialize>(item: &T) -> Vec<String> {
     if let serde_json::Value::Object(map) = json {
         fields = map
             .values()
-            .map(|value| {
-                match value {
-                    serde_json::Value::String(s) => s.clone(), // 直接使用字符串值。
-                    // 对于其他类型，使用`to_string`，这将丢弃原始serde_json的编码方式。
-                    _ => value.to_string().trim_matches('"').to_owned(),
-                }
+            .map(|value| match value {
+                serde_json::Value::String(s) => s.clone(),
+                _ => value.to_string().trim_matches('"').to_owned(),
             })
             .collect::<Vec<_>>();
     }
