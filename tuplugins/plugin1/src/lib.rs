@@ -13,8 +13,8 @@ fn track_dependency(graph: &mut Graph, req: &str) -> Result<String, Box<dyn Erro
     // its format is "person_name,movie_title"
     // parse from req to get person_name and movie_title
     let (from_version, to_version) = parse_req(req)?;
-    let from_name_and_version = from_version.name + "-" + &from_version.version;
-    let to_name_and_version = to_version.name + &to_version.version;
+    let from_name_and_version = from_version.name + "/" + &from_version.version;
+    let to_name_and_version = to_version.name + "/" + &to_version.version;
 
     // create read only transaction
     let ro_txn = graph.create_ro_txn()?;

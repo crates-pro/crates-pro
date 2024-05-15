@@ -9,7 +9,7 @@ extern crate pretty_env_logger;
 extern crate log;
 extern crate lazy_static;
 
-use crate::git::print_all_tags;
+//use crate::git::print_all_tags;
 use crate::metadata_info::extract_info_local;
 use crate::utils::write_into_csv;
 use cli::{Cli, Command};
@@ -20,6 +20,7 @@ use model::crate_info::*;
 use std::fs;
 use std::path::PathBuf;
 use structopt::StructOpt;
+use utils::name_join_version;
 use version_info::VersionParser;
 
 const CLONE_CRATES_DIR: &str = "/mnt/crates/local_crates_file/";
@@ -32,7 +33,10 @@ async fn main() {
     dotenvy::dotenv().ok();
     pretty_env_logger::init();
 
-    let mut driver = ImportDriver::default();
+    let mut driver = ImportDriver {
+        cli: cli.clone(),
+        ..Default::default()
+    };
 
     match cli.command {
         Command::Mega => driver.import_from_mega(&cli.mega_base).await,
@@ -41,6 +45,8 @@ async fn main() {
 
 #[derive(Debug, Default)]
 struct ImportDriver {
+    cli: Cli,
+
     // data to write into
     /// vertex
     programs: Vec<Program>,
@@ -81,15 +87,17 @@ impl ImportDriver {
         // traverse all the owner name dir in /mnt/crates/local_crates_file/
         for owner_entry in fs::read_dir(CLONE_CRATES_DIR).unwrap() {
             let owner_path = owner_entry.unwrap().path();
+            println!("owner path: {:?}", owner_path);
             if owner_path.is_dir() {
                 for repo_entry in fs::read_dir(&owner_path).unwrap() {
                     let repo_path = repo_entry.unwrap().path();
+                    println!("\trepo path: {:?}", repo_path);
                     self.parse_a_local_repo(repo_path);
                 }
             }
-            self.filter();
-            self.write_tugraph_import_files();
         }
+        self.filter();
+        self.write_tugraph_import_files();
     }
 
     fn parse_a_local_repo(&mut self, repo_path: PathBuf) {
@@ -99,13 +107,13 @@ impl ImportDriver {
                 trace!("");
                 trace!("Processing repo: {}", repo_path.display());
 
-                print_all_tags(&repo, false);
+                //print_all_tags(&repo, false);
 
                 //reset, maybe useless
                 hard_reset_to_head(&repo).unwrap();
 
                 let pms = extract_info_local(repo_path);
-                println!("{:?}", pms);
+                //println!("{:?}", pms);
 
                 for (program, has_type, uprogram) in pms {
                     self.programs.push(program.clone());
@@ -151,8 +159,11 @@ impl ImportDriver {
     }
 
     fn filter(&mut self) {
+        let mut new_depends_on = vec![];
+
         for edge in &mut self.depends_on {
-            let dst = edge.SRC_ID.clone();
+            let dst = edge.DST_ID.clone();
+
             let v = dst.split('/').collect::<Vec<_>>();
             let dep_name = v[0];
             let dep_version = v[1];
@@ -162,11 +173,18 @@ impl ImportDriver {
                 .find_latest_matching_version(dep_name, dep_version)
             {
                 Some(actual_ver) => {
-                    edge.DST_ID = dep_name.to_string() + "/" + &actual_ver;
+                    edge.DST_ID = name_join_version(dep_name, &actual_ver);
+                    new_depends_on.push(edge.clone());
                 }
-                None => *edge = DependsOn::default(),
+                None => {
+                    if !dst.is_empty() {
+                        warn!("missing dependency {}", dst);
+                    }
+                }
             }
         }
+
+        self.depends_on = new_depends_on;
     }
 
     /// write data base into tugraph import files
