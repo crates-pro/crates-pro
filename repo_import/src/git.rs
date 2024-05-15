@@ -1,6 +1,5 @@
 use crates_sync::{init::database_connection, query::MegaStorage};
 use git2::{build::CheckoutBuilder, ObjectType, Repository};
-//use rayon::prelude::*;
 use std::{path::PathBuf, sync::Arc};
 use url::Url;
 
@@ -24,11 +23,12 @@ impl ImportDriver {
 
         // FIXME: test code
         let krates: Vec<&crates_sync::repo_sync_model::RepoSync> =
-            krates.iter().take(5000).collect();
+            krates.iter().take(500).collect();
 
         // rayon parallel iter, make it faster
         krates.iter().for_each(|krate| {
-            //krates.par_iter().for_each(|krate| {
+            // use rayon::prelude::*;
+            // krates.par_iter().for_each(|krate| {
 
             // mega_url = base + path
             let mega_url = {
@@ -60,7 +60,7 @@ impl ImportDriver {
         Ok(())
     }
 
-    fn clone(&mut self, path: &PathBuf, url: &str) {
+    fn clone(&self, path: &PathBuf, url: &str) {
         println!("Repo into {:?} from URL {}", path, url);
         if !path.is_dir() {
             info!("Cloning repo into {:?} from URL {}", path, url);
@@ -98,7 +98,7 @@ pub(crate) fn hard_reset_to_head(repo: &Repository) -> Result<(), git2::Error> {
     Ok(())
 }
 
-pub(crate) fn print_all_tags(repo: &Repository, v: bool) {
+pub(crate) fn _print_all_tags(repo: &Repository, v: bool) {
     let tags = repo.tag_names(None).unwrap();
 
     // for tag in tags.iter() {

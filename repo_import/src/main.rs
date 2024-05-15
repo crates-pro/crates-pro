@@ -9,7 +9,7 @@ extern crate pretty_env_logger;
 extern crate log;
 extern crate lazy_static;
 
-use crate::git::print_all_tags;
+//use crate::git::print_all_tags;
 use crate::metadata_info::extract_info_local;
 use crate::utils::write_into_csv;
 use cli::{Cli, Command};
@@ -33,8 +33,10 @@ async fn main() {
     dotenvy::dotenv().ok();
     pretty_env_logger::init();
 
-    let mut driver = ImportDriver::default();
-    driver.cli = cli.clone();
+    let mut driver = ImportDriver {
+        cli: cli.clone(),
+        ..Default::default()
+    };
 
     match cli.command {
         Command::Mega => driver.import_from_mega(&cli.mega_base).await,

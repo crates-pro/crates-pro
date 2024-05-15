@@ -111,8 +111,8 @@ fn get_fields<T: Serialize>(item: &T) -> Vec<String> {
 pub(crate) fn extract_namespace(url_str: &str) -> Result<String, String> {
     /// auxiliary function
     fn remove_dot_git_suffix(input: &str) -> String {
-        let input = if input.ends_with("/") {
-            input.strip_suffix("/").unwrap()
+        let input = if input.ends_with('/') {
+            input.strip_suffix('/').unwrap()
         } else {
             input
         };
