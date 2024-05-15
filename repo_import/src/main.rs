@@ -18,7 +18,7 @@ use git2::Repository;
 use log::*;
 use model::crate_info::*;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use structopt::StructOpt;
 use utils::name_join_version;
 use version_info::VersionParser;
@@ -93,6 +93,7 @@ impl ImportDriver {
                     let repo_path = repo_entry.unwrap().path();
                     println!("\trepo path: {:?}", repo_path);
                     self.parse_a_local_repo(repo_path);
+                    //sleep(Duration::from_secs(1));
                 }
             }
         }
@@ -101,7 +102,7 @@ impl ImportDriver {
     }
 
     fn parse_a_local_repo(&mut self, repo_path: PathBuf) {
-        if repo_path.is_dir() {
+        if repo_path.is_dir() && Path::new(&repo_path).join(".git").is_dir() {
             if let Ok(repo) = Repository::open(&repo_path) {
                 // INFO: Start to Parse a git repository
                 trace!("");
@@ -110,9 +111,11 @@ impl ImportDriver {
                 //print_all_tags(&repo, false);
 
                 //reset, maybe useless
-                hard_reset_to_head(&repo).unwrap();
+                if hard_reset_to_head(&repo).is_err() {
+                    return;
+                }
 
-                let pms = extract_info_local(repo_path);
+                let pms = extract_info_local(repo_path.clone());
                 //println!("{:?}", pms);
 
                 for (program, has_type, uprogram) in pms {
@@ -152,9 +155,17 @@ impl ImportDriver {
                 for dep_on in depends_on {
                     self.depends_on.push(dep_on);
                 }
+                // if repo_path.to_str().unwrap()
+                //     == "/mnt/crates/local_crates_file/bltavares/async-std-utp"
+                // {
+                //     panic!();
+                // }
+                trace!("Finish processing repo: {}", repo_path.display());
             } else {
-                println!("Not a git repo! {:?}", repo_path);
+                error!("Not a git repo! {:?}", repo_path);
             }
+        } else {
+            error!("{} is not a directory", repo_path.display());
         }
     }
 

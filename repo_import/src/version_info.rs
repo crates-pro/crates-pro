@@ -32,11 +32,26 @@ impl ImportDriver {
 
         let tags = repo.tag_names(None).expect("Could not retrieve tags");
 
+        // for tag in tags.iter().flatten() {
+        //     println!("Tag: {}", tag);
+        //     let tag_ref = repo.find_reference(&format!("refs/tags/{}", tag)).unwrap();
+        //     let tag_obj = tag_ref.peel_to_commit().unwrap();
+        //     let tree = tag_obj.tree().unwrap();
+
+        //     // 遍历提交中的树
+        //     tree.walk(git2::TreeWalkMode::PreOrder, |_, entry| {
+        //         if let Some(name) = entry.name() {
+        //             println!("File: {}", name);
+        //         }
+        //         TreeWalkResult::Ok // 继续遍历树
+        //     })
+        //     .unwrap();
+        // }
+
         for tag_name in tags.iter().flatten() {
             let obj = repo
                 .revparse_single(&("refs/tags/".to_owned() + tag_name))
                 .expect("Couldn't find tag object");
-            //println!("{:?}", obj);
 
             // convert annotated and light-weight tag into commit
             let commit = if let Some(tag) = obj.as_tag() {
@@ -55,7 +70,10 @@ impl ImportDriver {
             // FIXME: deal with different formats
             // parse the version, walk all the packages
             let all_packages_dependencies = self.parse_a_repo_of_a_version(repo, &tree);
-            //debug!("{:?}", all_packages_dependencies);
+            println!("tag: {}, deps: {:?}", tag_name, all_packages_dependencies);
+            // if all_packages_dependencies.len() > 0 {
+            //     sleep(Duration::from_secs(1));
+            // }
             for dependencies in all_packages_dependencies {
                 let name = dependencies.crate_name;
                 let version = dependencies.version;
@@ -133,29 +151,35 @@ impl ImportDriver {
     ) -> Vec<Dependencies> {
         let mut res = Vec::new();
 
+        //println!("{}", tree.len());
         // Walk the tree to find Cargo.toml
-        tree.walk(TreeWalkMode::PreOrder, |_, entry| {
+        tree.walk(TreeWalkMode::PostOrder, |_, entry| {
+            //println!("{:?}", entry.name());
             if entry.name() == Some("Cargo.toml") {
+                //println!("xxxxxxxxxxxxxxxxxx");
                 // for each Cargo.toml in repo of given commit
                 let obj = entry
                     .to_object(repo)
                     .expect("Failed to convert TreeEntry to Object");
                 let blob = obj.as_blob().expect("Failed to interpret object as blob");
 
+                // let mut sss = "".to_string();
+                // blob.content().read_to_string(&mut sss).unwrap();
+                // println!("{}", sss);
                 let content = std::str::from_utf8(blob.content())
                     .expect("Cargo.toml content is not valid UTF-8");
 
                 let dependencies = self
                     .parse_a_package_of_a_version(content)
-                    .expect("failed to parse toml");
+                    .unwrap_or_default();
 
                 res.push(dependencies);
 
-                return TreeWalkResult::Ok; // Found the file, stop walking
+                //return TreeWalkResult::Ok; // Found the file, stop walking
             }
             TreeWalkResult::Ok
         })
-        .expect("Failed to walk the tree");
+        .unwrap();
 
         res
     }
@@ -165,13 +189,8 @@ impl ImportDriver {
             Ok(toml) => {
                 if let Some(package) = toml.get("package") {
                     if let Some(crate_name) = package.get("name") {
-                        let crate_name = crate_name.as_str().unwrap().to_string();
-                        let version = package
-                            .get("version")
-                            .unwrap()
-                            .as_str()
-                            .unwrap()
-                            .to_string();
+                        let crate_name = crate_name.as_str()?.to_string();
+                        let version = package.get("version")?.as_str()?.to_string();
 
                         self.version_parser.insert_version(&crate_name, &version);
 
@@ -200,12 +219,12 @@ impl ImportDriver {
                             version,
                             dependencies,
                         };
-                        println!("{:?}", dependencies);
+
                         return Some(dependencies);
                     }
                 }
             }
-            Err(_) => println!("Failed to parse Cargo.toml for {:?}", cargo_toml_content),
+            Err(_) => error!("Failed to parse Cargo.toml for {:?}", cargo_toml_content),
         }
         None
     }
