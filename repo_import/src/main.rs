@@ -34,6 +34,7 @@ async fn main() {
     pretty_env_logger::init();
 
     let mut driver = ImportDriver::default();
+    driver.cli = cli.clone();
 
     match cli.command {
         Command::Mega => driver.import_from_mega(&cli.mega_base).await,
@@ -42,6 +43,8 @@ async fn main() {
 
 #[derive(Debug, Default)]
 struct ImportDriver {
+    cli: Cli,
+
     // data to write into
     /// vertex
     programs: Vec<Program>,
@@ -82,9 +85,11 @@ impl ImportDriver {
         // traverse all the owner name dir in /mnt/crates/local_crates_file/
         for owner_entry in fs::read_dir(CLONE_CRATES_DIR).unwrap() {
             let owner_path = owner_entry.unwrap().path();
+            println!("owner path: {:?}", owner_path);
             if owner_path.is_dir() {
                 for repo_entry in fs::read_dir(&owner_path).unwrap() {
                     let repo_path = repo_entry.unwrap().path();
+                    println!("\trepo path: {:?}", repo_path);
                     self.parse_a_local_repo(repo_path);
                 }
             }
@@ -100,13 +105,13 @@ impl ImportDriver {
                 trace!("");
                 trace!("Processing repo: {}", repo_path.display());
 
-                print_all_tags(&repo, false);
+                //print_all_tags(&repo, false);
 
                 //reset, maybe useless
                 hard_reset_to_head(&repo).unwrap();
 
                 let pms = extract_info_local(repo_path);
-                println!("{:?}", pms);
+                //println!("{:?}", pms);
 
                 for (program, has_type, uprogram) in pms {
                     self.programs.push(program.clone());

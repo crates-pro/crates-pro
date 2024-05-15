@@ -24,7 +24,7 @@ impl ImportDriver {
 
         // FIXME: test code
         let krates: Vec<&crates_sync::repo_sync_model::RepoSync> =
-            krates.iter().take(100).collect();
+            krates.iter().take(5000).collect();
 
         // rayon parallel iter, make it faster
         krates.iter().for_each(|krate| {
@@ -47,8 +47,9 @@ impl ImportDriver {
             // The path the repo will be cloned into
             let path = PathBuf::from(clone_dir).join(namespace.clone());
 
-            self.clone(&path, mega_url.as_ref());
-
+            if !self.cli.dont_clone {
+                self.clone(&path, mega_url.as_ref());
+            }
             // finish cloning, store namespace ...
 
             insert_namespace_by_repo_path(path.to_str().unwrap().to_string(), namespace.clone());
@@ -60,6 +61,7 @@ impl ImportDriver {
     }
 
     fn clone(&mut self, path: &PathBuf, url: &str) {
+        println!("Repo into {:?} from URL {}", path, url);
         if !path.is_dir() {
             info!("Cloning repo into {:?} from URL {}", path, url);
             match Repository::clone(url, path) {

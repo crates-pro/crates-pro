@@ -111,14 +111,22 @@ fn get_fields<T: Serialize>(item: &T) -> Vec<String> {
 pub(crate) fn extract_namespace(url_str: &str) -> Result<String, String> {
     /// auxiliary function
     fn remove_dot_git_suffix(input: &str) -> String {
-        if input.ends_with(".git") {
-            input.replace(".git", "")
+        let input = if input.ends_with("/") {
+            input.strip_suffix("/").unwrap()
+        } else {
+            input
+        };
+
+        let input = if input.ends_with(".git") {
+            input.strip_suffix(".git").unwrap().to_string()
         } else {
             input.to_string()
-        }
+        };
+        input
     }
 
-    let url = Url::parse(url_str).map_err(|e| format!("Failed to parse URL {}: {}", url_str, e))?;
+    let url = Url::parse(&remove_dot_git_suffix(url_str))
+        .map_err(|e| format!("Failed to parse URL {}: {}", url_str, e))?;
 
     // /tokio-rs/tokio
     let path_segments = url
@@ -126,6 +134,7 @@ pub(crate) fn extract_namespace(url_str: &str) -> Result<String, String> {
         .ok_or("Cannot extract path segments from URL")?;
 
     let segments: Vec<&str> = path_segments.collect();
+    //println!("{:?}", segments);
 
     // github URLs is of the format "/user/repo"
     if segments.len() < 2 {
@@ -141,7 +150,8 @@ pub(crate) fn extract_namespace(url_str: &str) -> Result<String, String> {
         segments[segments.len() - 2],
         segments[segments.len() - 1]
     );
-    Ok(remove_dot_git_suffix(&namespace))
+
+    Ok(namespace)
 }
 
 pub(crate) fn name_join_version(crate_name: &str, version: &str) -> String {
