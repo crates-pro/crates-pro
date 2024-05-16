@@ -13,8 +13,6 @@ pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, HasT
     trace!("Parse repo {:?}", local_repo_path);
     let mut res = vec![];
 
-    let id = Uuid::new_v4().to_string();
-
     // walk the directories of the project
     for entry in WalkDir::new(local_repo_path.clone())
         .into_iter()
@@ -43,6 +41,7 @@ pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, HasT
                     };
 
                     debug!("Found Crate: {}, islib: {}", name, islib);
+                    let id = Uuid::new_v4().to_string();
                     let program =
                         from_cargo_toml(local_repo_path.clone(), entry_path.to_path_buf(), &id)
                             .unwrap();
@@ -160,7 +159,7 @@ pub fn from_cargo_toml(
             .to_string(),
         parsed["package"]
             .get("decription")
-            .unwrap_or(&Value::String(String::default()))
+            .unwrap_or(&Value::String(String::from("None")))
             .as_str()
             .map(String::from),
         get_namespace_by_repo_path(local_repo_path.to_str().unwrap()),
