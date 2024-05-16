@@ -6,7 +6,7 @@ use model::crate_info::{
     ApplicationVersion, DependsOn, HasDepVersion, HasVersion, LibraryVersion, UProgram, UVersion,
     Version,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use toml::Value;
 
 #[allow(unused)]
@@ -92,7 +92,7 @@ impl ImportDriver {
                         program.id.clone(),
                         &name.clone(),
                         &version.clone(),
-                        &"???".to_string(),
+                        "???",
                     );
                     versions.push((
                         has_version,
