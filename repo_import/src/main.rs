@@ -160,6 +160,7 @@ impl ImportDriver {
                 // {
                 //     panic!();
                 // }
+
                 trace!("Finish processing repo: {}", repo_path.display());
             } else {
                 error!("Not a git repo! {:?}", repo_path);

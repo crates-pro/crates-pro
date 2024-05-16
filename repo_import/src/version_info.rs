@@ -6,7 +6,7 @@ use model::crate_info::{
     ApplicationVersion, DependsOn, HasDepVersion, HasVersion, LibraryVersion, UProgram, UVersion,
     Version,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use toml::Value;
 
 #[allow(unused)]
@@ -31,22 +31,6 @@ impl ImportDriver {
         let mut depends_on_vec: Vec<DependsOn> = vec![];
 
         let tags = repo.tag_names(None).expect("Could not retrieve tags");
-
-        // for tag in tags.iter().flatten() {
-        //     println!("Tag: {}", tag);
-        //     let tag_ref = repo.find_reference(&format!("refs/tags/{}", tag)).unwrap();
-        //     let tag_obj = tag_ref.peel_to_commit().unwrap();
-        //     let tree = tag_obj.tree().unwrap();
-
-        //     // 遍历提交中的树
-        //     tree.walk(git2::TreeWalkMode::PreOrder, |_, entry| {
-        //         if let Some(name) = entry.name() {
-        //             println!("File: {}", name);
-        //         }
-        //         TreeWalkResult::Ok // 继续遍历树
-        //     })
-        //     .unwrap();
-        // }
 
         for tag_name in tags.iter().flatten() {
             let obj = repo
@@ -81,13 +65,15 @@ impl ImportDriver {
                     Some((program, uprogram)) => (program, uprogram),
                     None => {
                         //FIXME: rename along with versions updates
+                        println!("aaaaaaaaaaaaaaaaaaaaaaaaa: {}", name);
+                        self.version_parser.remove(&name);
                         continue;
                     }
                 };
 
                 let has_version = HasVersion {
                     SRC_ID: program.id.clone(),
-                    DST_ID: program.id.clone(), //FIXME: version id undecided
+                    DST_ID: name_join_version(&name, &version), //FIXME: version id undecided
                 };
 
                 let dep_version = Version {
@@ -95,19 +81,19 @@ impl ImportDriver {
                 };
 
                 #[allow(non_snake_case)]
-                let SRC_ID = program.id.clone();
+                let SRC_ID = name_join_version(&name, &version);
                 #[allow(non_snake_case)]
                 let DST_ID = name_join_version(&name, &version);
                 let has_dep_version = HasDepVersion { SRC_ID, DST_ID };
 
                 let islib = matches!(uprogram, UProgram::Library(_));
                 if islib {
-                    let version = LibraryVersion {
-                        id: program.id.clone(),
-                        name: name.clone(),
-                        version: version.clone(),
-                        documentation: "???".to_string(),
-                    };
+                    let version = LibraryVersion::new(
+                        program.id.clone(),
+                        &name.clone(),
+                        &version.clone(),
+                        &"???".to_string(),
+                    );
                     versions.push((
                         has_version,
                         UVersion::LibraryVersion(version),
@@ -115,11 +101,8 @@ impl ImportDriver {
                         has_dep_version,
                     ));
                 } else {
-                    let version = ApplicationVersion {
-                        id: program.id.clone(),
-                        name: name.clone(),
-                        version: version.clone(),
-                    };
+                    let version =
+                        ApplicationVersion::new(program.id.clone(), name.clone(), version.clone());
                     versions.push((
                         has_version,
                         UVersion::ApplicationVersion(version),
@@ -192,6 +175,10 @@ impl ImportDriver {
                         let crate_name = crate_name.as_str()?.to_string();
                         let version = package.get("version")?.as_str()?.to_string();
 
+                        // dedup
+                        if self.version_parser.exists(&crate_name, &version) {
+                            return None;
+                        }
                         self.version_parser.insert_version(&crate_name, &version);
 
                         let mut dependencies = vec![];
@@ -201,6 +188,7 @@ impl ImportDriver {
                                 for (name, val) in deps_table {
                                     if let Some(version) = val.as_str() {
                                         //FIXME:
+
                                         dependencies.push((name.clone(), version.to_owned()));
                                     } else if let Some(ver_tab) = val.as_table() {
                                         if let Some(val) = ver_tab.get("version") {
@@ -214,6 +202,9 @@ impl ImportDriver {
                             }
                         }
 
+                        if crate_name.as_str() == "ansi_term" {
+                            println!("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+                        }
                         let dependencies = Dependencies {
                             crate_name,
                             version,
@@ -241,6 +232,17 @@ impl VersionParser {
             .entry(crate_name.to_string())
             .or_default()
             .push(version.to_string());
+    }
+
+    pub(crate) fn exists(&self, name: &str, version: &str) -> bool {
+        if let Some(map) = self.version_map.get(name) {
+            return map.contains(&version.to_string());
+        }
+        false
+    }
+
+    pub(crate) fn remove(&mut self, name: &str) {
+        self.version_map.remove(name);
     }
 
     pub fn find_latest_matching_version(

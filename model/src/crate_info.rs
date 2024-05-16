@@ -108,6 +108,8 @@ pub enum UVersion {
 pub struct LibraryVersion {
     /// The id
     pub id: String,
+    /// The name and version of the crate.
+    pub name_and_version: String,
     /// The name of the library.
     pub name: String,
     /// The version of the library.
@@ -121,6 +123,7 @@ impl LibraryVersion {
     pub fn new(id: String, name: &str, version: &str, documentation: &str) -> Self {
         LibraryVersion {
             id,
+            name_and_version: name.to_string() + "/" + version,
             name: name.to_string(),
             version: version.to_string(),
             documentation: documentation.to_string(),
@@ -132,6 +135,8 @@ impl LibraryVersion {
 pub struct ApplicationVersion {
     /// The id
     pub id: String,
+    /// The name and version of the crate.
+    pub name_and_version: String,
     /// The name
     pub name: String,
     /// The version
@@ -141,7 +146,12 @@ pub struct ApplicationVersion {
 impl ApplicationVersion {
     /// Create a new `ApplicationVersion` instance.
     pub fn new(id: String, name: String, version: String) -> Self {
-        ApplicationVersion { id, name, version }
+        ApplicationVersion {
+            id,
+            name_and_version: name.to_string() + "/" + &version,
+            name,
+            version,
+        }
     }
 }
 
