@@ -1,6 +1,7 @@
 use backend::run_quary_server;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     dotenvy::dotenv().ok();
     run_quary_server().unwrap();
 }
