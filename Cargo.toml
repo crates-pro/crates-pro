@@ -22,7 +22,9 @@ model = { path = "model" }
 backend = { path = "backend" }
 tudriver = { path = "tudriver" }
 dotenvy = { workspace = true }
-
+tokio = { version = "1.36", features = ["full"] }
+neo4rs = { workspace = true }
+serde_json = { workspace = true }
 
 [workspace.dependencies]
 serde = "1.0.197"
