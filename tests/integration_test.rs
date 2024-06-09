@@ -45,7 +45,7 @@ mod integration_tests {
             .call_plugin(
                 "CPP",
                 "trace_dependencies1",
-                "accesskit_winit 0.7.3,accesskit 0.8.1",
+                "astroport-staking 2.0.0,astroport-circular-buffer 0.2.0",
                 1.2,
                 false,
             )
