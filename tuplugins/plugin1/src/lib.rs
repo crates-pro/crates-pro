@@ -45,7 +45,7 @@ fn track_dependency(graph: &mut Graph, req: &str) -> Result<String, Box<dyn Erro
 
     while let Some(node_id) = queue.pop_front() {
         let mut node_cursor = ro_txn.vertex_cur()?;
-        node_cursor.seek(from_id, false)?;
+        node_cursor.seek(node_id, false)?;
         assert!(node_cursor.is_valid());
 
         if node_id == to_id {
