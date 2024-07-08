@@ -24,7 +24,7 @@ impl TuGraphClient {
         password: &str,
         db: &str,
     ) -> Result<Self, Box<dyn Error>> {
-        let graph_name = if db == "" { "default" } else { db };
+        let graph_name = if db.is_empty() { "default" } else { db };
         let config = ConfigBuilder::default()
             .uri(uri)
             .user(user)
