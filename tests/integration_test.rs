@@ -6,6 +6,18 @@ mod integration_tests {
     #[tokio::test]
     async fn test_integration_flow() {
         // Instantiate the TuGraphClient for testing
+
+        let origin_client = TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "")
+            .await
+            .unwrap();
+
+        let origin_graphs = origin_client.list_graphs().await.unwrap();
+
+        // check whether 'cratespro' exists
+        if !origin_graphs.contains(&String::from("cratespro")) {
+            origin_client.create_subgraph("cratespro").await.unwrap();
+        }
+
         let client =
             TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "cratespro")
                 .await
@@ -53,5 +65,56 @@ mod integration_tests {
             .unwrap();
 
         println!("{:?}", result);
+    }
+
+    #[tokio::test]
+    async fn test_tugraph_server_setup() {
+        // Instantiate the TuGraphClient for testing
+
+        let origin_client = TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "")
+            .await
+            .unwrap();
+
+        let origin_graphs = origin_client.list_graphs().await.unwrap();
+
+        // check whether 'cratespro' exists
+        if !origin_graphs.contains(&String::from("cratespro")) {
+            origin_client.create_subgraph("cratespro").await.unwrap();
+        }
+
+        let client =
+            TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "cratespro")
+                .await
+                .unwrap();
+
+        let graphs = client.list_graphs().await.unwrap();
+        println!("{:?}", graphs);
+
+        let plugins = client.list_plugin("CPP", "v1").await.unwrap();
+        println!("{:?}", plugins);
+
+        for plugin in plugins {
+            client.delete_plugin("CPP", &plugin).await.unwrap();
+        }
+
+        client
+            .load_plugin(
+                "trace_dependencies1",
+                "/workspace/target/release/libplugin1.so",
+            )
+            .await
+            .unwrap();
+
+        let plugins = client.list_plugin("CPP", "v1").await.unwrap();
+
+        println!("All the loaded plugins: {:?}", plugins);
+
+        if !plugins.is_empty() {
+            let pinfo = client
+                .get_plugin_info("CPP", &plugins[0], false)
+                .await
+                .unwrap();
+            println!("The first plugin: {:?}", pinfo);
+        }
     }
 }

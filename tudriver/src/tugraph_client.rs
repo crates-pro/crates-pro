@@ -24,11 +24,12 @@ impl TuGraphClient {
         password: &str,
         db: &str,
     ) -> Result<Self, Box<dyn Error>> {
+        let graph_name = if db == "" { "default" } else { db };
         let config = ConfigBuilder::default()
             .uri(uri)
             .user(user)
             .password(password)
-            .db(db)
+            .db(graph_name)
             .build()?;
 
         let graph = Graph::connect(config).await?;
@@ -74,6 +75,13 @@ impl TuGraphClient {
             "CALL db.createVertexLabel('{}', '{}'{})",
             label_name, primary_field, fields_string
         );
+        println!("Query: {}", query_string);
+        self.graph.run(query(&query_string)).await?;
+        Ok(())
+    }
+
+    pub async fn create_subgraph(&self, graph_name: &str) -> Result<(), Box<dyn Error>> {
+        let query_string = format!("CALL dbms.graph.createGraph('{}')", graph_name);
         println!("Query: {}", query_string);
         self.graph.run(query(&query_string)).await?;
         Ok(())

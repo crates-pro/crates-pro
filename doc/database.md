@@ -195,17 +195,46 @@ erDiagram
 
 ### Usage
 
+#### Deploy Tugraph
+
+1. install tugraph
+    - download package: `wget https://github.com/TuGraph-family/tugraph-db/releases/download/xxxxxx.deb`
+    - install it: `sudo dpkg -i tugraph-x.y.z.deb`
+2. checkout root user: `sudo su`
+3. create configuration file `lgraph_daemon.json`:
+    ```
+      {
+      "directory": "/var/lib/lgraph/data",
+      "host": "0.0.0.0",
+      "port": 7070,
+      "enable_rpc": false,
+      "rpc_port": 9090,
+      "verbose": 1,
+      "log_dir": "/var/log/lgraph_log",
+      "ssl_auth": false,
+      "server_key": "/usr/local/etc/lgraph/server-key.pem",
+      "server_cert": "/usr/local/etc/lgraph/server-cert.pem",
+      "bolt_port": 7687
+    }
+    ```
+4. start the tugraph server: `lgraph_server -d start -c lgraph_daemon.json`
+
+
 #### Steps
 
 1. open dev-containers and wait for compiling.
-2. In bash, you can input `bash .devcontainer/setup.sh` to start TuGraph Server.
-    - run `netstat -tuln | grep -E '7687|7070'` to check if it successes. The terminal will show 
+2. you can test TuGraph Server.
+    - In real-machine, run `netstat -tuln | grep -E '7687|7070'` to check if it successes. The terminal will show 
       ```
       tcp        0      0 0.0.0.0:7687            0.0.0.0:*               LISTEN     
       tcp        0      0 0.0.0.0:7070            0.0.0.0:*               LISTEN 
       ```
-    - run `cargo test test_tugraph_setup` to test it.
+    - In docker, run `cargo test test_tugraph_server_setup` to test it.
 4. Then, you can code and test it.
     - The bolt port is 7687, and HTTP port is 7070
-    - Open http://localhost:7070 in your browser. The username is `admin`, and the password is `73@TuGraph`.
+    - Open http://localhost:7070 (the ip varies) in your browser. The username is `admin`, and the password is `73@TuGraph`.
 5. `cargo test` to run all the tests.
+
+
+### Reference
+[1] https://tugraph-db.readthedocs.io/zh-cn/v4.0.0/5.developer-manual/1.installation/4.local-package-deployment.html
