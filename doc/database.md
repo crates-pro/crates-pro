@@ -197,7 +197,7 @@ erDiagram
 
 #### Deploy Tugraph
 
-1. install tugraph
+1. install tugraph [1]
     - download package: `wget https://github.com/TuGraph-family/tugraph-db/releases/download/xxxxxx.deb`
     - install it: `sudo dpkg -i tugraph-x.y.z.deb`
 2. checkout root user: `sudo su`
@@ -217,8 +217,52 @@ erDiagram
       "bolt_port": 7687
     }
     ```
-4. start the tugraph server: `lgraph_server -d start -c lgraph_daemon.json`
+4. start the tugraph server: `lgraph_server -d restart --directory ./lgraph_db`
 
+
+
+#### Import Data
+
+In real-machine, type: 
+
+```
+lgraph_import -c import.conf --dir ./lgraph_db --graph cratespro
+```
+
+If `cratespro` exists, it wil exit. To force to cover the graph, use `--overwrite true`.
+
+```bash
+rust@rust-PowerEdge-R750xs:~$ lgraph_import -c /home/rust/crates-pro/import.config --dir ./lgraph_db --graph cratespro --overwrite true
+[20240709 03:16:48.268758 0x000079af9b5c4900 INFO  toolkits/lgraph_import.cpp:277] Importing FROM SCRATCH:
+        from:                 /home/rust/crates-pro/import.config
+        to:                   ./lgraph_db
+        verbose:              1
+        log_dir:
+        keep_vid_in_memory:   true
+        parse_file_threads:   21
+        parse_block_threads:  21
+        parse_block_size:     8388608
+        generate_sst_threads: 64
+        read_rocksdb_threads: 64
+        vid_num_per_reading:  10000
+        max_size_per_reading: 33554432
+[20240709 03:16:48.278103 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:1454] Graph already exists, all the data in the graph will be overwritten.
+[20240709 03:16:48.279139 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:107] Add vertex label:program
+[20240709 03:16:48.279256 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:107] Add vertex label:library
+[20240709 03:16:48.279581 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:107] Add vertex label:application
+[20240709 03:16:48.279725 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:107] Add vertex label:library_version
+[20240709 03:16:48.279831 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:107] Add vertex label:application_version
+[20240709 03:16:48.279899 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:107] Add vertex label:version
+[20240709 03:16:48.279978 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:107] Add edge label:has_type
+[20240709 03:16:48.280042 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:107] Add edge label:has_version
+[20240709 03:16:48.280608 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:107] Add edge label:has_dep_version
+[20240709 03:16:48.280746 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:107] Add edge label:depends_on
+[20240709 03:16:48.401801 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:512] Convert vertex data to sst files, time: 0.120869s
+[20240709 03:16:48.707510 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:876] Convert edge data to sst files, time: 0.30536s
+[20240709 03:16:48.787741 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:1033] Write vertex primary index to lmdb, time: 0.0799625s
+[20240709 03:16:48.871486 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:1410] Dump rocksdb into lmdb, time: 0.0820558s
+[20240709 03:16:48.879749 0x000079af9b5c4900 INFO  src/import/import_v3.cpp:216] Import finished in 0.603474 seconds.
+```
 
 #### Steps
 
@@ -229,11 +273,14 @@ erDiagram
       tcp        0      0 0.0.0.0:7687            0.0.0.0:*               LISTEN     
       tcp        0      0 0.0.0.0:7070            0.0.0.0:*               LISTEN 
       ```
-    - In docker, run `cargo test test_tugraph_server_setup` to test it.
+    - In docker, run `cargo test --all  -- --test-threads=1` to test it.
 4. Then, you can code and test it.
     - The bolt port is 7687, and HTTP port is 7070
     - Open http://localhost:7070 (the ip varies) in your browser. The username is `admin`, and the password is `73@TuGraph`.
 5. `cargo test` to run all the tests.
+
+
+
 
 
 ### Reference

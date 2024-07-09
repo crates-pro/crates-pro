@@ -12,9 +12,11 @@ mod integration_tests {
             .unwrap();
 
         let origin_graphs = origin_client.list_graphs().await.unwrap();
+        println!("origin database contains graphs: {:?}", origin_graphs);
 
         // check whether 'cratespro' exists
         if !origin_graphs.contains(&String::from("cratespro")) {
+            println!("create graph: cratespro");
             origin_client.create_subgraph("cratespro").await.unwrap();
         }
 
@@ -24,10 +26,10 @@ mod integration_tests {
                 .unwrap();
 
         let graphs = client.list_graphs().await.unwrap();
-        println!("{:?}", graphs);
+        println!("Current database contains graphs: {:?}", graphs);
 
         let plugins = client.list_plugin("CPP", "v1").await.unwrap();
-        println!("{:?}", plugins);
+        println!("Current database contains plugins: {:?}", plugins);
 
         for plugin in plugins {
             client.delete_plugin("CPP", &plugin).await.unwrap();
@@ -52,6 +54,9 @@ mod integration_tests {
                 .unwrap();
             println!("The first plugin: {:?}", pinfo);
         }
+
+        let labels = client.list_edge_labels().await.unwrap();
+        println!("labels: {}", labels);
 
         let result = client
             .call_plugin(
@@ -108,6 +113,9 @@ mod integration_tests {
         let plugins = client.list_plugin("CPP", "v1").await.unwrap();
 
         println!("All the loaded plugins: {:?}", plugins);
+
+        let labels = client.list_edge_labels().await.unwrap();
+        println!("labels: {}", labels);
 
         if !plugins.is_empty() {
             let pinfo = client

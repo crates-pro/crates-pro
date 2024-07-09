@@ -43,6 +43,15 @@ impl TuGraphClient {
         Ok(())
     }
 
+    pub async fn list_edge_labels(&self) -> Result<String, Box<dyn Error>> {
+        let mut labels = String::default();
+        let mut result = self.graph.execute(query("CALL db.edgeLabels()")).await?;
+        while let Some(row) = result.next().await? {
+            labels = row.to().unwrap();
+        }
+        Ok(labels)
+    }
+
     /// Creates a vertex label in the database.
     ///
     /// Arguments:
@@ -365,9 +374,10 @@ mod tests {
     #[tokio::test]
     async fn test_tugraph_client() {
         // build bolt config
-        let client_ = TuGraphClient::new("bolt://localhost:7687", "admin", "73@TuGraph", "default")
-            .await
-            .unwrap();
+        let client_ =
+            TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "default")
+                .await
+                .unwrap();
 
         let _ = client_
             .graph
@@ -376,7 +386,7 @@ mod tests {
             ))
             .await;
 
-        let client = TuGraphClient::new("bolt://localhost:7687", "admin", "73@TuGraph", "t1")
+        let client = TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "t1")
             .await
             .unwrap();
 
@@ -446,9 +456,10 @@ mod tests {
     #[tokio::test]
     async fn test_tugraph_client_load_plugin() {
         // build bolt config
-        let client_ = TuGraphClient::new("bolt://localhost:7687", "admin", "73@TuGraph", "default")
-            .await
-            .unwrap();
+        let client_ =
+            TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "default")
+                .await
+                .unwrap();
 
         let _ = client_
             .graph
@@ -457,7 +468,7 @@ mod tests {
             ))
             .await;
 
-        let client = TuGraphClient::new("bolt://localhost:7687", "admin", "73@TuGraph", "t2")
+        let client = TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "t2")
             .await
             .unwrap();
 
