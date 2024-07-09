@@ -10,7 +10,7 @@ mod tests {
     async fn test_tugraph_setup() {
         // build bolt config
         let default_graph_config = ConfigBuilder::default()
-            .uri("bolt://localhost:7687")
+            .uri("bolt://172.17.0.1:7687")
             .user("admin")
             .password("73@TuGraph")
             .db("default")
@@ -27,7 +27,7 @@ mod tests {
             .await;
 
         let config = ConfigBuilder::default()
-            .uri("bolt://localhost:7687")
+            .uri("bolt://172.17.0.1:7687")
             .user("admin")
             .password("73@TuGraph")
             .db("graph_for_test")

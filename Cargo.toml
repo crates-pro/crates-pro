@@ -11,7 +11,8 @@ members = [
   "model",             # internal info struct,such as `crate info` `library info` `app info`
   "backend",           # the restful server exposed to front
   "tudriver",          # tugraph client, deal with the quary from router
-  "tuplugins/plugin1", # tugraph plugins, deal with concret logics
+  "tuplugins/plugin1",
+  "tuplugins/plugin2", # tugraph plugins, deal with concret logics
 ]
 
 resolver = "2" # use resolver of version 2
@@ -25,6 +26,9 @@ dotenvy = { workspace = true }
 tokio = { version = "1.36", features = ["full"] }
 neo4rs = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+serial_test = "0.5"
 
 [workspace.dependencies]
 serde = "1.0.197"

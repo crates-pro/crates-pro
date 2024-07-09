@@ -24,11 +24,12 @@ impl TuGraphClient {
         password: &str,
         db: &str,
     ) -> Result<Self, Box<dyn Error>> {
+        let graph_name = if db.is_empty() { "default" } else { db };
         let config = ConfigBuilder::default()
             .uri(uri)
             .user(user)
             .password(password)
-            .db(db)
+            .db(graph_name)
             .build()?;
 
         let graph = Graph::connect(config).await?;
@@ -40,6 +41,15 @@ impl TuGraphClient {
     pub(crate) async unsafe fn drop_database(&self) -> Result<(), Box<dyn Error>> {
         self.graph.run(query("CALL db.dropDB()")).await?;
         Ok(())
+    }
+
+    pub async fn list_edge_labels(&self) -> Result<String, Box<dyn Error>> {
+        let mut labels = String::default();
+        let mut result = self.graph.execute(query("CALL db.edgeLabels()")).await?;
+        while let Some(row) = result.next().await? {
+            labels = row.to().unwrap();
+        }
+        Ok(labels)
     }
 
     /// Creates a vertex label in the database.
@@ -74,6 +84,13 @@ impl TuGraphClient {
             "CALL db.createVertexLabel('{}', '{}'{})",
             label_name, primary_field, fields_string
         );
+        println!("Query: {}", query_string);
+        self.graph.run(query(&query_string)).await?;
+        Ok(())
+    }
+
+    pub async fn create_subgraph(&self, graph_name: &str) -> Result<(), Box<dyn Error>> {
+        let query_string = format!("CALL dbms.graph.createGraph('{}')", graph_name);
         println!("Query: {}", query_string);
         self.graph.run(query(&query_string)).await?;
         Ok(())
@@ -357,9 +374,10 @@ mod tests {
     #[tokio::test]
     async fn test_tugraph_client() {
         // build bolt config
-        let client_ = TuGraphClient::new("bolt://localhost:7687", "admin", "73@TuGraph", "default")
-            .await
-            .unwrap();
+        let client_ =
+            TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "default")
+                .await
+                .unwrap();
 
         let _ = client_
             .graph
@@ -368,7 +386,7 @@ mod tests {
             ))
             .await;
 
-        let client = TuGraphClient::new("bolt://localhost:7687", "admin", "73@TuGraph", "t1")
+        let client = TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "t1")
             .await
             .unwrap();
 
@@ -438,9 +456,10 @@ mod tests {
     #[tokio::test]
     async fn test_tugraph_client_load_plugin() {
         // build bolt config
-        let client_ = TuGraphClient::new("bolt://localhost:7687", "admin", "73@TuGraph", "default")
-            .await
-            .unwrap();
+        let client_ =
+            TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "default")
+                .await
+                .unwrap();
 
         let _ = client_
             .graph
@@ -449,7 +468,7 @@ mod tests {
             ))
             .await;
 
-        let client = TuGraphClient::new("bolt://localhost:7687", "admin", "73@TuGraph", "t2")
+        let client = TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "t2")
             .await
             .unwrap();
 

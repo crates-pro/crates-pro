@@ -12,6 +12,7 @@ fn track_dependency(graph: &mut Graph, req: &str) -> Result<String, Box<dyn Erro
     // req stores the request string from the web
     // its format is "person_name,movie_title"
     // parse from req to get person_name and movie_title
+    println!("Exec trace dependencies");
     let (from_version, to_version) = parse_req(req)?;
     let from_name_and_version = from_version.name + "/" + &from_version.version;
     let to_name_and_version = to_version.name + "/" + &to_version.version;
