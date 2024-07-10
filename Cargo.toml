@@ -26,6 +26,7 @@ dotenvy = { workspace = true }
 tokio = { version = "1.36", features = ["full"] }
 neo4rs = { workspace = true }
 serde_json = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 serial_test = "0.5"
@@ -51,3 +52,4 @@ dotenvy = "0.15.7"
 log = "0.4.21"
 pretty_env_logger = "0.5"
 structopt = { version = "0.3", default-features = false }
+rdkafka = "0.36.2"
