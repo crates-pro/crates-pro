@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-git2 = "0.18.3"
+git2 = "0.19.0"
 toml = "0.8"
 crates_sync = { path = "../crates_sync" }
 rayon = "1.5"
