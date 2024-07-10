@@ -10,6 +10,7 @@ tugraph = "0.1.4"
 tugraph-plugin-util = "0.1.2"
 serde = { workspace = true }
 serde_json = { workspace = true }
+model = { path = "../../model/" }
 
 
 [lib]

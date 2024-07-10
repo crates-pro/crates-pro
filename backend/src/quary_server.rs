@@ -1,5 +1,5 @@
 use axum::{extract::Path, routing::get, Router};
-use model::crate_info::{Application, Library, Program, Version};
+use model::tugraph_model::{Application, Library, Program, Version};
 use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;

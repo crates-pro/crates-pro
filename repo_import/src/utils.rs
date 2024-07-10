@@ -1,6 +1,6 @@
 use csv::Writer;
 use lazy_static::lazy_static;
-use model::crate_info::{Program, UProgram};
+use model::tugraph_model::{Program, UProgram};
 use serde::Serialize;
 use serde_json::json;
 use std::collections::HashMap;
