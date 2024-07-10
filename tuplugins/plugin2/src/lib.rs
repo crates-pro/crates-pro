@@ -3,6 +3,7 @@ use std::{
     error::Error,
 };
 
+use model::plugin_model::Version;
 use tugraph::{
     cursor::EdgeCursor, cursor::VertexCursor, db::Graph, field::FieldData, txn::TxnRead,
 };
@@ -34,9 +35,9 @@ fn compute_impact_scope(graph: &mut Graph, req: &str) -> Result<String, Box<dyn 
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
 
-    queue.push_back((dst_id, 0_i64));
+    queue.push_back((dst_id, dst_tu_version, 0_i64));
 
-    while let Some((node_id, depth)) = queue.pop_front() {
+    while let Some((node_id, _, depth)) = queue.pop_front() {
         let mut node_cursor = ro_txn.vertex_cur()?;
         node_cursor.seek(node_id, false)?;
         assert!(node_cursor.is_valid());
@@ -49,20 +50,25 @@ fn compute_impact_scope(graph: &mut Graph, req: &str) -> Result<String, Box<dyn 
             .collect();
 
         for (id, _, _) in neighbors {
-            let in_neighbor = (id.src, depth + 1);
-            if visited.insert(in_neighbor) {
+            let mut user_cur = ro_txn.vertex_cur()?;
+            user_cur.seek(id.src, false)?;
+            let nv = user_cur
+                .field("name_and_version")
+                .map(|name| match name {
+                    FieldData::String(name) => name,
+                    _ => panic!("name should be string"),
+                })
+                .unwrap();
+
+            let in_neighbor = (id.src, nv, depth + 1);
+            if visited.insert(in_neighbor.clone()) {
                 queue.push_back(in_neighbor);
             }
         }
     }
-    let res: Vec<(i64, i64)> = visited.into_iter().collect();
+    let res: Vec<(i64, String, i64)> = visited.into_iter().collect();
     let res = serde_json::to_string(&res).unwrap();
     Ok(res)
-}
-
-struct Version {
-    name: String,
-    version: String,
 }
 
 fn parse_req(req: &str) -> Result<Version, String> {

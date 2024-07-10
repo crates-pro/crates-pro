@@ -2,7 +2,7 @@ use crate::utils::{get_program_by_name, name_join_version};
 use crate::ImportDriver;
 use git2::Repository;
 use git2::{TreeWalkMode, TreeWalkResult};
-use model::crate_info::{
+use model::tugraph_model::{
     ApplicationVersion, DependsOn, HasDepVersion, HasVersion, LibraryVersion, UProgram, UVersion,
     Version,
 };

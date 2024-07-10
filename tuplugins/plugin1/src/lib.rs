@@ -3,6 +3,7 @@ use std::{
     error::Error,
 };
 
+use model::plugin_model::Version;
 use tugraph::{
     cursor::EdgeCursor, cursor::VertexCursor, db::Graph, field::FieldData, txn::TxnRead,
 };
@@ -68,11 +69,6 @@ fn track_dependency(graph: &mut Graph, req: &str) -> Result<String, Box<dyn Erro
     }
 
     Ok("0".to_string())
-}
-
-struct Version {
-    name: String,
-    version: String,
 }
 
 fn parse_req(req: &str) -> Result<(Version, Version), String> {

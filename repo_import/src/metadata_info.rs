@@ -1,5 +1,5 @@
 use crate::utils::{get_namespace_by_repo_path, insert_program_by_name};
-use model::crate_info::{Application, HasType, Library, Program, UProgram};
+use model::tugraph_model::{Application, HasType, Library, Program, UProgram};
 use std::{
     fs,
     path::{Path, PathBuf},

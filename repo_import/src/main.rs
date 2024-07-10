@@ -16,7 +16,7 @@ use cli::{Cli, Command};
 use git::hard_reset_to_head;
 use git2::Repository;
 use log::*;
-use model::crate_info::*;
+use model::tugraph_model::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;

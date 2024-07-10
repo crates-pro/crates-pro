@@ -8,6 +8,8 @@ edition = "2021"
 [dependencies]
 tugraph = "0.1.4"
 tugraph-plugin-util = "0.1.2"
+model = { path = "../../model/" }
+
 
 [lib]
 crate-type = ["cdylib"]
