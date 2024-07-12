@@ -1,5 +1,5 @@
 use git2::{build::CheckoutBuilder, ObjectType, Repository};
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 use url::Url;
 
 use crate::{utils::extract_namespace, utils::insert_namespace_by_repo_path, ImportDriver};
