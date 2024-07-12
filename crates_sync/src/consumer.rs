@@ -76,24 +76,24 @@ mod tests {
     use std::time::Duration;
     use std::{env, sync::Arc};
 
-    use entity::repo_sync_status;
     use rdkafka::{message::BorrowedMessage, Message};
 
     use crate::consumer::consume;
     use crate::consumer::MessageCallback;
+    use crate::repo_sync_model;
 
     struct MockCallback;
 
     impl MessageCallback for MockCallback {
         fn on_message(&self, m: &BorrowedMessage) {
-            let model =
-                match serde_json::from_slice::<repo_sync_status::Model>(m.payload().unwrap()) {
-                    Ok(m) => Some(m),
-                    Err(e) => {
-                        tracing::warn!("Error while deserializing message payload: {:?}", e);
-                        None
-                    }
-                };
+            let model = match serde_json::from_slice::<repo_sync_model::Model>(m.payload().unwrap())
+            {
+                Ok(m) => Some(m),
+                Err(e) => {
+                    tracing::warn!("Error while deserializing message payload: {:?}", e);
+                    None
+                }
+            };
             tracing::info!(
             "key: '{:?}', payload: '{:?}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
             m.key(),

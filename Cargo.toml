@@ -4,12 +4,20 @@ version = "0.1.0"
 edition = "2021"
 
 
+[[bin]]
+name = "benchmark_controller"
+path = "src/bin/benchmark_controller.rs"
+
+[[bin]]
+name = "senseleak_controller"
+path = "src/bin/senseleak_controller.rs"
+
+
 [workspace]
 members = [
   "crates_sync",       # data collection hub'
   "repo_import",       # extract repo and import data into tugraph
   "model",             # internal info struct,such as `crate info` `library info` `app info`
-  "backend",           # the restful server exposed to front
   "tudriver",          # tugraph client, deal with the quary from router
   "tuplugins/plugin1",
   "tuplugins/plugin2", # tugraph plugins, deal with concret logics
@@ -20,7 +28,6 @@ resolver = "2" # use resolver of version 2
 
 [dependencies]
 model = { path = "model" }
-backend = { path = "backend" }
 tudriver = { path = "tudriver" }
 dotenvy = { workspace = true }
 tokio = { version = "1.36", features = ["full"] }
