@@ -1,4 +1,3 @@
-use crates_sync::{init::database_connection, query::MegaStorage};
 use git2::{build::CheckoutBuilder, ObjectType, Repository};
 use std::{path::PathBuf, sync::Arc};
 use url::Url;
@@ -15,15 +14,15 @@ impl ImportDriver {
         clone_dir: &str,
     ) -> Result<(), String> {
         // read from postgres sql
-        let database_conn = database_connection().await;
-        let repo_sync: MegaStorage = MegaStorage::new(Arc::new(database_conn));
-        let mut krates: Vec<crates_sync::repo_sync_model::RepoSync> =
-            repo_sync.get_all_repos().await;
+
+        // TODO: MQ to get crates
+
+        let mut krates: Vec<crates_sync::repo_sync_model::Model> = vec![];
+
         krates.sort_by_key(|x| x.mega_url.clone());
 
         // FIXME: test code
-        let krates: Vec<&crates_sync::repo_sync_model::RepoSync> =
-            krates.iter().take(500).collect();
+        let krates: Vec<&crates_sync::repo_sync_model::Model> = krates.iter().take(500).collect();
 
         // rayon parallel iter, make it faster
         krates.iter().for_each(|krate| {

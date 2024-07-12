@@ -1,27 +1,30 @@
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
-use entity::{
-    db_enums::{CrateType, RepoSyncStatus},
-    repo_sync_status,
-};
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct RepoSync {
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Model {
     pub id: i32,
     pub crate_name: String,
+    pub github_url: Option<String>,
     pub mega_url: String,
     pub crate_type: CrateType,
     pub status: RepoSyncStatus,
+    pub err_message: Option<String>,
+    pub created_at: NaiveDate,
+    pub updated_at: NaiveDate,
 }
 
-impl From<repo_sync_status::Model> for RepoSync {
-    fn from(value: repo_sync_status::Model) -> Self {
-        Self {
-            id: value.id,
-            crate_name: value.crate_name,
-            mega_url: value.mega_url,
-            crate_type: value.crate_type,
-            status: value.status,
-        }
-    }
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub enum CrateType {
+    Lib,
+    Application,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub enum RepoSyncStatus {
+    Syncing,
+    Succeed,
+    Failed,
+    Analysing,
+    Analysed,
 }
