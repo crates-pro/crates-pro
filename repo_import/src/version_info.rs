@@ -1,14 +1,17 @@
+use crate::git::get_all_git_tags;
 use crate::utils::{get_program_by_name, name_join_version};
 use crate::ImportDriver;
 use git2::Repository;
 use git2::{TreeWalkMode, TreeWalkResult};
 use model::tugraph_model::{
-    ApplicationVersion, DependsOn, HasDepVersion, HasVersion, LibraryVersion, UProgram, UVersion,
-    Version,
+    ApplicationVersion, CrateType2Idx, DependsOn, HasDepVersion, HasVersion, LibraryVersion,
+    UVersion, Version,
 };
 use std::collections::HashMap;
 use toml::Value;
 
+/// A representation for the info
+/// extracted from a `cargo.toml` file
 #[allow(unused)]
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Dependencies {
@@ -20,7 +23,7 @@ pub(crate) struct Dependencies {
 impl ImportDriver {
     /// a git repo contains different crates
     #[allow(clippy::type_complexity)]
-    pub(crate) fn parse_all_versions_of_a_repo(
+    pub(crate) async fn parse_all_versions_of_a_repo(
         &mut self,
         repo: &Repository,
     ) -> (
@@ -30,46 +33,24 @@ impl ImportDriver {
         let mut versions = vec![];
         let mut depends_on_vec: Vec<DependsOn> = vec![];
 
-        let tags = repo.tag_names(None).expect("Could not retrieve tags");
+        let trees = get_all_git_tags(repo).await;
 
-        for tag_name in tags.iter().flatten() {
-            let obj = repo
-                .revparse_single(&("refs/tags/".to_owned() + tag_name))
-                .expect("Couldn't find tag object");
-
-            // convert annotated and light-weight tag into commit
-            let commit = if let Some(tag) = obj.as_tag() {
-                tag.target()
-                    .expect("Couldn't get tag target")
-                    .peel_to_commit()
-                    .expect("Couldn't peel to commit")
-            } else if let Some(commit) = obj.as_commit() {
-                commit.clone()
-            } else {
-                panic!("Error!");
-            };
-
-            let tree = commit.tree().expect("Couldn't get the tree"); // for each version of the git repo
-
+        for tree in trees.iter() {
             // FIXME: deal with different formats
             // parse the version, walk all the packages
-            let all_packages_dependencies = self.parse_a_repo_of_a_version(repo, &tree);
-            println!("tag: {}, deps: {:?}", tag_name, all_packages_dependencies);
-            // if all_packages_dependencies.len() > 0 {
-            //     sleep(Duration::from_secs(1));
-            // }
+            let all_packages_dependencies = self.parse_a_repo_of_a_version(repo, tree).await;
             for dependencies in all_packages_dependencies {
-                let name = dependencies.crate_name;
-                let version = dependencies.version;
+                let name = dependencies.crate_name.clone();
+                let version = dependencies.version.clone();
                 let (program, uprogram) = match get_program_by_name(&name) {
                     Some((program, uprogram)) => (program, uprogram),
                     None => {
-                        //FIXME: rename along with versions updates
-                        println!("aaaaaaaaaaaaaaaaaaaaaaaaa: {}", name);
-                        self.version_parser.remove(&name);
+                        // continue, dont parse
                         continue;
                     }
                 };
+
+                self.version_updater.update_depends_on(&dependencies).await;
 
                 let has_version = HasVersion {
                     SRC_ID: program.id.clone(),
@@ -86,7 +67,7 @@ impl ImportDriver {
                 let DST_ID = name_join_version(&name, &version);
                 let has_dep_version = HasDepVersion { SRC_ID, DST_ID };
 
-                let islib = matches!(uprogram, UProgram::Library(_));
+                let islib = uprogram.index() == 0;
                 if islib {
                     let version = LibraryVersion::new(
                         program.id.clone(),
@@ -111,15 +92,7 @@ impl ImportDriver {
                     ));
                 }
 
-                for (dependency_name, dependency_version) in dependencies.dependencies {
-                    #[allow(non_snake_case)]
-                    let SRC_ID = name_join_version(&name, &version);
-
-                    #[allow(non_snake_case)]
-                    let DST_ID = name_join_version(&dependency_name, &dependency_version);
-                    let depends_on = DependsOn { SRC_ID, DST_ID };
-                    depends_on_vec.push(depends_on);
-                }
+                depends_on_vec = self.version_updater.to_depends_on_edges().await;
             }
         }
 
@@ -127,10 +100,10 @@ impl ImportDriver {
     }
 
     /// for a given commit(version), walk all the package
-    fn parse_a_repo_of_a_version<'repo>(
-        &mut self,
+    async fn parse_a_repo_of_a_version<'repo>(
+        &self,
         repo: &'repo Repository,
-        tree: &'repo git2::Tree,
+        tree: &'repo git2::Tree<'repo>,
     ) -> Vec<Dependencies> {
         let mut res = Vec::new();
 
@@ -139,16 +112,11 @@ impl ImportDriver {
         tree.walk(TreeWalkMode::PostOrder, |_, entry| {
             //println!("{:?}", entry.name());
             if entry.name() == Some("Cargo.toml") {
-                //println!("xxxxxxxxxxxxxxxxxx");
                 // for each Cargo.toml in repo of given commit
                 let obj = entry
                     .to_object(repo)
                     .expect("Failed to convert TreeEntry to Object");
                 let blob = obj.as_blob().expect("Failed to interpret object as blob");
-
-                // let mut sss = "".to_string();
-                // blob.content().read_to_string(&mut sss).unwrap();
-                // println!("{}", sss);
                 let content = std::str::from_utf8(blob.content())
                     .expect("Cargo.toml content is not valid UTF-8");
 
@@ -157,8 +125,6 @@ impl ImportDriver {
                     .unwrap_or_default();
 
                 res.push(dependencies);
-
-                //return TreeWalkResult::Ok; // Found the file, stop walking
             }
             TreeWalkResult::Ok
         })
@@ -167,7 +133,7 @@ impl ImportDriver {
         res
     }
 
-    fn parse_a_package_of_a_version(&mut self, cargo_toml_content: &str) -> Option<Dependencies> {
+    fn parse_a_package_of_a_version(&self, cargo_toml_content: &str) -> Option<Dependencies> {
         match cargo_toml_content.parse::<Value>() {
             Ok(toml) => {
                 if let Some(package) = toml.get("package") {
@@ -176,10 +142,13 @@ impl ImportDriver {
                         let version = package.get("version")?.as_str()?.to_string();
 
                         // dedup
-                        if self.version_parser.exists(&crate_name, &version) {
+                        if self
+                            .version_updater
+                            .version_parser
+                            .exists(&crate_name, &version)
+                        {
                             return None;
                         }
-                        self.version_parser.insert_version(&crate_name, &version);
 
                         let mut dependencies = vec![];
 
@@ -187,8 +156,6 @@ impl ImportDriver {
                             if let Some(deps_table) = dep_table.as_table() {
                                 for (name, val) in deps_table {
                                     if let Some(version) = val.as_str() {
-                                        //FIXME:
-
                                         dependencies.push((name.clone(), version.to_owned()));
                                     } else if let Some(ver_tab) = val.as_table() {
                                         if let Some(val) = ver_tab.get("version") {
@@ -221,13 +188,156 @@ impl ImportDriver {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct VersionUpdater {
+    /// a reverse record: who depends on the key?
+    pub reverse_depends_on_map: HashMap<String, Vec<(String, model::general_model::Version)>>,
+
+    /// a actual map: a crate **actually** depends on which?
+    /// it is used to build `depends_on` edges.
+    pub actually_depends_on_map:
+        HashMap<model::general_model::Version, Vec<model::general_model::Version>>,
+
+    pub version_parser: VersionParser,
+}
+
+impl VersionUpdater {
+    pub async fn to_depends_on_edges(&self) -> Vec<DependsOn> {
+        let mut edges = vec![];
+        for (src, dsts) in &self.actually_depends_on_map {
+            for dst in dsts {
+                #[allow(non_snake_case)]
+                let SRC_ID = name_join_version(&src.name, &src.version);
+
+                #[allow(non_snake_case)]
+                let DST_ID = name_join_version(&dst.name, &dst.version);
+                let depends_on = DependsOn { SRC_ID, DST_ID };
+                edges.push(depends_on);
+            }
+        }
+        edges
+    }
+
+    /// Given a dependency list,
+    pub async fn update_depends_on(&mut self, info: &Dependencies) {
+        self.version_parser
+            .insert_version(&info.crate_name, &info.version)
+            .await;
+        let cur_release = model::general_model::Version::new(&info.crate_name, &info.version);
+        self.ensure_dependencies(&cur_release, info).await;
+        self.ensure_dependents(&cur_release).await;
+    }
+
+    async fn ensure_dependencies(
+        &mut self,
+        cur_release: &model::general_model::Version,
+        info: &Dependencies,
+    ) {
+        for (name, version) in &info.dependencies {
+            //let dep = model::general_model::Version::new(&name, &version);
+            self.insert_reverse_dep(name, version, &cur_release.name, &cur_release.version)
+                .await;
+        }
+
+        // a new version should not exist before.
+        assert!(!self.actually_depends_on_map.contains_key(cur_release));
+        let cur_dependencies = self.search_dependencies(info).await;
+        self.actually_depends_on_map
+            .insert(cur_release.clone(), cur_dependencies);
+    }
+
+    async fn search_dependencies(&self, info: &Dependencies) -> Vec<model::general_model::Version> {
+        let mut res: Vec<model::general_model::Version> = vec![];
+        for (dependency_name, dependency_version) in &info.dependencies {
+            let version_option = self
+                .version_parser
+                .find_latest_matching_version(dependency_name, dependency_version)
+                .await;
+
+            if let Some(dependency_actual_version) = &version_option {
+                let dependency =
+                    model::general_model::Version::new(dependency_name, dependency_actual_version);
+                res.push(dependency);
+            }
+        }
+        res
+    }
+
+    pub async fn ensure_dependents(&mut self, cur_release: &model::general_model::Version) {
+        let sem_ver = semver::Version::parse(&cur_release.version)
+            .unwrap_or_else(|_| panic!("failed to parse version {}", &cur_release.version));
+        let wrapped_reverse_map = self.reverse_depends_on_map.get(&cur_release.name);
+        if let Some(reverse_map) = wrapped_reverse_map {
+            for (required_version, reverse_dep) in reverse_map {
+                let requirement = match semver::VersionReq::parse(required_version) {
+                    Ok(req) => req,
+                    Err(_) => {
+                        tracing::error!("failed to transform to VersionReq");
+                        continue; // 如果无法解析为有效的版本请求，则返回 None
+                    }
+                };
+
+                if requirement.matches(&sem_ver) {
+                    if let Some(v) = self.actually_depends_on_map.get_mut(reverse_dep) {
+                        let mut found = false;
+                        for x in &mut *v {
+                            if x.name == cur_release.name {
+                                found = true;
+                                let prev_sem_ver = semver::Version::parse(&x.version).unwrap();
+                                if sem_ver < prev_sem_ver {
+                                    //replace
+                                    x.version.clone_from(&cur_release.version);
+                                }
+                                //found break;
+                                break;
+                            }
+                        }
+                        if !found {
+                            v.push(model::general_model::Version::new(
+                                &cur_release.name,
+                                &cur_release.version,
+                            ));
+                        }
+                    } else {
+                        // No vec
+                        self.actually_depends_on_map.insert(
+                            reverse_dep.clone(),
+                            vec![model::general_model::Version::new(
+                                &cur_release.name,
+                                &cur_release.version,
+                            )],
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// insert (dependency, dependent)
+    /// notice that: dependent is unique, but dependency should be newest.
+    pub async fn insert_reverse_dep(
+        &mut self,
+        dependency_name: &str,
+        dependency_version: &str,
+        dependent_name: &str,
+        dependent_version: &str,
+    ) {
+        //let dependency = model::general_model::Version::new(dependency_name, dependency_version);
+        let dependent = model::general_model::Version::new(dependent_name, dependent_version);
+        self.reverse_depends_on_map
+            .entry(dependency_name.to_string())
+            .or_default()
+            .push((dependency_version.to_string(), dependent));
+    }
+}
+
 #[derive(Default, Debug)]
 pub(crate) struct VersionParser {
     version_map: HashMap<String, Vec<String>>,
 }
 
 impl VersionParser {
-    pub fn insert_version(&mut self, crate_name: &str, version: &str) {
+    pub async fn insert_version(&mut self, crate_name: &str, version: &str) {
         self.version_map
             .entry(crate_name.to_string())
             .or_default()
@@ -241,11 +351,11 @@ impl VersionParser {
         false
     }
 
-    pub(crate) fn remove(&mut self, name: &str) {
+    pub(crate) async fn _remove(&mut self, name: &str) {
         self.version_map.remove(name);
     }
 
-    pub fn find_latest_matching_version(
+    pub async fn find_latest_matching_version(
         &self,
         target_lib: &str,
         target_version: &str,
@@ -281,8 +391,8 @@ impl VersionParser {
 mod tests {
     use super::VersionParser;
 
-    #[test]
-    fn test_insert_and_find_version() {
+    #[tokio::test]
+    async fn test_insert_and_find_version() {
         let mut parser = VersionParser::default();
         parser.insert_version("crate_a", "1.0.1");
         parser.insert_version("crate_a", "1.1.1");
@@ -291,29 +401,37 @@ mod tests {
 
         // Test finding the latest exact version
         assert_eq!(
-            parser.find_latest_matching_version("crate_a", "1.2"),
+            parser.find_latest_matching_version("crate_a", "1.2").await,
             Some("1.2.2".to_string())
         );
         assert_eq!(
-            parser.find_latest_matching_version("crate_a", "1"),
+            parser.find_latest_matching_version("crate_a", "1").await,
             Some("1.2.2".to_string())
         );
 
         // Test finding versions when there's no match
-        assert_eq!(parser.find_latest_matching_version("crate_a", "2.0"), None);
+        assert_eq!(
+            parser.find_latest_matching_version("crate_a", "2.0").await,
+            None
+        );
 
         // Test finding versions with a precise match
-        parser.insert_version("crate_b", "2.0.0");
-        parser.insert_version("crate_b", "2.0.1");
+        parser.insert_version("crate_b", "2.0.0").await;
+        parser.insert_version("crate_b", "2.0.1").await;
         assert_eq!(
-            parser.find_latest_matching_version("crate_b", "2.0.1"),
+            parser
+                .find_latest_matching_version("crate_b", "2.0.1")
+                .await,
             Some("2.0.1".to_string())
         );
 
         assert_eq!(
-            parser.find_latest_matching_version("crate_b", "2"),
+            parser.find_latest_matching_version("crate_b", "2").await,
             Some("2.0.1".to_string())
         );
-        assert_eq!(parser.find_latest_matching_version("crate_c", "2"), None);
+        assert_eq!(
+            parser.find_latest_matching_version("crate_c", "2").await,
+            None
+        );
     }
 }

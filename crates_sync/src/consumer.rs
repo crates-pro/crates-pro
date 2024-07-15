@@ -5,11 +5,12 @@ use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext, Rebalance, Stream
 use rdkafka::error::KafkaResult;
 use rdkafka::message::{BorrowedMessage, Headers};
 use rdkafka::{ClientContext, Message, TopicPartitionList};
+use tokio::sync::Mutex;
 
 pub struct CustomContext;
 
 pub trait MessageCallback {
-    fn on_message(&self, message: &BorrowedMessage);
+    fn on_message(&mut self, message: &BorrowedMessage);
 }
 
 impl ClientContext for CustomContext {}
@@ -35,7 +36,7 @@ pub async fn consume(
     brokers: &str,
     group_id: &str,
     topics: &[&str],
-    callback: Arc<dyn MessageCallback>,
+    callback: Arc<Mutex<dyn MessageCallback>>,
 ) {
     let context = CustomContext;
     let consumer: LoggingConsumer = ClientConfig::new()
@@ -57,7 +58,7 @@ pub async fn consume(
         match consumer.recv().await {
             Err(e) => tracing::warn!("Kafka error: {}", e),
             Ok(m) => {
-                callback.on_message(&m);
+                callback.lock().await.on_message(&m);
                 if let Some(headers) = m.headers() {
                     for header in headers.iter() {
                         tracing::info!("  Header {:#?}: {:?}", header.key, header.value);
@@ -77,6 +78,7 @@ mod tests {
     use std::{env, sync::Arc};
 
     use rdkafka::{message::BorrowedMessage, Message};
+    use tokio::sync::Mutex;
 
     use crate::consumer::consume;
     use crate::consumer::MessageCallback;
@@ -85,7 +87,7 @@ mod tests {
     struct MockCallback;
 
     impl MessageCallback for MockCallback {
-        fn on_message(&self, m: &BorrowedMessage) {
+        fn on_message(&mut self, m: &BorrowedMessage) {
             let model = match serde_json::from_slice::<repo_sync_model::Model>(m.payload().unwrap())
             {
                 Ok(m) => Some(m),
@@ -114,7 +116,7 @@ mod tests {
         let broker = env::var("KAFKA_BROKER").unwrap();
         let topic = env::var("KAFKA_TOPIC").unwrap();
         let group_id = env::var("KAFKA_GROUP_ID").unwrap();
-        let callback = Arc::new(MockCallback);
+        let mut callback = Arc::new(Mutex::new(MockCallback));
         tracing::info!("{},{},{}", broker, topic, group_id);
         consume(&broker, &group_id, &[&topic], callback).await;
     }

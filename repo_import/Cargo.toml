@@ -29,6 +29,7 @@ pretty_env_logger = { workspace = true }
 walkdir = "2.3"
 lazy_static = "1.4.0"
 once_cell = "1.8.0"
-structopt = { workspace = true }
 tempfile = "3.10.1"
 semver = "1.0"
+tracing = { workspace = true }
+rdkafka = { workspace = true, features = ["cmake-build"] }

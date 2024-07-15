@@ -56,6 +56,14 @@ pub enum UProgram {
     Library(Library),
     Application(Application),
 }
+impl CrateType2Idx for UProgram {
+    fn index(&self) -> usize {
+        match self {
+            Self::Library(_) => 0,
+            Self::Application(_) => 1,
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Library {
@@ -102,6 +110,15 @@ impl Application {
 pub enum UVersion {
     LibraryVersion(LibraryVersion),
     ApplicationVersion(ApplicationVersion),
+}
+
+impl CrateType2Idx for UVersion {
+    fn index(&self) -> usize {
+        match self {
+            Self::LibraryVersion(_) => 0,
+            Self::ApplicationVersion(_) => 1,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
@@ -196,4 +213,11 @@ pub struct HasDepVersion {
 pub struct DependsOn {
     pub SRC_ID: String,
     pub DST_ID: String,
+}
+
+pub trait CrateType2Idx {
+    fn index(&self) -> usize;
+    fn is_library(&self) -> bool {
+        self.index() == 0
+    }
 }
