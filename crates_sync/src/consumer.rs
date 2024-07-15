@@ -116,7 +116,7 @@ mod tests {
         let broker = env::var("KAFKA_BROKER").unwrap();
         let topic = env::var("KAFKA_TOPIC").unwrap();
         let group_id = env::var("KAFKA_GROUP_ID").unwrap();
-        let mut callback = Arc::new(Mutex::new(MockCallback));
+        let callback = Arc::new(Mutex::new(MockCallback));
         tracing::info!("{},{},{}", broker, topic, group_id);
         consume(&broker, &group_id, &[&topic], callback).await;
     }

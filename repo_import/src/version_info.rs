@@ -394,10 +394,10 @@ mod tests {
     #[tokio::test]
     async fn test_insert_and_find_version() {
         let mut parser = VersionParser::default();
-        parser.insert_version("crate_a", "1.0.1");
-        parser.insert_version("crate_a", "1.1.1");
-        parser.insert_version("crate_a", "1.2.1");
-        parser.insert_version("crate_a", "1.2.2");
+        parser.insert_version("crate_a", "1.0.1").await;
+        parser.insert_version("crate_a", "1.1.1").await;
+        parser.insert_version("crate_a", "1.2.1").await;
+        parser.insert_version("crate_a", "1.2.2").await;
 
         // Test finding the latest exact version
         assert_eq!(
