@@ -1,9 +1,9 @@
 use structopt::StructOpt;
 
 #[derive(StructOpt, Debug, Default, Clone)]
-pub(crate) struct Cli {
+pub struct CratesProCli {
     #[structopt(subcommand)]
-    pub(crate) command: Command,
+    pub(crate) _command: Command,
 
     #[structopt(short, long, required = true)]
     pub(crate) mega_base: String,
@@ -13,7 +13,7 @@ pub(crate) struct Cli {
 }
 
 #[derive(StructOpt, Debug, Default, Clone)]
-pub(crate) enum Command {
+pub enum Command {
     #[default]
     Mega,
 }

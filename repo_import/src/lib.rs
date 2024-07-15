@@ -1,4 +1,4 @@
-mod cli;
+mod consumer;
 mod git;
 mod metadata_info;
 mod utils;
@@ -9,47 +9,42 @@ extern crate pretty_env_logger;
 extern crate log;
 extern crate lazy_static;
 
+use crate::consumer::RepoSyncCallback;
 //use crate::git::print_all_tags;
 use crate::metadata_info::extract_info_local;
 use crate::utils::write_into_csv;
-use cli::{Cli, Command};
+
+use crates_sync::consumer::consume;
 use git::hard_reset_to_head;
 use git2::Repository;
 use log::*;
 use model::tugraph_model::*;
 use std::fs;
 use std::path::{Path, PathBuf};
-use structopt::StructOpt;
-use utils::name_join_version;
-use version_info::VersionParser;
+use std::{env, sync::Arc};
+use tokio::sync::Mutex;
+use version_info::VersionUpdater;
 
 const CLONE_CRATES_DIR: &str = "/mnt/crates/local_crates_file/";
 const TUGRAPH_IMPORT_FILES: &str = "./tugraph_import_files/";
 
-#[tokio::main]
-async fn main() {
-    let cli = Cli::from_args();
-
-    dotenvy::dotenv().ok();
-    pretty_env_logger::init();
-
-    let mut driver = ImportDriver {
-        cli: cli.clone(),
-        ..Default::default()
+pub async fn repo_main(dont_clone: bool, git_url_base: &str) {
+    //driver.import_from_mega(&cli.mega_base).await,
+    let mut import_driver = ImportDriver {
+        dont_clone,
+        ..ImportDriver::default()
     };
-
-    match cli.command {
-        Command::Mega => driver.import_from_mega(&cli.mega_base).await,
-    }
+    import_driver.import_from_mq(git_url_base).await;
 }
 
 #[derive(Debug, Default)]
 struct ImportDriver {
-    cli: Cli,
+    dont_clone: bool,
 
     // data to write into
     /// vertex
     programs: Vec<Program>,
+
     libraries: Vec<Library>,
     applications: Vec<Application>,
     library_versions: Vec<LibraryVersion>,
@@ -68,52 +63,52 @@ struct ImportDriver {
 
     depends_on: Vec<DependsOn>,
 
-    version_parser: VersionParser,
+    version_updater: VersionUpdater,
 }
 
 impl ImportDriver {
     /// Import data from mega
     /// It first clone the repositories locally from mega
-    async fn import_from_mega(&mut self, mega_url_base: &str) {
-        info!("Importing from MEGA...");
-        let _ = self
-            .clone_repos_from_pg(mega_url_base, CLONE_CRATES_DIR)
-            .await;
-        self.parse_local_repositories()
-    }
+    async fn import_from_mq(&mut self, mega_url_base: &str) {
+        info!("Importing from MQ...");
+        let broker = env::var("KAFKA_BROKER").unwrap();
+        let topic = env::var("KAFKA_TOPIC").unwrap();
+        let group_id = env::var("KAFKA_GROUP_ID").unwrap();
+        tracing::info!("{},{},{}", broker, topic, group_id);
 
-    /// support extracting recursively
-    fn parse_local_repositories(&mut self) {
-        // traverse all the owner name dir in /mnt/crates/local_crates_file/
-        for owner_entry in fs::read_dir(CLONE_CRATES_DIR).unwrap() {
-            let owner_path = owner_entry.unwrap().path();
-            println!("owner path: {:?}", owner_path);
-            if owner_path.is_dir() {
-                for repo_entry in fs::read_dir(&owner_path).unwrap() {
-                    let repo_path = repo_entry.unwrap().path();
-                    println!("\trepo path: {:?}", repo_path);
-                    self.parse_a_local_repo(repo_path);
-                    //sleep(Duration::from_secs(1));
-                }
-            }
+        loop {
+            let new_message_entry = Arc::new(Mutex::new(RepoSyncCallback::default()));
+            consume(&broker, &group_id, &[&topic], new_message_entry.clone()).await;
+
+            let mega_url_suffix = &{
+                let inner_entry = new_message_entry.lock().await.entry.clone();
+                assert!(inner_entry.is_some());
+                inner_entry.unwrap().mega_url
+            };
+
+            let local_repo_path = self
+                .clone_a_repo_by_url(CLONE_CRATES_DIR, mega_url_base, mega_url_suffix)
+                .await
+                .unwrap_or_else(|_| panic!("Failed to clone repo {}", mega_url_suffix));
+
+            self.parse_a_local_repo(local_repo_path).await.unwrap();
+
+            self.write_tugraph_import_files();
+            println!("{:?}", *new_message_entry);
         }
-        self.filter();
-        self.write_tugraph_import_files();
     }
 
-    fn parse_a_local_repo(&mut self, repo_path: PathBuf) {
+    async fn parse_a_local_repo(&mut self, repo_path: PathBuf) -> Result<(), String> {
         if repo_path.is_dir() && Path::new(&repo_path).join(".git").is_dir() {
             if let Ok(repo) = Repository::open(&repo_path) {
                 // INFO: Start to Parse a git repository
-                trace!("");
-                trace!("Processing repo: {}", repo_path.display());
-
-                //print_all_tags(&repo, false);
+                tracing::trace!("");
+                tracing::trace!("Processing repo: {}", repo_path.display());
 
                 //reset, maybe useless
-                if hard_reset_to_head(&repo).is_err() {
-                    return;
-                }
+                hard_reset_to_head(&repo)
+                    .await
+                    .map_err(|x| format!("{:?}", x))?;
 
                 let pms = extract_info_local(repo_path.clone());
                 //println!("{:?}", pms);
@@ -121,21 +116,19 @@ impl ImportDriver {
                 for (program, has_type, uprogram) in pms {
                     self.programs.push(program.clone());
 
-                    let _is_lib = match uprogram {
+                    match uprogram {
                         UProgram::Library(l) => {
                             self.libraries.push(l);
                             self.has_lib_type.push(has_type.clone());
-                            true
                         }
                         UProgram::Application(a) => {
                             self.applications.push(a);
                             self.has_app_type.push(has_type.clone());
-                            false
                         }
                     };
                 }
 
-                let (uversions, depends_on) = self.parse_all_versions_of_a_repo(&repo);
+                let (uversions, depends_on) = self.parse_all_versions_of_a_repo(&repo).await;
                 for (has_version, uv, v, has_dep) in uversions {
                     match uv {
                         UVersion::LibraryVersion(l) => {
@@ -155,48 +148,15 @@ impl ImportDriver {
                 for dep_on in depends_on {
                     self.depends_on.push(dep_on);
                 }
-                // if repo_path.to_str().unwrap()
-                //     == "/mnt/crates/local_crates_file/bltavares/async-std-utp"
-                // {
-                //     panic!();
-                // }
 
-                trace!("Finish processing repo: {}", repo_path.display());
+                tracing::trace!("Finish processing repo: {}", repo_path.display());
             } else {
-                error!("Not a git repo! {:?}", repo_path);
+                tracing::error!("Not a git repo! {:?}", repo_path);
             }
         } else {
-            error!("{} is not a directory", repo_path.display());
+            tracing::error!("{} is not a directory", repo_path.display());
         }
-    }
-
-    fn filter(&mut self) {
-        let mut new_depends_on = vec![];
-
-        for edge in &mut self.depends_on {
-            let dst = edge.DST_ID.clone();
-
-            let v = dst.split('/').collect::<Vec<_>>();
-            let dep_name = v[0];
-            let dep_version = v[1];
-
-            match self
-                .version_parser
-                .find_latest_matching_version(dep_name, dep_version)
-            {
-                Some(actual_ver) => {
-                    edge.DST_ID = name_join_version(dep_name, &actual_ver);
-                    new_depends_on.push(edge.clone());
-                }
-                None => {
-                    if !dst.is_empty() {
-                        warn!("missing dependency {}", dst);
-                    }
-                }
-            }
-        }
-
-        self.depends_on = new_depends_on;
+        Ok(())
     }
 
     /// write data base into tugraph import files

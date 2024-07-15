@@ -27,13 +27,18 @@ resolver = "2" # use resolver of version 2
 
 
 [dependencies]
+repo_import = { path = "repo_import" }
 model = { path = "model" }
+crates_sync = { path = "crates_sync" }
 tudriver = { path = "tudriver" }
 dotenvy = { workspace = true }
 tokio = { version = "1.36", features = ["full"] }
 neo4rs = { workspace = true }
 serde_json = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing = { workspace = true }
+rdkafka = { workspace = true, features = ["cmake-build"] }
+structopt = { workspace = true }
 
 
 [workspace.dependencies]

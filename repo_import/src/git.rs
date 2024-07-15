@@ -1,4 +1,4 @@
-use git2::{build::CheckoutBuilder, ObjectType, Repository};
+use git2::{build::CheckoutBuilder, ObjectType, Repository, Tree};
 use std::path::PathBuf;
 use url::Url;
 
@@ -8,76 +8,57 @@ impl ImportDriver {
     /// clone repo locally
     /// 1. Get mega url from postgres
     /// 2. Clone git repositories from mega, reserving the namespace as path where they are cloned
-    pub(crate) async fn clone_repos_from_pg(
+    pub(crate) async fn clone_a_repo_by_url(
         &mut self,
-        mega_url_base: &str,
         clone_dir: &str,
-    ) -> Result<(), String> {
-        // read from postgres sql
+        git_url_base: &str,
+        git_url_suffix: &str,
+    ) -> Result<PathBuf, git2::Error> {
+        // mega_url = base + path
+        let git_url = {
+            let git_url_base = Url::parse(git_url_base)
+                .unwrap_or_else(|_| panic!("Failed to parse mega url base: {}", &git_url_base));
+            git_url_base
+                .join(git_url_suffix)
+                .expect("Failed to join url path")
+        };
 
-        // TODO: MQ to get crates
+        // namespace such as tokio-rs/tokio
+        let namespace = extract_namespace(git_url.as_ref()).expect("Failed to parse URL");
 
-        let mut krates: Vec<crates_sync::repo_sync_model::Model> = vec![];
+        // The path the repo will be cloned into
+        let path = PathBuf::from(clone_dir).join(namespace.clone());
 
-        krates.sort_by_key(|x| x.mega_url.clone());
+        if !self.dont_clone {
+            clone(&path, git_url.as_ref()).await?;
+        }
+        // finish cloning, store namespace ...
 
-        // FIXME: test code
-        let krates: Vec<&crates_sync::repo_sync_model::Model> = krates.iter().take(500).collect();
-
-        // rayon parallel iter, make it faster
-        krates.iter().for_each(|krate| {
-            // use rayon::prelude::*;
-            // krates.par_iter().for_each(|krate| {
-
-            // mega_url = base + path
-            let mega_url = {
-                let mega_url_base = Url::parse(mega_url_base).unwrap_or_else(|_| {
-                    panic!("Failed to parse mega url base: {}", &mega_url_base)
-                });
-                let mega_url_path = &krate.mega_url;
-                mega_url_base
-                    .join(mega_url_path)
-                    .expect("Failed to join url path")
-            };
-
-            // namespace such as tokio-rs/tokio
-            let namespace = extract_namespace(mega_url.as_ref()).expect("Failed to parse URL");
-
-            // The path the repo will be cloned into
-            let path = PathBuf::from(clone_dir).join(namespace.clone());
-
-            if !self.cli.dont_clone {
-                self.clone(&path, mega_url.as_ref());
-            }
-            // finish cloning, store namespace ...
-
-            insert_namespace_by_repo_path(path.to_str().unwrap().to_string(), namespace.clone());
-        });
+        insert_namespace_by_repo_path(path.to_str().unwrap().to_string(), namespace.clone());
 
         trace!("Finish clone all the repos\n");
 
-        Ok(())
+        Ok(path)
     }
+}
 
-    fn clone(&self, path: &PathBuf, url: &str) {
-        println!("Repo into {:?} from URL {}", path, url);
-        if !path.is_dir() {
-            info!("Cloning repo into {:?} from URL {}", path, url);
-            match Repository::clone(url, path) {
-                Ok(_) => info!("Successfully cloned into {:?}", path),
-                Err(e) => error!("Failed to clone {}: {:?}", url, e),
-            }
-        } else {
-            warn!("Directory {:?} is not empty, skipping clone", path);
-        }
+async fn clone(path: &PathBuf, url: &str) -> Result<(), git2::Error> {
+    println!("Repo into {:?} from URL {}", path, url);
+    if !path.is_dir() {
+        tracing::info!("Cloning repo into {:?} from URL {}", path, url);
+        Repository::clone(url, path)?;
+        tracing::info!("Cloning repo into {:?}", path);
+    } else {
+        warn!("Directory {:?} is not empty, skipping clone", path);
     }
+    Ok(())
 }
 
 /// Deprecated.
 
 /// If it migrate from a different system,
 /// the git record will change, and this is the reset function.
-pub(crate) fn hard_reset_to_head(repo: &Repository) -> Result<(), git2::Error> {
+pub(crate) async fn hard_reset_to_head(repo: &Repository) -> Result<(), git2::Error> {
     let head = repo.head()?;
     let commit = repo.find_commit(
         head.target()
@@ -97,7 +78,36 @@ pub(crate) fn hard_reset_to_head(repo: &Repository) -> Result<(), git2::Error> {
     Ok(())
 }
 
-pub(crate) fn _print_all_tags(repo: &Repository, v: bool) {
+pub(crate) async fn get_all_git_tags(repo: &Repository) -> Vec<Tree> {
+    let mut trees = vec![];
+
+    let tags = repo.tag_names(None).expect("Could not retrieve tags");
+
+    for tag_name in tags.iter().flatten() {
+        let obj = repo
+            .revparse_single(&("refs/tags/".to_owned() + tag_name))
+            .expect("Couldn't find tag object");
+
+        // convert annotated and light-weight tag into commit
+        let commit = if let Some(tag) = obj.as_tag() {
+            tag.target()
+                .expect("Couldn't get tag target")
+                .peel_to_commit()
+                .expect("Couldn't peel to commit")
+        } else if let Some(commit) = obj.as_commit() {
+            commit.clone()
+        } else {
+            panic!("Error!");
+        };
+
+        let tree = commit.tree().expect("Couldn't get the tree"); // for each version of the git repo
+
+        trees.push(tree);
+    }
+    trees
+}
+
+pub(crate) async fn _print_all_tags(repo: &Repository, v: bool) {
     let tags = repo.tag_names(None).unwrap();
 
     // for tag in tags.iter() {

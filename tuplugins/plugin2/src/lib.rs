@@ -3,7 +3,7 @@ use std::{
     error::Error,
 };
 
-use model::plugin_model::Version;
+use model::general_model::Version;
 use tugraph::{
     cursor::EdgeCursor, cursor::VertexCursor, db::Graph, field::FieldData, txn::TxnRead,
 };
