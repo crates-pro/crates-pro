@@ -279,8 +279,11 @@ rust@rust-PowerEdge-R750xs:~$ lgraph_import -c /home/rust/crates-pro/import.conf
     - Open http://localhost:7070 (the ip varies) in your browser. The username is `admin`, and the password is `73@TuGraph`.
 5. `cargo test` to run all the tests.
 
-
-
+#### reset MQ
+```
+docker exec pensive_villani /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group defau
+lt_group --reset-offsets --to-offset 0 --execute --topic REPO_SYNC_STATUS.dev
+```
 
 
 ### Reference

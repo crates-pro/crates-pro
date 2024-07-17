@@ -1,4 +1,3 @@
-use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -10,8 +9,6 @@ pub struct Model {
     pub crate_type: CrateType,
     pub status: RepoSyncStatus,
     pub err_message: Option<String>,
-    pub created_at: NaiveDate,
-    pub updated_at: NaiveDate,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
