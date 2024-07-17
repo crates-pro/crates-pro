@@ -21,5 +21,6 @@ Cargo.lock
 
 lgraph.pid
 
-tugraph_import_files/
+tugraph_import_files_pg/
+tugraph_import_files_mq/
 

@@ -284,6 +284,9 @@ rust@rust-PowerEdge-R750xs:~$ lgraph_import -c /home/rust/crates-pro/import.conf
 docker exec pensive_villani /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group defau
 lt_group --reset-offsets --to-offset 0 --execute --topic REPO_SYNC_STATUS.dev
 ```
+#### export 
+
+` export HOST_PAAWORD=xxxxx`
 
 
 ### Reference

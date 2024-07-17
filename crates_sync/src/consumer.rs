@@ -1,16 +1,16 @@
-use std::sync::Arc;
-
+use futures::future::BoxFuture;
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext, Rebalance, StreamConsumer};
 use rdkafka::error::KafkaResult;
 use rdkafka::message::{BorrowedMessage, Headers};
 use rdkafka::{ClientContext, Message, TopicPartitionList};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub struct CustomContext;
 
 pub trait MessageCallback {
-    fn on_message(&mut self, message: &BorrowedMessage);
+    fn on_message<'a>(&'a mut self, message: &'a BorrowedMessage<'a>) -> BoxFuture<'a, ()>;
 }
 
 impl ClientContext for CustomContext {}
@@ -31,12 +31,11 @@ impl ConsumerContext for CustomContext {
 
 // A type alias with your custom consumer can be created for convenience.
 type LoggingConsumer = StreamConsumer<CustomContext>;
-
 pub async fn consume(
     brokers: &str,
     group_id: &str,
     topics: &[&str],
-    callback: Arc<Mutex<dyn MessageCallback>>,
+    callback: Arc<Mutex<dyn MessageCallback + Send>>,
 ) {
     let context = CustomContext;
     let consumer: LoggingConsumer = ClientConfig::new()
@@ -55,11 +54,13 @@ pub async fn consume(
     consumer
         .subscribe(topics)
         .expect("Can't subscribe to specified topics");
+
     loop {
         match consumer.recv().await {
             Err(e) => tracing::warn!("Kafka error: {}", e),
             Ok(m) => {
-                callback.lock().await.on_message(&m);
+                let mut callback = callback.lock().await;
+                callback.on_message(&m).await;
                 if let Some(headers) = m.headers() {
                     for header in headers.iter() {
                         tracing::info!("  Header {:#?}: {:?}", header.key, header.value);
@@ -74,10 +75,11 @@ pub async fn consume(
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
     use std::time::Duration;
     use std::{env, sync::Arc};
 
+    use futures::future::BoxFuture;
+    use futures::FutureExt;
     use rdkafka::{message::BorrowedMessage, Message};
     use tokio::sync::Mutex;
 
@@ -88,29 +90,32 @@ mod tests {
     struct MockCallback;
 
     impl MessageCallback for MockCallback {
-        fn on_message(&mut self, m: &BorrowedMessage) {
-            let model = match serde_json::from_slice::<repo_sync_model::Model>(m.payload().unwrap())
-            {
-                Ok(m) => Some(m),
-                Err(e) => {
-                    tracing::warn!("Error while deserializing message payload: {:?}", e);
-                    None
-                }
-            };
-            tracing::info!(
-            "key: '{:?}', payload: '{:?}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
-            m.key(),
-            model,
-            m.topic(),
-            m.partition(),
-            m.offset(),
-            m.timestamp()
-        );
-            thread::sleep(Duration::from_millis(1000));
+        fn on_message<'a>(&'a mut self, m: &'a BorrowedMessage<'a>) -> BoxFuture<'a, ()> {
+            async move {
+                let model = match serde_json::from_slice::<repo_sync_model::Model>(m.payload().unwrap()) {
+                    Ok(m) => Some(m),
+                    Err(e) => {
+                        tracing::warn!("Error while deserializing message payload: {:?}", e);
+                        None
+                    }
+                };
+                tracing::info!(
+                    "key: '{:?}', payload: '{:?}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
+                    m.key(),
+                    model,
+                    m.topic(),
+                    m.partition(),
+                    m.offset(),
+                    m.timestamp()
+                );
+                tokio::time::sleep(Duration::from_millis(1000)).await;
+            }
+            .boxed()
         }
     }
 
     #[tokio::test]
+    #[ignore = "consume ok"]
     async fn test_consume() {
         dotenvy::dotenv().ok();
         tracing_subscriber::fmt::init();

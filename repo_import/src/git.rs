@@ -1,4 +1,4 @@
-use git2::{build::CheckoutBuilder, ObjectType, Repository, Tree};
+use git2::{build::CheckoutBuilder, ObjectType, Oid, Repository};
 use std::path::PathBuf;
 use url::Url;
 
@@ -43,13 +43,12 @@ impl ImportDriver {
 }
 
 async fn clone(path: &PathBuf, url: &str) -> Result<(), git2::Error> {
-    println!("Repo into {:?} from URL {}", path, url);
     if !path.is_dir() {
-        tracing::info!("Cloning repo into {:?} from URL {}", path, url);
-        Repository::clone(url, path)?;
-        tracing::info!("Cloning repo into {:?}", path);
+        tracing::debug!("Start cloning repo into {:?} from URL {}", path, url);
+        Repository::clone(url, path).unwrap();
+        tracing::debug!("Finish cloning repo into {:?}", path);
     } else {
-        warn!("Directory {:?} is not empty, skipping clone", path);
+        warn!("Directory {:?} is not empty, skipping Clone", path);
     }
     Ok(())
 }
@@ -58,8 +57,15 @@ async fn clone(path: &PathBuf, url: &str) -> Result<(), git2::Error> {
 
 /// If it migrate from a different system,
 /// the git record will change, and this is the reset function.
-pub(crate) async fn hard_reset_to_head(repo: &Repository) -> Result<(), git2::Error> {
-    let head = repo.head()?;
+pub(crate) async fn hard_reset_to_head(repo_path: &PathBuf) -> Result<(), git2::Error> {
+    let repo = Repository::open(repo_path).unwrap();
+    let head = match repo.head() {
+        Ok(head) => head,
+        Err(_) => {
+            tracing::warn!("Repo {:?} does not have ref/heads/master", repo_path);
+            return Ok(());
+        }
+    };
     let commit = repo.find_commit(
         head.target()
             .ok_or(git2::Error::from_str("HEAD does not point to a commit"))?,
@@ -75,20 +81,31 @@ pub(crate) async fn hard_reset_to_head(repo: &Repository) -> Result<(), git2::Er
     // Correctly convert tree to Object before checking out the
     let tree_obj = tree.into_object();
     repo.checkout_tree(&tree_obj as &git2::Object, Some(&mut checkout_opts))?;
+
     Ok(())
 }
 
-pub(crate) async fn get_all_git_tags(repo: &Repository) -> Vec<Tree> {
-    let mut trees = vec![];
+pub(crate) async fn get_all_git_tags(repo_path: &PathBuf) -> Vec<Oid> {
+    let mut tree_ids = vec![];
 
-    let tags = repo.tag_names(None).expect("Could not retrieve tags");
+    let repo = Repository::open(repo_path).unwrap();
 
-    for tag_name in tags.iter().flatten() {
+    // Read the repository to get all tag names
+    let tags: Vec<String> = {
+        repo.tag_names(None)
+            .expect("Could not retrieve tags")
+            .iter()
+            .flatten()
+            .map(|tag_name| tag_name.to_string())
+            .collect()
+    };
+
+    for tag_name in tags {
         let obj = repo
-            .revparse_single(&("refs/tags/".to_owned() + tag_name))
+            .revparse_single(&("refs/tags/".to_owned() + &tag_name))
             .expect("Couldn't find tag object");
 
-        // convert annotated and light-weight tag into commit
+        // Convert annotated and light-weight tag into commit
         let commit = if let Some(tag) = obj.as_tag() {
             tag.target()
                 .expect("Couldn't get tag target")
@@ -100,11 +117,11 @@ pub(crate) async fn get_all_git_tags(repo: &Repository) -> Vec<Tree> {
             panic!("Error!");
         };
 
-        let tree = commit.tree().expect("Couldn't get the tree"); // for each version of the git repo
+        let tree = commit.tree().expect("Couldn't get the tree");
 
-        trees.push(tree);
+        tree_ids.push(tree.id());
     }
-    trees
+    tree_ids
 }
 
 pub(crate) async fn _print_all_tags(repo: &Repository, v: bool) {

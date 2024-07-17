@@ -3,7 +3,7 @@ use structopt::StructOpt;
 #[derive(StructOpt, Debug, Default, Clone)]
 pub struct CratesProCli {
     #[structopt(subcommand)]
-    pub(crate) _command: Command,
+    pub(crate) _command: Option<Command>,
 
     #[structopt(short, long, required = true)]
     pub(crate) mega_base: String,
