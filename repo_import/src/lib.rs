@@ -9,32 +9,35 @@ extern crate pretty_env_logger;
 extern crate log;
 extern crate lazy_static;
 
-use crate::consumer::RepoSyncCallback;
-//use crate::git::print_all_tags;
 use crate::metadata_info::extract_info_local;
 use crate::utils::write_into_csv;
-
 use crates_sync::consumer::consume;
+use crates_sync::{consumer::MessageCallback, repo_sync_model};
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use git::hard_reset_to_head;
 use git2::Repository;
 use log::*;
 use model::tugraph_model::*;
+use rdkafka::{message::BorrowedMessage, Message};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::{env, sync::Arc};
+use std::{thread::sleep, time::Duration};
 use tokio::sync::Mutex;
 use version_info::VersionUpdater;
 
 const CLONE_CRATES_DIR: &str = "/mnt/crates/local_crates_file/";
-const TUGRAPH_IMPORT_FILES_PG: &str = "./tugraph_import_files_pg/";
+const TUGRAPH_IMPORT_FILES_PG: &str = "./tugraph_import_files_mq/";
 
 pub async fn repo_main(dont_clone: bool, git_url_base: &str) {
     //driver.import_from_mega(&cli.mega_base).await,
-    let mut import_driver = ImportDriver {
+    let import_driver = ImportDriver {
         dont_clone,
         ..ImportDriver::default()
     };
-    import_driver.import_from_mq(git_url_base).await;
+    let _ = utils::reset_mq().await;
+    ImportDriver::import_from_mq(Arc::new(Mutex::new(import_driver)), git_url_base).await;
 }
 
 #[derive(Debug, Default)]
@@ -69,7 +72,7 @@ struct ImportDriver {
 impl ImportDriver {
     /// Import data from mega
     /// It first clone the repositories locally from mega
-    async fn import_from_mq(&mut self, mega_url_base: &str) {
+    async fn import_from_mq(driver: Arc<Mutex<Self>>, git_url_base: &str) {
         info!("Importing from MQ...");
         let broker = env::var("KAFKA_BROKER").unwrap();
         let topic = env::var("KAFKA_TOPIC").unwrap();
@@ -77,36 +80,25 @@ impl ImportDriver {
         tracing::info!("{},{},{}", broker, topic, group_id);
 
         loop {
-            let new_message_entry = Arc::new(Mutex::new(RepoSyncCallback::default()));
+            let new_message_entry = Arc::new(Mutex::new(RepoSyncCallback {
+                git_url_base: git_url_base.to_owned(),
+                driver: driver.clone(),
+            }));
             consume(&broker, &group_id, &[&topic], new_message_entry.clone()).await;
 
-            let mega_url_suffix = &{
-                let inner_entry = new_message_entry.lock().await.entry.clone();
-                assert!(inner_entry.is_some());
-                inner_entry.unwrap().mega_url
-            };
-
-            let local_repo_path = self
-                .clone_a_repo_by_url(CLONE_CRATES_DIR, mega_url_base, mega_url_suffix)
-                .await
-                .unwrap_or_else(|_| panic!("Failed to clone repo {}", mega_url_suffix));
-
-            self.parse_a_local_repo(local_repo_path).await.unwrap();
-
-            self.write_tugraph_import_files();
             println!("{:?}", *new_message_entry);
         }
     }
 
     async fn parse_a_local_repo(&mut self, repo_path: PathBuf) -> Result<(), String> {
         if repo_path.is_dir() && Path::new(&repo_path).join(".git").is_dir() {
-            if let Ok(repo) = Repository::open(&repo_path) {
+            if let Ok(_repo) = Repository::open(&repo_path) {
                 // INFO: Start to Parse a git repository
                 tracing::trace!("");
                 tracing::trace!("Processing repo: {}", repo_path.display());
 
                 //reset, maybe useless
-                hard_reset_to_head(&repo)
+                hard_reset_to_head(&repo_path)
                     .await
                     .map_err(|x| format!("{:?}", x))?;
 
@@ -128,7 +120,7 @@ impl ImportDriver {
                     };
                 }
 
-                let (uversions, depends_on) = self.parse_all_versions_of_a_repo(&repo).await;
+                let (uversions, depends_on) = self.parse_all_versions_of_a_repo(&repo_path).await;
                 for (has_version, uv, v, has_dep) in uversions {
                     match uv {
                         UVersion::LibraryVersion(l) => {
@@ -227,5 +219,57 @@ impl ImportDriver {
             tugraph_import_files.join("depends_on.csv"),
             self.depends_on.clone(),
         );
+    }
+}
+
+#[derive(Debug)]
+pub struct RepoSyncCallback {
+    git_url_base: String,
+    driver: Arc<Mutex<ImportDriver>>,
+}
+
+impl MessageCallback for RepoSyncCallback {
+    fn on_message<'a>(&'a mut self, m: &'a BorrowedMessage<'a>) -> BoxFuture<'a, ()> {
+        async move {
+            let model = match serde_json::from_slice::<repo_sync_model::Model>(m.payload().unwrap())
+            {
+                Ok(m) => Some(m),
+                Err(e) => {
+                    tracing::warn!("Error while deserializing message payload: {:?}", e);
+                    None
+                }
+            };
+            tracing::info!(
+            "key: '{:?}', payload: '{:?}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
+            m.key(),
+            model,
+            m.topic(),
+            m.partition(),
+            m.offset(),
+            m.timestamp()
+        );
+
+            let mega_url_suffix = &model.unwrap().mega_url;
+
+            let local_repo_path = self
+                .driver
+                .lock()
+                .await
+                .clone_a_repo_by_url(CLONE_CRATES_DIR, &self.git_url_base, mega_url_suffix)
+                .await
+                .unwrap_or_else(|_| panic!("Failed to clone repo {}", mega_url_suffix));
+
+            self.driver
+                .lock()
+                .await
+                .parse_a_local_repo(local_repo_path)
+                .await
+                .unwrap();
+
+            self.driver.lock().await.write_tugraph_import_files();
+
+            //sleep(Duration::from_millis(2000));
+        }
+        .boxed()
     }
 }

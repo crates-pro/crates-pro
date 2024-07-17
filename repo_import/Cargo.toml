@@ -33,3 +33,5 @@ tempfile = "3.10.1"
 semver = "1.0"
 tracing = { workspace = true }
 rdkafka = { workspace = true, features = ["cmake-build"] }
+ssh2 = "0.9.4"
+futures = { workspace = true }

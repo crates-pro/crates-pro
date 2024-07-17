@@ -1,13 +1,14 @@
 use crate::git::get_all_git_tags;
 use crate::utils::{get_program_by_name, name_join_version};
 use crate::ImportDriver;
-use git2::Repository;
+use git2::{Oid, Repository};
 use git2::{TreeWalkMode, TreeWalkResult};
 use model::tugraph_model::{
     ApplicationVersion, CrateType2Idx, DependsOn, HasDepVersion, HasVersion, LibraryVersion,
     UVersion, Version,
 };
 use std::collections::HashMap;
+use std::path::PathBuf;
 use toml::Value;
 
 /// A representation for the info
@@ -25,7 +26,7 @@ impl ImportDriver {
     #[allow(clippy::type_complexity)]
     pub(crate) async fn parse_all_versions_of_a_repo(
         &mut self,
-        repo: &Repository,
+        repo_path: &PathBuf,
     ) -> (
         Vec<(HasVersion, UVersion, Version, HasDepVersion)>,
         Vec<DependsOn>,
@@ -33,12 +34,13 @@ impl ImportDriver {
         let mut versions = vec![];
         let mut depends_on_vec: Vec<DependsOn> = vec![];
 
-        let trees = get_all_git_tags(repo).await;
+        //let repo = Repository::open(&repo_path).unwrap();
+        let trees = get_all_git_tags(repo_path).await;
 
         for tree in trees.iter() {
             // FIXME: deal with different formats
             // parse the version, walk all the packages
-            let all_packages_dependencies = self.parse_a_repo_of_a_version(repo, tree).await;
+            let all_packages_dependencies = self.parse_a_repo_of_a_version(repo_path, *tree).await;
             for dependencies in all_packages_dependencies {
                 let name = dependencies.crate_name.clone();
                 let version = dependencies.version.clone();
@@ -102,19 +104,21 @@ impl ImportDriver {
     /// for a given commit(version), walk all the package
     async fn parse_a_repo_of_a_version<'repo>(
         &self,
-        repo: &'repo Repository,
-        tree: &'repo git2::Tree<'repo>,
+        repo_path: &PathBuf,
+        tree: Oid,
     ) -> Vec<Dependencies> {
         let mut res = Vec::new();
 
-        //println!("{}", tree.len());
+        // Lock the repository and tree for reading
+        let repo = Repository::open(&repo_path).unwrap();
+        let tree = repo.find_tree(tree).expect("Failed to find tree");
+
         // Walk the tree to find Cargo.toml
         tree.walk(TreeWalkMode::PostOrder, |_, entry| {
-            //println!("{:?}", entry.name());
             if entry.name() == Some("Cargo.toml") {
                 // for each Cargo.toml in repo of given commit
                 let obj = entry
-                    .to_object(repo)
+                    .to_object(&repo)
                     .expect("Failed to convert TreeEntry to Object");
                 let blob = obj.as_blob().expect("Failed to interpret object as blob");
                 let content = std::str::from_utf8(blob.content())

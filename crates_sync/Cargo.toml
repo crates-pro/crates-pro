@@ -24,3 +24,4 @@ rdkafka = { workspace = true, features = ["cmake-build"] }
 tokio = { workspace = true }
 dotenvy = { workspace = true }
 chrono = { workspace = true }
+futures = { workspace = true }
