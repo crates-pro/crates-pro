@@ -110,7 +110,7 @@ impl ImportDriver {
         let mut res = Vec::new();
 
         // Lock the repository and tree for reading
-        let repo = Repository::open(&repo_path).unwrap();
+        let repo = Repository::open(repo_path).unwrap();
         let tree = repo.find_tree(tree).expect("Failed to find tree");
 
         // Walk the tree to find Cargo.toml

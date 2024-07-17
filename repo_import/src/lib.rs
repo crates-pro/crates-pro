@@ -23,7 +23,6 @@ use rdkafka::{message::BorrowedMessage, Message};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::{env, sync::Arc};
-use std::{thread::sleep, time::Duration};
 use tokio::sync::Mutex;
 use version_info::VersionUpdater;
 

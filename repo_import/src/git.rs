@@ -58,7 +58,7 @@ async fn clone(path: &PathBuf, url: &str) -> Result<(), git2::Error> {
 /// If it migrate from a different system,
 /// the git record will change, and this is the reset function.
 pub(crate) async fn hard_reset_to_head(repo_path: &PathBuf) -> Result<(), git2::Error> {
-    let repo = Repository::open(&repo_path).unwrap();
+    let repo = Repository::open(repo_path).unwrap();
     let head = match repo.head() {
         Ok(head) => head,
         Err(_) => {
@@ -88,7 +88,7 @@ pub(crate) async fn hard_reset_to_head(repo_path: &PathBuf) -> Result<(), git2::
 pub(crate) async fn get_all_git_tags(repo_path: &PathBuf) -> Vec<Oid> {
     let mut tree_ids = vec![];
 
-    let repo = Repository::open(&repo_path).unwrap();
+    let repo = Repository::open(repo_path).unwrap();
 
     // Read the repository to get all tag names
     let tags: Vec<String> = {
