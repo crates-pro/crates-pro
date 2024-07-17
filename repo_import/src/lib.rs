@@ -26,7 +26,7 @@ use tokio::sync::Mutex;
 use version_info::VersionUpdater;
 
 const CLONE_CRATES_DIR: &str = "/mnt/crates/local_crates_file/";
-const TUGRAPH_IMPORT_FILES: &str = "./tugraph_import_files/";
+const TUGRAPH_IMPORT_FILES_PG: &str = "./tugraph_import_files_pg/";
 
 pub async fn repo_main(dont_clone: bool, git_url_base: &str) {
     //driver.import_from_mega(&cli.mega_base).await,
@@ -161,7 +161,7 @@ impl ImportDriver {
 
     /// write data base into tugraph import files
     fn write_tugraph_import_files(&self) {
-        let tugraph_import_files = PathBuf::from(TUGRAPH_IMPORT_FILES);
+        let tugraph_import_files = PathBuf::from(TUGRAPH_IMPORT_FILES_PG);
 
         fs::create_dir_all(tugraph_import_files.clone()).unwrap_or_else(|e| error!("Error: {}", e));
 

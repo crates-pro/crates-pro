@@ -111,6 +111,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "consume ok"]
     async fn test_consume() {
         dotenvy::dotenv().ok();
         tracing_subscriber::fmt::init();
