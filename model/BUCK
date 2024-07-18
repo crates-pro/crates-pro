@@ -1,0 +1,16 @@
+rust_library(
+    name = "model",
+    srcs = [
+        "src/general_model.rs",
+        "src/lib.rs",
+        "src/tugraph_model.rs",
+    ],
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    deps = [
+        "//third-party:chrono",
+        "//third-party:serde",
+        "//third-party:serde_json",
+    ],
+    visibility = ["PUBLIC"],
+)
