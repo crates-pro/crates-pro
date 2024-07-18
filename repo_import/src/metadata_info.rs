@@ -9,7 +9,9 @@ use uuid::Uuid;
 use walkdir::WalkDir;
 
 // Given a project path, parse the metadata
-pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, HasType, UProgram)> {
+pub(crate) async fn extract_info_local(
+    local_repo_path: PathBuf,
+) -> Vec<(Program, HasType, UProgram)> {
     trace!("Parse repo {:?}", local_repo_path);
     let mut res = vec![];
 
@@ -23,16 +25,19 @@ pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, HasT
         // if entry is Cargo.toml, ...
         if entry_path.file_name().and_then(|n| n.to_str()) == Some("Cargo.toml") {
             println!("entry_path: {:?}", entry_path);
-            match parse_crate_name(entry_path) {
+            let crate_name_result = parse_crate_name(entry_path).await;
+            match crate_name_result {
                 Ok(name) => {
                     println!("package name: {}", name);
-                    let islib = match is_crate_lib(
+                    let islib_result = is_crate_lib(
                         entry_path
                             .to_str()
                             .unwrap()
                             .strip_suffix("Cargo.toml")
                             .unwrap(),
-                    ) {
+                    )
+                    .await;
+                    let islib = match islib_result {
                         Ok(islib) => islib,
                         Err(e) => {
                             error!("parse error: {}", e);
@@ -44,6 +49,7 @@ pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, HasT
                     let id = Uuid::new_v4().to_string();
                     let program =
                         from_cargo_toml(local_repo_path.clone(), entry_path.to_path_buf(), &id)
+                            .await
                             .unwrap();
 
                     let uprogram = if islib {
@@ -65,7 +71,7 @@ pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, HasT
 
                     res.push((program, has_type, uprogram));
                 }
-                Err(e) => error!("Error parsing name {}: {}", entry_path.display(), e),
+                Err(e) => warn!("Error parsing name {}: {}", entry_path.display(), e),
             }
         }
     }
@@ -73,40 +79,22 @@ pub(crate) fn extract_info_local(local_repo_path: PathBuf) -> Vec<(Program, HasT
     res
 }
 
-fn parse_crate_name(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
-    let content = fs::read_to_string(path)?;
-    let value = content.parse::<Value>()?;
+async fn parse_crate_name(path: &Path) -> Result<String, String> {
+    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let value = content.parse::<Value>().map_err(|e| e.to_string())?;
 
     // a package name, no matter lib or bin
     let package_name = value
         .get("package")
         .and_then(|p| p.get("name"))
         .and_then(|n| n.as_str())
-        .ok_or("Failed to find package name")?
+        .ok_or("Failed to find package name, it is a workspace")?
         .to_owned();
 
     Ok(package_name)
 }
 
-// fn is_crate_lib(crate_path: &str) -> Result<bool, String> {
-//     let metadata = MetadataCommand::new()
-//         .manifest_path(PathBuf::from(crate_path).join("Cargo.toml"))
-//         .exec()
-//         .map_err(|e| format!("{:#?}", e))?;
-
-//     let package = metadata.root_package().unwrap();
-//     for target in &package.targets {
-//         let target_types: Vec<_> = target.kind.to_vec();
-
-//         if target_types.contains(&"bin".to_string()) {
-//             return Ok(false);
-//         }
-//     }
-
-//     Ok(true)
-// }
-
-fn is_crate_lib(crate_path: &str) -> Result<bool, String> {
+async fn is_crate_lib(crate_path: &str) -> Result<bool, String> {
     let cargo_toml_path = Path::new(crate_path).join("Cargo.toml");
     let cargo_toml_content = fs::read_to_string(cargo_toml_path)
         .map_err(|e| format!("Failed to read Cargo.toml: {}", e))?;
@@ -143,7 +131,7 @@ fn is_crate_lib(crate_path: &str) -> Result<bool, String> {
     Ok(false)
 }
 
-pub fn from_cargo_toml(
+async fn from_cargo_toml(
     local_repo_path: PathBuf,
     cargo_toml_path: PathBuf,
     id: &str,

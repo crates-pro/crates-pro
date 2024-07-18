@@ -1,12 +1,9 @@
-use crate::git::get_all_git_tags;
-use crate::utils::{get_program_by_name, name_join_version};
+use crate::git::get_all_git_tags_with_time_sorted;
+use crate::utils::name_join_version;
 use crate::ImportDriver;
 use git2::{Oid, Repository};
 use git2::{TreeWalkMode, TreeWalkResult};
-use model::tugraph_model::{
-    ApplicationVersion, CrateType2Idx, DependsOn, HasDepVersion, HasVersion, LibraryVersion,
-    UVersion, Version,
-};
+use model::tugraph_model::DependsOn;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use toml::Value;
@@ -27,78 +24,30 @@ impl ImportDriver {
     pub(crate) async fn parse_all_versions_of_a_repo(
         &mut self,
         repo_path: &PathBuf,
-    ) -> (
-        Vec<(HasVersion, UVersion, Version, HasDepVersion)>,
-        Vec<DependsOn>,
-    ) {
-        let mut versions = vec![];
-        let mut depends_on_vec: Vec<DependsOn> = vec![];
+    ) -> Vec<Dependencies> {
+        let mut crate_version_map: HashMap<(String, String), Dependencies> = HashMap::default();
 
-        //let repo = Repository::open(&repo_path).unwrap();
-        let trees = get_all_git_tags(repo_path).await;
+        let trees: Vec<Oid> = get_all_git_tags_with_time_sorted(repo_path)
+            .await
+            .into_iter()
+            .map(|(_, x, _)| x)
+            .collect();
 
+        // parse each version of a repository with an order of time, walk all the packages of it
         for tree in trees.iter() {
-            // FIXME: deal with different formats
-            // parse the version, walk all the packages
             let all_packages_dependencies = self.parse_a_repo_of_a_version(repo_path, *tree).await;
+
+            // NOTE: At certain time, a version in Cargo.toml will exists in several tags,
+            //  while a tag corresponds to a unique Cargo.toml version.
+            //  So, I use a map to select the lastest tag which contains the version.
             for dependencies in all_packages_dependencies {
                 let name = dependencies.crate_name.clone();
                 let version = dependencies.version.clone();
-                let (program, uprogram) = match get_program_by_name(&name) {
-                    Some((program, uprogram)) => (program, uprogram),
-                    None => {
-                        // continue, dont parse
-                        continue;
-                    }
-                };
-
-                self.version_updater.update_depends_on(&dependencies).await;
-
-                let has_version = HasVersion {
-                    SRC_ID: program.id.clone(),
-                    DST_ID: name_join_version(&name, &version), //FIXME: version id undecided
-                };
-
-                let dep_version = Version {
-                    name_and_version: name_join_version(&name, &version),
-                };
-
-                #[allow(non_snake_case)]
-                let SRC_ID = name_join_version(&name, &version);
-                #[allow(non_snake_case)]
-                let DST_ID = name_join_version(&name, &version);
-                let has_dep_version = HasDepVersion { SRC_ID, DST_ID };
-
-                let islib = uprogram.index() == 0;
-                if islib {
-                    let version = LibraryVersion::new(
-                        program.id.clone(),
-                        &name.clone(),
-                        &version.clone(),
-                        "???",
-                    );
-                    versions.push((
-                        has_version,
-                        UVersion::LibraryVersion(version),
-                        dep_version,
-                        has_dep_version,
-                    ));
-                } else {
-                    let version =
-                        ApplicationVersion::new(program.id.clone(), name.clone(), version.clone());
-                    versions.push((
-                        has_version,
-                        UVersion::ApplicationVersion(version),
-                        dep_version,
-                        has_dep_version,
-                    ));
-                }
-
-                depends_on_vec = self.version_updater.to_depends_on_edges().await;
+                crate_version_map.insert((name.clone(), version.clone()), dependencies);
             }
         }
 
-        (versions, depends_on_vec)
+        crate_version_map.into_values().collect()
     }
 
     /// for a given commit(version), walk all the package
@@ -130,6 +79,7 @@ impl ImportDriver {
 
                 res.push(dependencies);
             }
+
             TreeWalkResult::Ok
         })
         .unwrap();
@@ -144,6 +94,11 @@ impl ImportDriver {
                     if let Some(crate_name) = package.get("name") {
                         let crate_name = crate_name.as_str()?.to_string();
                         let version = package.get("version")?.as_str()?.to_string();
+
+                        // e.g. 0.1.53a2 is invalid version number.
+                        if semver::Version::parse(&version).is_err() {
+                            return None;
+                        }
 
                         // dedup
                         if self
@@ -173,9 +128,6 @@ impl ImportDriver {
                             }
                         }
 
-                        if crate_name.as_str() == "ansi_term" {
-                            println!("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
-                        }
                         let dependencies = Dependencies {
                             crate_name,
                             version,

@@ -48,7 +48,7 @@ async fn clone(path: &PathBuf, url: &str) -> Result<(), git2::Error> {
         Repository::clone(url, path).unwrap();
         tracing::debug!("Finish cloning repo into {:?}", path);
     } else {
-        warn!("Directory {:?} is not empty, skipping Clone", path);
+        tracing::debug!("Directory {:?} is not empty, skipping Clone", path);
     }
     Ok(())
 }
@@ -81,24 +81,29 @@ pub(crate) async fn hard_reset_to_head(repo_path: &PathBuf) -> Result<(), git2::
     // Correctly convert tree to Object before checking out the
     let tree_obj = tree.into_object();
     repo.checkout_tree(&tree_obj as &git2::Object, Some(&mut checkout_opts))?;
+    tracing::info!(
+        "Successfully checkout Repo {:?} into ref/heads/master",
+        repo_path
+    );
 
     Ok(())
 }
 
-pub(crate) async fn get_all_git_tags(repo_path: &PathBuf) -> Vec<Oid> {
-    let mut tree_ids = vec![];
+pub(crate) async fn get_all_git_tags_with_time_sorted(
+    repo_path: &PathBuf,
+) -> Vec<(String, Oid, i64)> {
+    let mut tags_with_dates = Vec::new();
 
     let repo = Repository::open(repo_path).unwrap();
 
     // Read the repository to get all tag names
-    let tags: Vec<String> = {
-        repo.tag_names(None)
-            .expect("Could not retrieve tags")
-            .iter()
-            .flatten()
-            .map(|tag_name| tag_name.to_string())
-            .collect()
-    };
+    let tags: Vec<String> = repo
+        .tag_names(None)
+        .expect("Could not retrieve tags")
+        .iter()
+        .flatten()
+        .map(|tag_name| tag_name.to_string())
+        .collect();
 
     for tag_name in tags {
         let obj = repo
@@ -117,19 +122,18 @@ pub(crate) async fn get_all_git_tags(repo_path: &PathBuf) -> Vec<Oid> {
             panic!("Error!");
         };
 
-        let tree = commit.tree().expect("Couldn't get the tree");
+        let commit_time = commit.time().seconds();
 
-        tree_ids.push(tree.id());
+        let tree_id = commit.tree().expect("Couldn't get the tree").id();
+
+        tags_with_dates.push((tag_name, tree_id, commit_time));
     }
-    tree_ids
+    tags_with_dates.sort_by(|a, b| a.2.cmp(&b.2));
+    tags_with_dates
 }
 
 pub(crate) async fn _print_all_tags(repo: &Repository, v: bool) {
     let tags = repo.tag_names(None).unwrap();
-
-    // for tag in tags.iter() {
-    //     println!("tags: {}", tag.unwrap());
-    // }
 
     let mut s = "".to_string();
     for tag_name in tags.iter().flatten() {
@@ -141,7 +145,7 @@ pub(crate) async fn _print_all_tags(repo: &Repository, v: bool) {
             if let Ok(tag_object) = tag_ref.peel_to_tag() {
                 // Annotated tag
                 let target_commit = tag_object.target().unwrap().peel_to_commit().unwrap();
-                debug!(
+                tracing::debug!(
                     "Annotated Tag: {}, Commit: {}, Message: {}",
                     tag_name,
                     target_commit.id(),
@@ -152,7 +156,7 @@ pub(crate) async fn _print_all_tags(repo: &Repository, v: bool) {
                 let commit = commit_object
                     .into_commit()
                     .expect("Failed to peel into commit");
-                debug!("Lightweight Tag: {}, Commit: {}", tag_name, commit.id());
+                tracing::debug!("Lightweight Tag: {}, Commit: {}", tag_name, commit.id());
             }
         } else {
             s += &format!("{}, ", tag_name);

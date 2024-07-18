@@ -1,4 +1,3 @@
-mod consumer;
 mod git;
 mod metadata_info;
 mod utils;
@@ -10,7 +9,7 @@ extern crate log;
 extern crate lazy_static;
 
 use crate::metadata_info::extract_info_local;
-use crate::utils::write_into_csv;
+use crate::utils::{get_program_by_name, name_join_version, write_into_csv};
 use crates_sync::consumer::consume;
 use crates_sync::{consumer::MessageCallback, repo_sync_model};
 use futures::future::BoxFuture;
@@ -91,58 +90,100 @@ impl ImportDriver {
 
     async fn parse_a_local_repo(&mut self, repo_path: PathBuf) -> Result<(), String> {
         if repo_path.is_dir() && Path::new(&repo_path).join(".git").is_dir() {
-            if let Ok(_repo) = Repository::open(&repo_path) {
-                // INFO: Start to Parse a git repository
-                tracing::trace!("");
-                tracing::trace!("Processing repo: {}", repo_path.display());
-
-                //reset, maybe useless
-                hard_reset_to_head(&repo_path)
-                    .await
-                    .map_err(|x| format!("{:?}", x))?;
-
-                let pms = extract_info_local(repo_path.clone());
-                //println!("{:?}", pms);
-
-                for (program, has_type, uprogram) in pms {
-                    self.programs.push(program.clone());
-
-                    match uprogram {
-                        UProgram::Library(l) => {
-                            self.libraries.push(l);
-                            self.has_lib_type.push(has_type.clone());
-                        }
-                        UProgram::Application(a) => {
-                            self.applications.push(a);
-                            self.has_app_type.push(has_type.clone());
-                        }
-                    };
+            match Repository::open(&repo_path) {
+                Err(e) => {
+                    tracing::error!("Not a git repo: {:?}, Err: {}", repo_path, e);
                 }
+                Ok(_) => {
+                    // It'a a valid git repository. Start to parse it.
+                    tracing::debug!("Processing repo: {}", repo_path.display());
 
-                let (uversions, depends_on) = self.parse_all_versions_of_a_repo(&repo_path).await;
-                for (has_version, uv, v, has_dep) in uversions {
-                    match uv {
-                        UVersion::LibraryVersion(l) => {
-                            self.library_versions.push(l.clone());
-                            self.lib_has_version.push(has_version);
-                            self.lib_has_dep_version.push(has_dep);
-                        }
-                        UVersion::ApplicationVersion(a) => {
-                            self.application_versions.push(a.clone());
-                            self.app_has_version.push(has_version);
-                            self.app_has_dep_version.push(has_dep);
-                        }
+                    //reset, maybe useless
+                    hard_reset_to_head(&repo_path)
+                        .await
+                        .map_err(|x| format!("{:?}", x))?;
+
+                    let pms = extract_info_local(repo_path.clone()).await;
+
+                    for (program, has_type, uprogram) in pms {
+                        self.programs.push(program.clone());
+
+                        match uprogram {
+                            UProgram::Library(l) => {
+                                self.libraries.push(l);
+                                self.has_lib_type.push(has_type.clone());
+                            }
+                            UProgram::Application(a) => {
+                                self.applications.push(a);
+                                self.has_app_type.push(has_type.clone());
+                            }
+                        };
                     }
 
-                    self.versions.push(v);
-                }
-                for dep_on in depends_on {
-                    self.depends_on.push(dep_on);
-                }
+                    // get all versions and dependencies
+                    let all_dependencies = self.parse_all_versions_of_a_repo(&repo_path).await;
 
-                tracing::trace!("Finish processing repo: {}", repo_path.display());
-            } else {
-                tracing::error!("Not a git repo! {:?}", repo_path);
+                    for dependencies in all_dependencies {
+                        let name = dependencies.crate_name.clone();
+                        let version = dependencies.version.clone();
+
+                        // check whether the crate version exists.
+                        let (program, uprogram) = match get_program_by_name(&name) {
+                            Some((program, uprogram)) => (program, uprogram),
+                            None => {
+                                // continue, dont parse
+                                continue;
+                            }
+                        };
+
+                        self.version_updater.update_depends_on(&dependencies).await;
+
+                        let has_version = HasVersion {
+                            SRC_ID: program.id.clone(),
+                            DST_ID: name_join_version(&name, &version), //FIXME: version id undecided
+                        };
+
+                        let dep_version = Version {
+                            name_and_version: name_join_version(&name, &version),
+                        };
+
+                        #[allow(non_snake_case)]
+                        let SRC_ID = name_join_version(&name, &version);
+                        #[allow(non_snake_case)]
+                        let DST_ID = name_join_version(&name, &version);
+                        let has_dep_version = HasDepVersion { SRC_ID, DST_ID };
+
+                        let islib = uprogram.index() == 0;
+                        if islib {
+                            let version = LibraryVersion::new(
+                                program.id.clone(),
+                                &name.clone(),
+                                &version.clone(),
+                                "???",
+                            );
+
+                            self.library_versions.push(version);
+                            self.lib_has_version.push(has_version);
+                            self.lib_has_dep_version.push(has_dep_version);
+                        } else {
+                            let version = ApplicationVersion::new(
+                                program.id.clone(),
+                                name.clone(),
+                                version.clone(),
+                            );
+
+                            self.application_versions.push(version.clone());
+                            self.app_has_version.push(has_version);
+                            self.app_has_dep_version.push(has_dep_version);
+                        }
+                        self.versions.push(dep_version);
+
+                        self.depends_on
+                            .append(&mut self.version_updater.to_depends_on_edges().await);
+                    }
+
+                    tracing::trace!("Finish processing repo: {}", repo_path.display());
+                }
             }
         } else {
             tracing::error!("{} is not a directory", repo_path.display());
