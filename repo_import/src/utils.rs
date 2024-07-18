@@ -169,27 +169,18 @@ pub async fn reset_mq() -> Result<(), Box<dyn std::error::Error>> {
     let hostname = "172.17.0.1";
     let port = 22;
 
-    tracing::trace!("xxxxxxxxx");
-
-    // 连接到主机
     let tcp = TcpStream::connect((hostname, port))?;
-    tracing::trace!("xxxxxxxxx");
     let mut sess = Session::new()?;
 
     sess.set_tcp_stream(tcp);
     sess.handshake()?;
 
-    tracing::trace!("xxxxxxxxx");
-
-    // 使用用户名和密码进行身份验证
     sess.userauth_password(username, password)?;
 
-    // 检查身份验证是否成功
     if !sess.authenticated() {
         panic!("Authentication failed!");
     }
 
-    // 多行命令字符串
     let command = r#"
         docker exec pensive_villani /opt/kafka/bin/kafka-consumer-groups.sh \
         --bootstrap-server localhost:9092 \
@@ -200,16 +191,13 @@ pub async fn reset_mq() -> Result<(), Box<dyn std::error::Error>> {
         --topic REPO_SYNC_STATUS.dev
     "#;
 
-    // 运行命令
     let mut channel = sess.channel_session()?;
     channel.exec(command)?;
 
-    // 读取命令输出
     let mut s = String::new();
     channel.read_to_string(&mut s)?;
     tracing::info!("Command output: {}", s);
 
-    // 关闭通道
     channel.send_eof()?;
     channel.wait_close()?;
     tracing::info!(
