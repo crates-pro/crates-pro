@@ -11,8 +11,9 @@ use walkdir::WalkDir;
 // Given a project path, parse the metadata
 pub(crate) async fn extract_info_local(
     local_repo_path: PathBuf,
+    mega_url: String,
 ) -> Vec<(Program, HasType, UProgram)> {
-    trace!("Parse repo {:?}", local_repo_path);
+    tracing::info!("Start to parse repo metadata {:?}", local_repo_path);
     let mut res = vec![];
 
     // walk the directories of the project
@@ -24,11 +25,11 @@ pub(crate) async fn extract_info_local(
 
         // if entry is Cargo.toml, ...
         if entry_path.file_name().and_then(|n| n.to_str()) == Some("Cargo.toml") {
-            println!("entry_path: {:?}", entry_path);
+            tracing::trace!("entry_path: {:?}", entry_path);
             let crate_name_result = parse_crate_name(entry_path).await;
             match crate_name_result {
                 Ok(name) => {
-                    println!("package name: {}", name);
+                    tracing::trace!("package name: {}", name);
                     let islib_result = is_crate_lib(
                         entry_path
                             .to_str()
@@ -40,17 +41,18 @@ pub(crate) async fn extract_info_local(
                     let islib = match islib_result {
                         Ok(islib) => islib,
                         Err(e) => {
-                            error!("parse error: {}", e);
+                            tracing::error!("parse error: {}", e);
                             continue;
                         }
                     };
 
-                    debug!("Found Crate: {}, islib: {}", name, islib);
+                    tracing::debug!("Found Crate: {}, islib: {}", name, islib);
                     let id = Uuid::new_v4().to_string();
-                    let program =
+                    let mut program =
                         from_cargo_toml(local_repo_path.clone(), entry_path.to_path_buf(), &id)
                             .await
                             .unwrap();
+                    program.mega_url = Some(mega_url.clone());
 
                     let uprogram = if islib {
                         UProgram::Library(Library::new(&id.to_string(), &name, -1, None))
@@ -63,9 +65,11 @@ pub(crate) async fn extract_info_local(
                         DST_ID: program.id.clone(),
                     };
 
-                    debug!(
+                    tracing::trace!(
                         "program: {:?}, has_type: {:?}, uprogram: {:?}",
-                        program, has_type, uprogram
+                        program,
+                        has_type,
+                        uprogram
                     );
                     insert_program_by_name(name.clone(), (program.clone(), uprogram.clone()));
 
@@ -75,6 +79,8 @@ pub(crate) async fn extract_info_local(
             }
         }
     }
+
+    tracing::info!("Finish parsing repo metadata {:?}", local_repo_path);
 
     res
 }

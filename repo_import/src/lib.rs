@@ -19,6 +19,7 @@ use git2::Repository;
 use log::*;
 use model::tugraph_model::*;
 use rdkafka::{message::BorrowedMessage, Message};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::{env, sync::Arc};
@@ -64,6 +65,11 @@ struct ImportDriver {
 
     depends_on: Vec<DependsOn>,
 
+    /// help is judge whether it is a new program
+    program_memory: HashSet<model::general_model::Program>,
+    /// help us judge whether it is a new version
+    version_memory: HashSet<model::general_model::Version>,
+
     version_updater: VersionUpdater,
 }
 
@@ -88,7 +94,11 @@ impl ImportDriver {
         }
     }
 
-    async fn parse_a_local_repo(&mut self, repo_path: PathBuf) -> Result<(), String> {
+    async fn parse_a_local_repo(
+        &mut self,
+        repo_path: PathBuf,
+        mega_url: String,
+    ) -> Result<(), String> {
         if repo_path.is_dir() && Path::new(&repo_path).join(".git").is_dir() {
             match Repository::open(&repo_path) {
                 Err(e) => {
@@ -103,9 +113,13 @@ impl ImportDriver {
                         .await
                         .map_err(|x| format!("{:?}", x))?;
 
-                    let pms = extract_info_local(repo_path.clone()).await;
+                    let all_programs = self
+                        .collect_and_filter_programs(&repo_path, &mega_url)
+                        .await;
 
-                    for (program, has_type, uprogram) in pms {
+                    let all_dependencies = self.collect_and_filter_versions(&repo_path).await;
+
+                    for (program, has_type, uprogram) in all_programs {
                         self.programs.push(program.clone());
 
                         match uprogram {
@@ -118,10 +132,14 @@ impl ImportDriver {
                                 self.has_app_type.push(has_type.clone());
                             }
                         };
-                    }
 
-                    // get all versions and dependencies
-                    let all_dependencies = self.parse_all_versions_of_a_repo(&repo_path).await;
+                        // NOTE: memorize program
+                        self.program_memory
+                            .insert(model::general_model::Program::new(
+                                &program.name,
+                                &program.mega_url.clone().unwrap(),
+                            ));
+                    }
 
                     for dependencies in all_dependencies {
                         let name = dependencies.crate_name.clone();
@@ -180,6 +198,13 @@ impl ImportDriver {
 
                         self.depends_on
                             .append(&mut self.version_updater.to_depends_on_edges().await);
+
+                        // NOTE: memorize version, insert the new version into memory
+                        self.version_memory
+                            .insert(model::general_model::Version::new(
+                                &dependencies.crate_name,
+                                &dependencies.version,
+                            ));
                     }
 
                     tracing::trace!("Finish processing repo: {}", repo_path.display());
@@ -189,6 +214,48 @@ impl ImportDriver {
             tracing::error!("{} is not a directory", repo_path.display());
         }
         Ok(())
+    }
+
+    async fn collect_and_filter_programs(
+        &self,
+        repo_path: &Path,
+        mega_url: &str,
+    ) -> Vec<(Program, HasType, UProgram)> {
+        let all_programs: Vec<(Program, HasType, UProgram)> =
+            extract_info_local(repo_path.to_path_buf(), mega_url.to_owned())
+                .await
+                .into_iter()
+                .filter(|(p, _, _)| {
+                    !self
+                        .program_memory
+                        .contains(&model::general_model::Program::new(
+                            &p.name,
+                            &p.mega_url.clone().unwrap(),
+                        ))
+                })
+                .collect();
+        all_programs
+    }
+    async fn collect_and_filter_versions(
+        &self,
+        repo_path: &PathBuf,
+    ) -> Vec<version_info::Dependencies> {
+        // get all versions and dependencies
+        // filter out new versions!!!
+        let all_dependencies: Vec<version_info::Dependencies> = self
+            .parse_all_versions_of_a_repo(repo_path)
+            .await
+            .into_iter()
+            .filter(|x| {
+                !self
+                    .version_memory
+                    .contains(&model::general_model::Version::new(
+                        &x.crate_name,
+                        &x.version,
+                    ))
+            })
+            .collect();
+        all_dependencies
     }
 
     /// write data base into tugraph import files
@@ -289,20 +356,20 @@ impl MessageCallback for RepoSyncCallback {
             m.timestamp()
         );
 
-            let mega_url_suffix = &model.unwrap().mega_url;
+            let mega_url_suffix = model.unwrap().mega_url;
 
             let local_repo_path = self
                 .driver
                 .lock()
                 .await
-                .clone_a_repo_by_url(CLONE_CRATES_DIR, &self.git_url_base, mega_url_suffix)
+                .clone_a_repo_by_url(CLONE_CRATES_DIR, &self.git_url_base, &mega_url_suffix)
                 .await
                 .unwrap_or_else(|_| panic!("Failed to clone repo {}", mega_url_suffix));
 
             self.driver
                 .lock()
                 .await
-                .parse_a_local_repo(local_repo_path)
+                .parse_a_local_repo(local_repo_path, mega_url_suffix)
                 .await
                 .unwrap();
 
