@@ -296,8 +296,15 @@ lt_group --reset-offsets --to-offset 0 --execute --topic REPO_SYNC_STATUS.dev
 遍历tag，找到Cargo.toml里的版本
 1. version可能存在错误，比如0.15.2a3，并不符合semver的格式
 2. 多个tag可能对应一个Cargo.toml指定的version，所以要进行去重
+3. a依赖的b版本可能升级，所以做了一个reverse_dependency_map，每次加入新的version，都检查自己会不会替代其他。
 
-
+**解析依赖**
+1. 先给自己找dependencies
+    - 把所有dependencies关系反向插入reverse_map
+    - 调用search找到匹配的dependencies
+2. 再更新depend on这个新结点的dependent，有可能之前有依赖，就更新；没有依赖就添加
+    - 其间要检查一下，如果有依赖其他版本，就删掉
+    - 不管有没有依赖其他版本，要把新的边添加进去
 
 ### Reference
 [1] https://tugraph-db.readthedocs.io/zh-cn/v4.0.0/5.developer-manual/1.installation/4.local-package-deployment.html

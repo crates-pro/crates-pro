@@ -14,3 +14,18 @@ impl Version {
         }
     }
 }
+
+#[derive(Debug, Deserialize, Serialize, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct Program {
+    pub name: String,
+    pub mega_url: String,
+}
+
+impl Program {
+    pub fn new(name: &str, mega_url: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            mega_url: mega_url.to_string(),
+        }
+    }
+}

@@ -22,7 +22,7 @@ impl ImportDriver {
     /// a git repo contains different crates
     #[allow(clippy::type_complexity)]
     pub(crate) async fn parse_all_versions_of_a_repo(
-        &mut self,
+        &self,
         repo_path: &PathBuf,
     ) -> Vec<Dependencies> {
         let mut crate_version_map: HashMap<(String, String), Dependencies> = HashMap::default();
@@ -219,7 +219,7 @@ impl VersionUpdater {
         res
     }
 
-    pub async fn ensure_dependents(&mut self, cur_release: &model::general_model::Version) {
+    async fn ensure_dependents(&mut self, cur_release: &model::general_model::Version) {
         let sem_ver = semver::Version::parse(&cur_release.version)
             .unwrap_or_else(|_| panic!("failed to parse version {}", &cur_release.version));
         let wrapped_reverse_map = self.reverse_depends_on_map.get(&cur_release.name);
