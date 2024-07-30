@@ -197,31 +197,21 @@ erDiagram
 
 #### Deploy Tugraph
 
+**note: in our test server, tugraph has been set up.**
+
 1. install tugraph [1]
     - download package: `wget https://github.com/TuGraph-family/tugraph-db/releases/download/xxxxxx.deb`
     - install it: `sudo dpkg -i tugraph-x.y.z.deb`
 2. checkout root user: `sudo su`
-3. create configuration file `lgraph_daemon.json`:
-    ```
-      {
-      "directory": "/var/lib/lgraph/data",
-      "host": "0.0.0.0",
-      "port": 7070,
-      "enable_rpc": false,
-      "rpc_port": 9090,
-      "verbose": 1,
-      "log_dir": "/var/log/lgraph_log",
-      "ssl_auth": false,
-      "server_key": "/usr/local/etc/lgraph/server-key.pem",
-      "server_cert": "/usr/local/etc/lgraph/server-cert.pem",
-      "bolt_port": 7687
-    }
-    ```
-4. start the tugraph server: `lgraph_server -d restart --directory ./lgraph_db`
 
+4. start the tugraph server: `lgraph_server -d start --directory ./lgraph_db`
+5. check by typing `htop` and search for `lgraph_server`, and you will find 
+![htop](image.png)
 
 
 #### Import Data
+
+**note: in current version, crates-pro can import data automaticly, we dont need import manually.**
 
 In real-machine, type: 
 
@@ -229,7 +219,7 @@ In real-machine, type:
 lgraph_import -c import.conf --dir ./lgraph_db --graph cratespro
 ```
 
-If `cratespro` exists, it wil exit. To force to cover the graph, use `--overwrite true`.
+If the graph `cratespro` exists, it will exit. To force to cover the graph, use `--overwrite true`.
 
 ```bash
 rust@rust-PowerEdge-R750xs:~$ lgraph_import -c /home/rust/crates-pro/import.config --dir ./lgraph_db --graph cratespro --overwrite true
@@ -286,25 +276,26 @@ lt_group --reset-offsets --to-offset 0 --execute --topic REPO_SYNC_STATUS.dev
 ```
 #### export 
 
-` export HOST_PAAWORD=xxxxx`
+` export HOST_PASSWORD=xxxxx`
 
 
 ### note(chinese)
 
 
 #### Version Parsing
-遍历tag，找到Cargo.toml里的版本
-1. version可能存在错误，比如0.15.2a3，并不符合semver的格式
-2. 多个tag可能对应一个Cargo.toml指定的version，所以要进行去重
-3. a依赖的b版本可能升级，所以做了一个reverse_dependency_map，每次加入新的version，都检查自己会不会替代其他。
+Iterate through the tags to find the version in Cargo.toml
+1. there may be errors in the version, e.g. 0.15.2a3, which doesn't match the semver format.
+2. Multiple tags may correspond to a single version specified in Cargo.toml, so de-duplication is needed.
+3. version b of a dependency may be upgraded, so a reverse_dependency_map is made, and each time a new version is added, it checks that it will not replace the other.
 
-**解析依赖**
-1. 先给自己找dependencies
-    - 把所有dependencies关系反向插入reverse_map
-    - 调用search找到匹配的dependencies
-2. 再更新depend on这个新结点的dependent，有可能之前有依赖，就更新；没有依赖就添加
-    - 其间要检查一下，如果有依赖其他版本，就删掉
-    - 不管有没有依赖其他版本，要把新的边添加进去
+**Reversing dependencies**
+1. first find dependencies for yourself
+    - Insert all the dependencies into reverse_map.
+    - Call search to find matching dependencies. 2.
+2. then update the dependencies on this new node, there may be previous dependencies, then update; no dependencies on the addition of the
+    - If there is a dependency on another version, remove it.
+    - If there is a dependency on another version, remove it.
+
 
 ### Reference
 [1] https://tugraph-db.readthedocs.io/zh-cn/v4.0.0/5.developer-manual/1.installation/4.local-package-deployment.html
