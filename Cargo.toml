@@ -44,7 +44,7 @@ structopt = { workspace = true }
 [workspace.dependencies]
 serde = "1.0.197"
 chrono = "0.4.37"
-sea-orm = "0.12.15"
+sea-orm = "1.0.0"
 axum = "0.7"
 base64 = "0.22"
 hyper = "1.2"
