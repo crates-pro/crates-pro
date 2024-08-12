@@ -1,6 +1,6 @@
 use crate::git::get_all_git_tags_with_time_sorted;
 use crate::utils::name_join_version;
-use crate::ImportDriver;
+use crate::ImportContext;
 use git2::{Oid, Repository};
 use git2::{TreeWalkMode, TreeWalkResult};
 use model::tugraph_model::DependsOn;
@@ -18,7 +18,7 @@ pub(crate) struct Dependencies {
     pub(crate) dependencies: Vec<(String, String)>,
 }
 
-impl ImportDriver {
+impl ImportContext {
     /// a git repo contains different crates
     #[allow(clippy::type_complexity)]
     pub(crate) async fn parse_all_versions_of_a_repo(

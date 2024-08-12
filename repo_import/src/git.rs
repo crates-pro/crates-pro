@@ -2,9 +2,9 @@ use git2::{build::CheckoutBuilder, ObjectType, Oid, Repository};
 use std::path::PathBuf;
 use url::Url;
 
-use crate::{utils::extract_namespace, utils::insert_namespace_by_repo_path, ImportDriver};
+use crate::{utils::extract_namespace, utils::insert_namespace_by_repo_path, ImportContext};
 
-impl ImportDriver {
+impl ImportContext {
     /// clone repo locally
     /// 1. Get mega url from postgres
     /// 2. Clone git repositories from mega, reserving the namespace as path where they are cloned

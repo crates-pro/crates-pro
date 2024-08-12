@@ -5,8 +5,8 @@ pub struct CratesProCli {
     #[structopt(subcommand)]
     pub(crate) _command: Option<Command>,
 
-    #[structopt(short, long, required = true)]
-    pub(crate) mega_base: String,
+    #[structopt(short, long)]
+    pub(crate) _mega_base: Option<String>,
 
     #[structopt(short, long)]
     pub(crate) dont_clone: bool,
