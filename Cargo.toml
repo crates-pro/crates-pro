@@ -17,10 +17,6 @@ name = "senseleak_controller"
 path = "src/bin/senseleak_controller.rs"
 
 
-[lib]
-name = "crates_pro"
-path = "src/lib.rs"
-
 [workspace]
 members = [
   "repo_import",       # extract repo and import data into tugraph

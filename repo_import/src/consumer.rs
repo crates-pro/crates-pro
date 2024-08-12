@@ -63,7 +63,7 @@ impl KafkaConsumer {
                     }
                 }
                 self.consumer.commit_message(&m, CommitMode::Async).unwrap();
-                return Some(m);
+                Some(m)
             }
         }
     }

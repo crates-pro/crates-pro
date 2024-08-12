@@ -4,13 +4,16 @@
 //! other processes.
 
 use crate::cli::CratesProCli;
-use crates_pro::SharedState;
+
 use repo_import::ImportDriver;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 pub struct CoreController {
     pub cli: CratesProCli,
+}
+struct SharedState {
+    is_packaging: bool,
 }
 
 impl CoreController {
@@ -24,9 +27,9 @@ impl CoreController {
                 is_packaging: false,
             }));
 
-        let dont_clone = self.cli.dont_clone.clone();
+        let dont_clone = self.cli.dont_clone;
 
-        let state_clone1 = Arc::clone(&shared_state);
+        let state_clone1: Arc<tokio::sync::Mutex<SharedState>> = Arc::clone(&shared_state);
         let import_task = tokio::spawn(async move {
             // conduct repo parsing and importing
             let mut import_driver = ImportDriver::new(dont_clone).await;
@@ -46,7 +49,7 @@ impl CoreController {
             }
         });
 
-        let state_clone2 = Arc::clone(&shared_state);
+        let state_clone2: Arc<tokio::sync::Mutex<SharedState>> = Arc::clone(&shared_state);
         let analyze_task = tokio::spawn(async move {
             loop {
                 let mut state = state_clone2.lock().await;
@@ -61,7 +64,7 @@ impl CoreController {
             }
         });
 
-        let state_clone3 = Arc::clone(&shared_state);
+        let state_clone3: Arc<tokio::sync::Mutex<SharedState>> = Arc::clone(&shared_state);
         let package_task = tokio::spawn(async move {
             loop {
                 {

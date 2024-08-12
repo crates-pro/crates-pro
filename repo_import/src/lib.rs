@@ -44,8 +44,11 @@ impl ImportDriver {
 
         tracing::info!("{},{},{}", broker, topic, group_id);
 
-        let mut context = ImportContext::default();
-        context.dont_clone = dont_clone;
+        let context = ImportContext {
+            dont_clone,
+            ..Default::default()
+        };
+
         let consumer = KafkaConsumer::new(&broker, &group_id, &[&topic]);
 
         Self { context, consumer }
