@@ -1,8 +1,12 @@
 [package]
-name = "crates-pro"
+name = "crates_pro"
 version = "0.1.0"
 edition = "2021"
+default-run = "crates_pro"
 
+[[bin]]
+name = "crates_pro"
+path = "src/main.rs"
 
 [[bin]]
 name = "benchmark_controller"
@@ -13,9 +17,12 @@ name = "senseleak_controller"
 path = "src/bin/senseleak_controller.rs"
 
 
+[lib]
+name = "crates_pro"
+path = "src/lib.rs"
+
 [workspace]
 members = [
-  "crates_sync",       # data collection hub'
   "repo_import",       # extract repo and import data into tugraph
   "model",             # internal info struct,such as `crate info` `library info` `app info`
   "tudriver",          # tugraph client, deal with the quary from router
@@ -29,7 +36,6 @@ resolver = "2" # use resolver of version 2
 [dependencies]
 repo_import = { path = "repo_import" }
 model = { path = "model" }
-crates_sync = { path = "crates_sync" }
 tudriver = { path = "tudriver" }
 dotenvy = { workspace = true }
 tokio = { version = "1.36", features = ["full"] }

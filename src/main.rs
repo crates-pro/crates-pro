@@ -12,8 +12,8 @@ async fn main() {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    let cli = &CratesProCli::from_args();
+    let cli = CratesProCli::from_args();
 
-    let core_controller = CoreController { cli };
+    let core_controller = CoreController::new(cli).await;
     core_controller.run().await;
 }
