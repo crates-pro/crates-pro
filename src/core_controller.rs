@@ -34,7 +34,7 @@ impl CoreController {
             // conduct repo parsing and importing
             let mut import_driver = ImportDriver::new(dont_clone).await;
 
-            let _ = repo_import::reset_mq().await;
+            let _ = import_driver.reset_kafka_offset().await;
 
             loop {
                 let mut state = state_clone1.lock().await;

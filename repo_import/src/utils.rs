@@ -3,14 +3,10 @@ use lazy_static::lazy_static;
 use model::tugraph_model::{Program, UProgram};
 use serde::Serialize;
 use serde_json::json;
-use ssh2::Session;
 use std::collections::HashMap;
-use std::env;
 use std::error::Error;
 use std::fmt::Debug;
 use std::fs::OpenOptions;
-use std::io::prelude::*;
-use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use url::Url;
@@ -160,50 +156,4 @@ pub(crate) fn extract_namespace(url_str: &str) -> Result<String, String> {
 
 pub(crate) fn name_join_version(crate_name: &str, version: &str) -> String {
     crate_name.to_string() + "/" + version
-}
-
-pub async fn reset_mq() -> Result<(), Box<dyn std::error::Error>> {
-    tracing::info!(" Start reset Offset of Kafka.");
-    let username = "rust";
-    let password = &env::var("HOST_PASSWORD")?;
-    let hostname = "172.17.0.1";
-    let port = 22;
-
-    let tcp = TcpStream::connect((hostname, port))?;
-    let mut sess = Session::new()?;
-
-    sess.set_tcp_stream(tcp);
-    sess.handshake()?;
-
-    sess.userauth_password(username, password)?;
-
-    if !sess.authenticated() {
-        panic!("Authentication failed!");
-    }
-
-    let command = r#"
-        docker exec pensive_villani /opt/kafka/bin/kafka-consumer-groups.sh \
-        --bootstrap-server localhost:9092 \
-        --group default_group \
-        --reset-offsets \
-        --to-offset 0 \
-        --execute \
-        --topic REPO_SYNC_STATUS.dev
-    "#;
-
-    let mut channel = sess.channel_session()?;
-    channel.exec(command)?;
-
-    let mut s = String::new();
-    channel.read_to_string(&mut s)?;
-    tracing::info!("Command output: {}", s);
-
-    channel.send_eof()?;
-    channel.wait_close()?;
-    tracing::info!(
-        "Finish reset Kafka MQ, Exit status: {}",
-        channel.exit_status()?
-    );
-
-    Ok(())
 }

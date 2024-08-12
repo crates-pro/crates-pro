@@ -1,6 +1,6 @@
-mod consumer;
+mod crate_info;
 mod git;
-mod metadata_info;
+mod kafka_handler;
 mod utils;
 mod version_info;
 
@@ -9,8 +9,8 @@ extern crate pretty_env_logger;
 extern crate log;
 extern crate lazy_static;
 
-use crate::consumer::KafkaConsumer;
-use crate::metadata_info::extract_info_local;
+use crate::crate_info::extract_info_local;
+use crate::kafka_handler::KafkaHandler;
 use crate::utils::{get_program_by_name, name_join_version, write_into_csv};
 
 use git::hard_reset_to_head;
@@ -28,11 +28,9 @@ use version_info::VersionUpdater;
 const CLONE_CRATES_DIR: &str = "/mnt/crates/local_crates_file/";
 const TUGRAPH_IMPORT_FILES_PG: &str = "./tugraph_import_files_mq/";
 
-pub use utils::reset_mq;
-
 pub struct ImportDriver {
     context: ImportContext,
-    consumer: KafkaConsumer,
+    handler: KafkaHandler,
 }
 
 impl ImportDriver {
@@ -49,14 +47,18 @@ impl ImportDriver {
             ..Default::default()
         };
 
-        let consumer = KafkaConsumer::new(&broker, &group_id, &[&topic]);
+        let handler = KafkaHandler::new(&broker, &group_id, &[&topic]);
 
-        Self { context, consumer }
+        Self { context, handler }
+    }
+
+    pub async fn reset_kafka_offset(&self) -> Result<(), Box<dyn std::error::Error>> {
+        self.handler.reset_mq().await
     }
 
     pub async fn import_from_mq_for_a_message(&mut self) {
         let git_url_base = env::var("MEGA_BASE_URL").unwrap();
-        let message = match self.consumer.consume_once().await {
+        let message = match self.handler.consume_once().await {
             None => return,
             Some(m) => m,
         };
