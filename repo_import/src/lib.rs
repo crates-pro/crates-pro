@@ -28,6 +28,8 @@ use version_info::VersionUpdater;
 const CLONE_CRATES_DIR: &str = "/mnt/crates/local_crates_file/";
 const TUGRAPH_IMPORT_FILES_PG: &str = "./tugraph_import_files_mq/";
 
+pub use kafka_handler::reset_kafka_offset;
+
 pub struct ImportDriver {
     context: ImportContext,
     handler: KafkaHandler,
@@ -35,12 +37,12 @@ pub struct ImportDriver {
 
 impl ImportDriver {
     pub async fn new(dont_clone: bool) -> Self {
-        info!("Setup Importing from MQ...");
+        info!("Start to setup Kafka client.");
         let broker = env::var("KAFKA_BROKER").unwrap();
         let topic = env::var("KAFKA_TOPIC").unwrap();
         let group_id = env::var("KAFKA_GROUP_ID").unwrap();
 
-        tracing::info!("{},{},{}", broker, topic, group_id);
+        tracing::info!("Kafka parameters: {},{},{}", broker, topic, group_id);
 
         let context = ImportContext {
             dont_clone,
@@ -49,17 +51,18 @@ impl ImportDriver {
 
         let handler = KafkaHandler::new(&broker, &group_id, &[&topic]);
 
-        Self { context, handler }
-    }
+        info!("Finish to setup Kafka client.");
 
-    pub async fn reset_kafka_offset(&self) -> Result<(), Box<dyn std::error::Error>> {
-        self.handler.reset_mq().await
+        Self { context, handler }
     }
 
     pub async fn import_from_mq_for_a_message(&mut self) {
         let git_url_base = env::var("MEGA_BASE_URL").unwrap();
         let message = match self.handler.consume_once().await {
-            None => return,
+            None => {
+                tracing::warn!("No message in Kafka, please check it!");
+                return;
+            }
             Some(m) => m,
         };
 
@@ -72,7 +75,7 @@ impl ImportDriver {
                 }
             };
         tracing::info!(
-            "key: '{:?}', payload: '{:?}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
+            "Received a message, key: '{:?}', payload: '{:?}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
             message.key(),
             model,
             message.topic(),
@@ -98,8 +101,10 @@ impl ImportDriver {
     }
 }
 
+/// internal structure,
+/// a context for repo parsing and importing.
 #[derive(Debug, Default)]
-pub struct ImportContext {
+struct ImportContext {
     pub dont_clone: bool,
 
     // data to write into

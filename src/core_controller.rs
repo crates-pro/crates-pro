@@ -31,10 +31,12 @@ impl CoreController {
 
         let state_clone1: Arc<tokio::sync::Mutex<SharedState>> = Arc::clone(&shared_state);
         let import_task = tokio::spawn(async move {
+            repo_import::reset_kafka_offset()
+                .await
+                .unwrap_or_else(|x| panic!("{}", x));
+
             // conduct repo parsing and importing
             let mut import_driver = ImportDriver::new(dont_clone).await;
-
-            let _ = import_driver.reset_kafka_offset().await;
 
             loop {
                 let mut state = state_clone1.lock().await;
@@ -59,7 +61,7 @@ impl CoreController {
                     state = state_clone2.lock().await;
                 }
                 drop(state);
-                println!("Analyzing crate...");
+                //println!("Analyzing crate...");
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
         });
@@ -72,7 +74,7 @@ impl CoreController {
                     state.is_packaging = true;
                 }
 
-                println!("Packaging results...");
+                //println!("Packaging results...");
 
                 {
                     let mut state = state_clone3.lock().await;
