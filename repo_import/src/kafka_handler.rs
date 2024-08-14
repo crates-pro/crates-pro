@@ -128,7 +128,6 @@ pub async fn reset_kafka_offset() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
 
     #[tokio::test]
     async fn test_consume_once() {
@@ -143,7 +142,6 @@ mod tests {
         // 调用 consume_once 方法并检查结果
         if let Some(message) = handler.consume_once().await {
             println!("Received message: {:?}", message);
-            assert!(true);
         } else {
             assert!(false, "No message received");
         }
@@ -151,16 +149,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_reset_mq() {
-        // 设置环境变量
-        env::set_var("HOST_USER_NAME", "your_username");
-        env::set_var("HOST_PASSWORD", "your_password");
-        env::set_var("HOST_NAME", "your_ssh_host");
-
-        // 设置 Kafka 配置
-        let brokers = "localhost:9092"; // 替换为你的 Kafka broker 地址
-        let group_id = "test_group";
-        let topics = ["test_topic"];
-
         // 调用 reset_mq 方法并检查结果
         match reset_kafka_offset().await {
             Ok(_) => println!("MQ reset successfully"),
