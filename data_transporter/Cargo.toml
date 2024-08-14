@@ -1,0 +1,10 @@
+[package]
+name = "data_transporter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde_json = { workspace = true }
+serde = { workspace = true }
+tudriver = { path = "../tudriver" }
+model = { path = "../model" }
