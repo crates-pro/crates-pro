@@ -1,6 +1,6 @@
-mod consumer;
+mod crate_info;
 mod git;
-mod metadata_info;
+mod kafka_handler;
 mod utils;
 mod version_info;
 
@@ -9,8 +9,8 @@ extern crate pretty_env_logger;
 extern crate log;
 extern crate lazy_static;
 
-use crate::consumer::KafkaConsumer;
-use crate::metadata_info::extract_info_local;
+use crate::crate_info::extract_info_local;
+use crate::kafka_handler::KafkaHandler;
 use crate::utils::{get_program_by_name, name_join_version, write_into_csv};
 
 use git::hard_reset_to_head;
@@ -28,36 +28,41 @@ use version_info::VersionUpdater;
 const CLONE_CRATES_DIR: &str = "/mnt/crates/local_crates_file/";
 const TUGRAPH_IMPORT_FILES_PG: &str = "./tugraph_import_files_mq/";
 
-pub use utils::reset_mq;
+pub use kafka_handler::reset_kafka_offset;
 
 pub struct ImportDriver {
     context: ImportContext,
-    consumer: KafkaConsumer,
+    handler: KafkaHandler,
 }
 
 impl ImportDriver {
     pub async fn new(dont_clone: bool) -> Self {
-        info!("Setup Importing from MQ...");
+        info!("Start to setup Kafka client.");
         let broker = env::var("KAFKA_BROKER").unwrap();
         let topic = env::var("KAFKA_TOPIC").unwrap();
         let group_id = env::var("KAFKA_GROUP_ID").unwrap();
 
-        tracing::info!("{},{},{}", broker, topic, group_id);
+        tracing::info!("Kafka parameters: {},{},{}", broker, topic, group_id);
 
         let context = ImportContext {
             dont_clone,
             ..Default::default()
         };
 
-        let consumer = KafkaConsumer::new(&broker, &group_id, &[&topic]);
+        let handler = KafkaHandler::new(&broker, &group_id, &[&topic]);
 
-        Self { context, consumer }
+        info!("Finish to setup Kafka client.");
+
+        Self { context, handler }
     }
 
     pub async fn import_from_mq_for_a_message(&mut self) {
         let git_url_base = env::var("MEGA_BASE_URL").unwrap();
-        let message = match self.consumer.consume_once().await {
-            None => return,
+        let message = match self.handler.consume_once().await {
+            None => {
+                tracing::warn!("No message in Kafka, please check it!");
+                return;
+            }
             Some(m) => m,
         };
 
@@ -70,7 +75,7 @@ impl ImportDriver {
                 }
             };
         tracing::info!(
-            "key: '{:?}', payload: '{:?}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
+            "Received a message, key: '{:?}', payload: '{:?}', topic: {}, partition: {}, offset: {}, timestamp: {:?}",
             message.key(),
             model,
             message.topic(),
@@ -96,8 +101,10 @@ impl ImportDriver {
     }
 }
 
+/// internal structure,
+/// a context for repo parsing and importing.
 #[derive(Debug, Default)]
-pub struct ImportContext {
+struct ImportContext {
     pub dont_clone: bool,
 
     // data to write into
