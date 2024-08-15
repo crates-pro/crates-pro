@@ -43,6 +43,15 @@ impl TuGraphClient {
         Ok(())
     }
 
+    pub async fn exec_query(&self, q: &str) -> Result<String, Box<dyn Error>> {
+        let mut labels = String::default();
+        let mut result = self.graph.execute(query(q)).await?;
+        while let Some(row) = result.next().await? {
+            labels = row.to().unwrap();
+        }
+        Ok(labels)
+    }
+
     pub async fn list_edge_labels(&self) -> Result<String, Box<dyn Error>> {
         let mut labels = String::default();
         let mut result = self.graph.execute(query("CALL db.edgeLabels()")).await?;

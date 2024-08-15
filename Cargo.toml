@@ -24,6 +24,7 @@ members = [
   "tudriver",          # tugraph client, deal with the quary from router
   "tuplugins/plugin1",
   "tuplugins/plugin2", # tugraph plugins, deal with concret logics
+  "data_transporter",
 ]
 
 resolver = "2" # use resolver of version 2

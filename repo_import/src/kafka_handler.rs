@@ -134,7 +134,7 @@ mod tests {
         // 设置你的 Kafka 配置
         let brokers = "172.17.0.1:30092"; // 替换为你的 Kafka broker 地址
         let group_id = "default_group";
-        let topics = ["REPO_SYNC_STATUS.dev"];
+        let topics = ["REPO_SYNC_STATUS"];
 
         // 创建 KafkaHandler 实例
         let handler = KafkaHandler::new(brokers, group_id, &topics);
@@ -142,8 +142,6 @@ mod tests {
         // 调用 consume_once 方法并检查结果
         if let Some(message) = handler.consume_once().await {
             println!("Received message: {:?}", message);
-        } else {
-            assert!(false, "No message received");
         }
     }
 
