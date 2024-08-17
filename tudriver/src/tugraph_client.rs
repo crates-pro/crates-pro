@@ -1,5 +1,5 @@
 use neo4rs::*;
-use serde_json::Map;
+use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
@@ -29,10 +29,15 @@ impl TuGraphClient {
             .uri(uri)
             .user(user)
             .password(password)
+            .max_connections(16) // 尝试减少连接数
             .db(graph_name)
             .build()?;
+        tracing::trace!(
+            "Begin to connect to Tugraph, uri: {uri}, user: {user}, password: {password}, db: {db}"
+        );
 
-        let graph = Graph::connect(config).await?;
+        let graph = Graph::connect(config).await.unwrap();
+        tracing::trace!("Success to connect to Tugraph");
         Ok(TuGraphClient { graph })
     }
 
@@ -43,11 +48,22 @@ impl TuGraphClient {
         Ok(())
     }
 
-    pub async fn exec_query(&self, q: &str) -> Result<String, Box<dyn Error>> {
-        let mut labels = String::default();
+    pub async fn test_ping(&self) {
+        let ping_query = "RETURN 1";
+        let result = self.exec_query(ping_query).await;
+        match result {
+            Ok(_) => tracing::info!("Connection to Neo4j is successful."),
+            Err(e) => tracing::error!("Failed to connect to Neo4j: {}", e),
+        }
+    }
+
+    pub async fn exec_query(&self, q: &str) -> Result<Vec<String>, Box<dyn Error>> {
+        let mut labels = vec![];
         let mut result = self.graph.execute(query(q)).await?;
         while let Some(row) = result.next().await? {
-            labels = row.to().unwrap();
+            let value: Value = row.to().unwrap(); // 打印出 row 的内容以调试
+                                                  //println!("{:#?}", value);
+            labels.push(serde_json::to_string(&value).unwrap());
         }
         Ok(labels)
     }

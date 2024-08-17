@@ -34,6 +34,7 @@ resolver = "2" # use resolver of version 2
 repo_import = { path = "repo_import" }
 model = { path = "model" }
 tudriver = { path = "tudriver" }
+data_transporter = { path = "data_transporter" }
 dotenvy = { workspace = true }
 tokio = { version = "1.36", features = ["full"] }
 neo4rs = { workspace = true }

@@ -8,3 +8,4 @@ serde_json = { workspace = true }
 serde = { workspace = true }
 tudriver = { path = "../tudriver" }
 model = { path = "../model" }
+tracing = { workspace = true }

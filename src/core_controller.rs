@@ -4,7 +4,6 @@
 //! other processes.
 
 use crate::cli::CratesProCli;
-
 use repo_import::ImportDriver;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
@@ -45,8 +44,10 @@ impl CoreController {
                     tokio::time::sleep(Duration::from_secs(1)).await;
                     state = state_clone1.lock().await; // 重新获取锁
                 }
-                drop(state);
+
                 import_driver.import_from_mq_for_a_message().await;
+                drop(state);
+
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
         });
@@ -74,7 +75,15 @@ impl CoreController {
                     state.is_packaging = true;
                 }
 
-                //println!("Packaging results...");
+                let mut transporter = data_transporter::Transporter::new(
+                    "bolt://172.17.0.1:7687",
+                    "admin",
+                    "73@TuGraph",
+                    "cratespro",
+                )
+                .await;
+
+                transporter.transport_data().await.unwrap();
 
                 {
                     let mut state = state_clone3.lock().await;
