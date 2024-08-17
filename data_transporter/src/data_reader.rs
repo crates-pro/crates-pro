@@ -6,7 +6,7 @@ use std::error::Error;
 use tudriver::tugraph_client::TuGraphClient;
 
 pub struct DataReader {
-    client: TuGraphClient,
+    pub client: TuGraphClient,
 }
 
 impl DataReader {
