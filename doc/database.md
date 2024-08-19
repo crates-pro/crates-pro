@@ -203,7 +203,7 @@ erDiagram
     - download package: `wget https://github.com/TuGraph-family/tugraph-db/releases/download/xxxxxx.deb`
     - install it: `sudo dpkg -i tugraph-x.y.z.deb`
 2. checkout root user: `sudo su`
-
+3. `export LD_LIBRARY_PATH=/usr/local/lib64`
 4. start the tugraph server: `lgraph_server -d start --directory ./lgraph_db`
 5. check by typing `htop` and search for `lgraph_server`, and you will find 
 ![htop](image.png)

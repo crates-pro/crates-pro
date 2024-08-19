@@ -29,7 +29,8 @@ impl TuGraphClient {
             .uri(uri)
             .user(user)
             .password(password)
-            .max_connections(16) // 尝试减少连接数
+            .max_connections(1000)
+            .fetch_size(10000)
             .db(graph_name)
             .build()?;
         tracing::trace!(
