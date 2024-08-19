@@ -198,7 +198,7 @@ impl DBHandler {
 mod tests {
     use super::*;
     use model::tugraph_model::{ApplicationVersion, Library, LibraryVersion};
-    use tokio_postgres::{Error, NoTls};
+    use tokio_postgres::Error;
     use uuid::Uuid;
 
     #[tokio::test]
