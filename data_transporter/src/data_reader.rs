@@ -24,7 +24,7 @@ impl DataReader {
         Ok(DataReader { client })
     }
 
-    pub async fn get_all_programs(&self) -> Result<Vec<Program>, Box<dyn Error>> {
+    pub async fn get_all_programs_id(&self) -> Vec<String> {
         self.client.test_ping().await;
 
         let query = "
@@ -42,19 +42,28 @@ impl DataReader {
             //println!("{:#?}", pro);
             let program: Program = serde_json::from_value(pro).unwrap();
 
-            let (_p, islib) = self.get_type(&program.id).await.unwrap();
-            self.get_versions(&program.id, islib).await.unwrap();
-            //println!("{:?}", program);
-            programs.push(program);
+            programs.push(program.id);
         }
 
-        Ok(programs)
+        programs
     }
 
-    pub async fn get_type(
-        &self,
-        program_id: &str,
-    ) -> Result<(Vec<UProgram>, bool), Box<dyn Error>> {
+    pub async fn get_program(&self, program_id: &str) -> Result<Program, Box<dyn Error>> {
+        let query = format!(
+            "
+            MATCH (p: program {{id: '{}'}})
+            RETURN p            
+            ",
+            program_id
+        );
+        let results = self.client.exec_query(&query).await?;
+        let programs_json: Value = serde_json::from_str(&results[0]).unwrap();
+        let pro = programs_json["p"].clone();
+        let program: Program = serde_json::from_value(pro).unwrap();
+        Ok(program)
+    }
+
+    pub async fn get_type(&self, program_id: &str) -> Result<(UProgram, bool), Box<dyn Error>> {
         let mut islib = false;
 
         let query = format!(
@@ -66,29 +75,23 @@ impl DataReader {
         );
 
         let results = self.client.exec_query(&query).await?;
-
         let mut uprograms = vec![];
         for result in results {
             let result_json: Value = serde_json::from_str(&result).unwrap();
 
             let label: String = serde_json::from_value(result_json["o_label"].clone()).unwrap();
-            //println!("{}", label);
 
             let o = result_json["o"].clone();
-            //println!("{:?}", result);
             if label.eq(&"library".to_string()) {
                 islib = true;
                 let library: Library = serde_json::from_value(o).unwrap();
-                //println!("{:?}", library);
                 uprograms.push(UProgram::Library(library));
             } else if label.eq(&"application".to_string()) {
                 let application: Application = serde_json::from_value(o).unwrap();
-                //println!("{:?}", application);
-
                 uprograms.push(UProgram::Application(application));
             }
         }
-        Ok((uprograms, islib))
+        Ok((uprograms[0].clone(), islib))
     }
 
     pub async fn get_versions(
@@ -99,8 +102,8 @@ impl DataReader {
         let query = if is_lib {
             format!(
                 "
-            MATCH (l: library {{id: '{}'}})-[:has_version]->(o)
-            RETURN o
+                MATCH (l: library {{id: '{}'}})-[:has_version]->(o)
+                RETURN o
             ",
                 program_id
             )
