@@ -1,17 +1,18 @@
 rust_library(
     name = "repo_import",
     srcs = [
+        "src/consumer.rs",
+        "src/crate_info.rs",
         "src/git.rs",
+        "src/kafka_handler.rs",
         "src/lib.rs",
-        "src/metadata_info.rs",
         "src/utils.rs",
         "src/version_info.rs",
     ],
     crate_root = "src/lib.rs",
     edition = "2021",
     deps = [
-        "//submodules/crates-pro:crates_sync",
-        "//submodules/crates-pro:model",
+        "//project/crates-pro:model",
         "//third-party:cargo_metadata",
         "//third-party:chrono",
         "//third-party:csv",

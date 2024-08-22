@@ -3,6 +3,7 @@ rust_library(
     srcs = [
         "src/general_model.rs",
         "src/lib.rs",
+        "src/repo_sync_model.rs",
         "src/tugraph_model.rs",
     ],
     crate_root = "src/lib.rs",

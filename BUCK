@@ -1,49 +1,61 @@
-rust_binary(
-    name = "crates-pro",
+load("@prelude//rust:cargo_package.bzl", "cargo")
+
+# package definitions
+filegroup(
+    name = "crates_pro-0.1.0.crate",
     srcs = [
         "src/cli.rs",
         "src/core_controller.rs",
         "src/main.rs",
     ],
-    crate_root = "src/main.rs",
+)
+
+pkg_deps = [
+    "//project/crates-pro:data_transporter",
+    "//project/crates-pro:model",
+    "//project/crates-pro:repo_import",
+    "//project/crates-pro:tudriver",
+    "//third-party:dotenvy",
+    "//third-party:neo4rs",
+    "//third-party:rdkafka",
+    "//third-party:serde_json",
+    "//third-party:structopt",
+    "//third-party:tokio",
+    "//third-party:tracing",
+    "//third-party:tracing-subscriber",
+]
+
+# targets
+cargo.rust_binary(
+    name = "crates_pro",
+    srcs = [":crates_pro-0.1.0.crate"],
+    crate_root = "crates_pro-0.1.0.crate/src/main.rs",
     edition = "2021",
-    deps = [
-        "//submodules/crates-pro:crates_sync",
-        "//submodules/crates-pro:model",
-        "//submodules/crates-pro:repo_import",
-        "//submodules/crates-pro:tudriver",
-        "//third-party:dotenvy",
-        "//third-party:neo4rs",
-        "//third-party:rdkafka",
-        "//third-party:serde_json",
-        "//third-party:structopt",
-        "//third-party:tokio",
-        "//third-party:tracing",
-        "//third-party:tracing-subscriber",
-    ],
+    deps = pkg_deps,
     visibility = ["PUBLIC"],
 )
 
+# aliases
 alias(
-    name = "crates_sync",
-    actual = "//submodules/crates-pro/crates_sync:crates_sync",
+    name = "data_transporter",
+    actual = "//project/crates-pro/data_transporter:data_transporter",
     visibility = ["PUBLIC"],
 )
 
 alias(
     name = "model",
-    actual = "//submodules/crates-pro/model:model",
+    actual = "//project/crates-pro/model:model",
     visibility = ["PUBLIC"],
 )
 
 alias(
     name = "repo_import",
-    actual = "//submodules/crates-pro/repo_import:repo_import",
+    actual = "//project/crates-pro/repo_import:repo_import",
     visibility = ["PUBLIC"],
 )
 
 alias(
     name = "tudriver",
-    actual = "//submodules/crates-pro/tudriver:tudriver",
+    actual = "//project/crates-pro/tudriver:tudriver",
     visibility = ["PUBLIC"],
 )

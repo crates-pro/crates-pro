@@ -1,0 +1,31 @@
+load("@prelude//rust:cargo_package.bzl", "cargo")
+
+# package definitions
+filegroup(
+    name = "plugin2-0.1.0.crate",
+    srcs = [
+        "src/lib.rs",
+    ],
+)
+
+pkg_deps = [
+    "//project/crates-pro:model",
+    "//third-party:serde",
+    "//third-party:serde_json",
+    "//third-party:tugraph",
+    "//third-party:tugraph-plugin-util",
+]
+
+# targets
+rust_library(
+    name = "plugin2",
+    srcs = [":plugin2-0.1.0.crate"],
+    crate_root = "plugin2-0.1.0.crate/src/lib.rs",
+    edition = "2021",
+    deps = pkg_deps,
+    rustc_flags = [
+        "-Lnative=$(location //third-party:libtugraph-sys-build-script-run[out_dir])/build/output",
+        "-ldylib=lgraph",
+    ],
+    visibility = ["PUBLIC"],
+)

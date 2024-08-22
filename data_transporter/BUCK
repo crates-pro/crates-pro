@@ -1,0 +1,23 @@
+rust_library(
+    name = "data_transporter",
+    srcs = [
+        "src/data_packer.rs",
+        "src/data_reader.rs",
+        "src/db.rs",
+        "src/lib.rs",
+        "src/transporter.rs",
+    ],
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    deps = [
+        "//project/crates-pro:model",
+        "//project/crates-pro:tudriver",
+        "//third-party:serde",
+        "//third-party:serde_json",
+        "//third-party:tokio",
+        "//third-party:tokio-postgres",
+        "//third-party:tracing",
+        "//third-party:uuid",
+    ],
+    visibility = ["PUBLIC"],
+)

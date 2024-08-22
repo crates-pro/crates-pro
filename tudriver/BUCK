@@ -11,6 +11,7 @@ rust_library(
         "//third-party:neo4rs",
         "//third-party:serde_json",
         "//third-party:tokio",
+        "//third-party:tracing",
     ],
     visibility = ["PUBLIC"],
 )
