@@ -1,31 +1,11 @@
-rust_library(
+alias(
     name = "plugin1",
-    srcs = [
-        "plugin1/src/lib.rs",
-    ],
-    crate_root = "plugin1/src/lib.rs",
-    edition = "2021",
-    deps = [
-        "//submodules/crates-pro:model",
-        "//third-party:tugraph",
-        "//third-party:tugraph-plugin-util",
-    ],
+    actual = "//project/crates-pro/tuplugins/plugin1:plugin1[shared]",
     visibility = ["PUBLIC"],
 )
 
-rust_library(
+alias(
     name = "plugin2",
-    srcs = [
-        "plugin2/src/lib.rs",
-    ],
-    crate_root = "plugin2/src/lib.rs",
-    edition = "2021",
-    deps = [
-        "//submodules/crates-pro:model",
-        "//third-party:serde",
-        "//third-party:serde_json",
-        "//third-party:tugraph",
-        "//third-party:tugraph-plugin-util",
-    ],
+    actual = "//project/crates-pro/tuplugins/plugin2:plugin2[shared]",
     visibility = ["PUBLIC"],
 )
