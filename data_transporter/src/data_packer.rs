@@ -1,4 +1,4 @@
-use model::tugraph_model::{Program, UProgram, UVersion};
+use model::tugraph_model::{Program, UProgram};
 
 use crate::db::DBHandler;
 
@@ -18,7 +18,7 @@ impl DataPacker {
         &self,
         program: Program,
         uprogram: UProgram,
-        versions: Vec<UVersion>,
+        versions: Vec<crate::VersionInfo>,
     ) {
         self.db
             .insert_program_data(program, uprogram, versions)

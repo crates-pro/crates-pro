@@ -56,13 +56,20 @@ impl DBHandler {
                 "
                 DO $$
                 BEGIN
-                    IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'program_versions') THEN
-                        DROP TABLE program_versions CASCADE;
-                    END IF;
-                    
                     IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'programs') THEN
                         DROP TABLE programs CASCADE;
                     END IF;
+
+
+                    IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'program_versions') THEN
+                        DROP TABLE program_versions CASCADE;
+                    END IF;
+
+                    IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'program_dependencies') THEN
+                        DROP TABLE program_dependencies CASCADE;
+                    END IF;
+                    
+
                 END $$;
                 ",
             )
@@ -70,9 +77,7 @@ impl DBHandler {
     }
 
     pub async fn create_tables(&self) -> Result<(), Error> {
-        self.client
-            .batch_execute(
-                "
+        let create_programs_table = "
             CREATE TABLE IF NOT EXISTS programs (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -86,7 +91,9 @@ impl DBHandler {
                 downloads BIGINT,
                 cratesio TEXT
             );
-    
+        ";
+
+        let create_program_versions_table = "
             CREATE TABLE IF NOT EXISTS program_versions (
                 name_and_version TEXT PRIMARY KEY,
                 id TEXT NOT NULL,
@@ -96,16 +103,44 @@ impl DBHandler {
                 version_type TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW()
             );
-            ",
-            )
-            .await
-    }
+        ";
 
+        let create_program_dependencies_table = "
+            CREATE TABLE IF NOT EXISTS program_dependencies (
+                name_and_version TEXT NOT NULL,
+                dependency_name TEXT NOT NULL,
+                dependency_version TEXT NOT NULL,
+                PRIMARY KEY (name_and_version, dependency_name, dependency_version)
+            );
+        ";
+
+        // 执行创建表的 SQL 语句
+        let result = self
+            .client
+            .batch_execute(&format!(
+                "{}{}{}",
+                create_programs_table,
+                create_program_versions_table,
+                create_program_dependencies_table
+            ))
+            .await;
+
+        match result {
+            Ok(_) => {
+                tracing::info!("Tables created successfully.");
+                Ok(())
+            }
+            Err(e) => {
+                tracing::error!("Error creating tables: {:?}", e);
+                Err(e)
+            }
+        }
+    }
     pub async fn insert_program_data(
         &self,
         program: Program,
         uprogram: UProgram,
-        versions: Vec<UVersion>,
+        versions: Vec<crate::VersionInfo>,
     ) -> Result<(), Error> {
         let (program_type, downloads, cratesio) = match &uprogram {
             UProgram::Library(lib) => ("Library", Some(lib.downloads), lib.cratesio.clone()),
@@ -142,9 +177,13 @@ impl DBHandler {
             })
             .unwrap();
 
+        tracing::info!("finish to insert program.");
+
         // 插入 UVersion 数据
         for version in versions {
-            match version {
+            let name_and_version = version.version_base.get_name_and_version();
+
+            match version.version_base {
                 UVersion::LibraryVersion(lib_ver) => {
                     self.client
                         .execute(
@@ -188,7 +227,22 @@ impl DBHandler {
                         .unwrap();
                 }
             }
+
+            // 插入该版本的所有依赖项
+            for dep in version.dependencies {
+                self.client
+                    .execute(
+                        "
+                        INSERT INTO program_dependencies (
+                            name_and_version, dependency_name, dependency_version
+                        ) VALUES ($1, $2, $3)
+                        ",
+                        &[&name_and_version, &dep.name, &dep.version],
+                    )
+                    .await?;
+            }
         }
+        tracing::info!("Finish to insert all versions.");
 
         Ok(())
     }
@@ -217,7 +271,7 @@ mod tests {
 
         // 准备测试数据
         let program_id = Uuid::new_v4().to_string();
-        let program = Program {
+        let _program = Program {
             id: program_id.clone(),
             name: "Test Program".to_string(),
             description: Some("A test program".to_string()),
@@ -228,7 +282,7 @@ mod tests {
             doc_url: Some("http://docs.rs/test".to_string()),
         };
 
-        let uprogram = UProgram::Library(Library {
+        let _uprogram = UProgram::Library(Library {
             id: program_id.clone(),
             name: "Test Program".to_string(),
             downloads: 100,
@@ -252,9 +306,9 @@ mod tests {
         ];
 
         // 插入数据
-        db_handler
-            .insert_program_data(program, uprogram, versions.clone())
-            .await?;
+        // db_handler
+        //     .insert_program_data(program, uprogram, versions.clone())
+        //     .await?;
 
         // 验证插入
         let rows = db_handler

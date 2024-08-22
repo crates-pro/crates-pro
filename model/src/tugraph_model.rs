@@ -121,6 +121,15 @@ impl CrateType2Idx for UVersion {
     }
 }
 
+impl UVersion {
+    pub fn get_name_and_version(&self) -> String {
+        match self {
+            UVersion::LibraryVersion(l) => l.name_and_version.clone(),
+            UVersion::ApplicationVersion(a) => a.name_and_version.clone(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct LibraryVersion {
     /// The id

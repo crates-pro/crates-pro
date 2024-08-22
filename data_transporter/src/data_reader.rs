@@ -98,7 +98,7 @@ impl DataReader {
         &self,
         program_id: &str,
         is_lib: bool,
-    ) -> Result<Vec<UVersion>, Box<dyn Error>> {
+    ) -> Result<Vec<crate::VersionInfo>, Box<dyn Error>> {
         let query = if is_lib {
             format!(
                 "
@@ -119,23 +119,65 @@ impl DataReader {
 
         let results = self.client.exec_query(&query).await?;
 
-        let mut versions = vec![];
+        let mut versions: Vec<crate::VersionInfo> = vec![];
         for result in results {
             let result_json: Value = serde_json::from_str(&result).unwrap();
 
             let o = result_json["o"].clone();
             //println!("{:?}", result);
-            if is_lib {
+
+            let (version_base, name_version) = if is_lib {
                 let library_version: LibraryVersion = serde_json::from_value(o).unwrap();
-                println!("{:?}", library_version);
-                versions.push(UVersion::LibraryVersion(library_version));
+                (
+                    UVersion::LibraryVersion(library_version.clone()),
+                    library_version.name_and_version.clone(),
+                )
             } else {
                 let application_version: ApplicationVersion = serde_json::from_value(o).unwrap();
-                println!("{:?}", application_version);
+                (
+                    UVersion::ApplicationVersion(application_version.clone()),
+                    application_version.name_and_version.clone(),
+                )
+            };
+            tracing::debug!("Read version for id {}: {:?}", program_id, version_base);
 
-                versions.push(UVersion::ApplicationVersion(application_version));
-            }
+            // get dependencies
+            let dependencies = self.get_dependency_nodes(&name_version).await.unwrap();
+
+            versions.push(crate::VersionInfo {
+                version_base,
+                dependencies,
+            })
         }
         Ok(versions)
+    }
+
+    pub async fn get_dependency_nodes(
+        &self,
+        name_and_version: &str,
+    ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>> {
+        let query = format!(
+            "
+                MATCH (n {{name_and_version: '{}'}})-[:depends_on]->(m)
+                RETURN m.name_and_version as name_and_version
+                ",
+            name_and_version
+        );
+
+        let results = self.client.exec_query(&query).await?;
+        let mut nodes = vec![];
+        //println!("{:?}", results);
+
+        for result in results {
+            let result_json: Value = serde_json::from_str(&result).unwrap();
+            let name_version_str: String =
+                serde_json::from_value(result_json["name_and_version"].clone()).unwrap();
+
+            if let Some(name_version) = crate::NameVersion::from_string(&name_version_str) {
+                nodes.push(name_version);
+            }
+        }
+
+        Ok(nodes)
     }
 }

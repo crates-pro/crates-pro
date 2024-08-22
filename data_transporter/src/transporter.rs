@@ -21,7 +21,7 @@ impl Transporter {
                 self.reader.get_program(&id).await.unwrap();
             let (uprogram, islib): (model::tugraph_model::UProgram, bool) =
                 self.reader.get_type(&id).await.unwrap();
-            let versions: Vec<model::tugraph_model::UVersion> =
+            let versions: Vec<crate::VersionInfo> =
                 self.reader.get_versions(&id, islib).await.unwrap();
 
             self.packer.pack_into_db(program, uprogram, versions).await;
