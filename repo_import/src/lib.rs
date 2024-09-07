@@ -39,29 +39,30 @@ impl ImportDriver {
     pub async fn new(dont_clone: bool) -> Self {
         info!("Start to setup Kafka client.");
         let broker = env::var("KAFKA_BROKER").unwrap();
-        let topic = env::var("KAFKA_TOPIC").unwrap();
         let group_id = env::var("KAFKA_GROUP_ID").unwrap();
 
-        tracing::info!("Kafka parameters: {},{},{}", broker, topic, group_id);
+        tracing::info!("Kafka parameters: {},{}", broker, group_id);
 
         let context = ImportContext {
             dont_clone,
             ..Default::default()
         };
 
-        let handler = KafkaHandler::new(&broker, &group_id, &[&topic]);
+        let handler = KafkaHandler::new(&broker, &group_id);
 
         info!("Finish to setup Kafka client.");
 
         Self { context, handler }
     }
 
-    pub async fn import_from_mq_for_a_message(&mut self) {
+    pub async fn import_from_mq_for_a_message(&mut self) -> Result<(), ()> {
+        let kafka_import_topic = env::var("KAFKA_IMPORT_TOPIC").unwrap();
+        let kafka_analysis_topic = env::var("KAFKA_ANALYSIS_TOPIC").unwrap();
         let git_url_base = env::var("MEGA_BASE_URL").unwrap();
-        let message = match self.handler.consume_once().await {
+        let message = match self.handler.consume_once(&kafka_import_topic).await {
             None => {
                 tracing::warn!("No message in Kafka, please check it!");
-                return;
+                return Err(());
             }
             Some(m) => m,
         };
@@ -86,18 +87,37 @@ impl ImportDriver {
 
         let mega_url_suffix = model.unwrap().mega_url;
 
-        let local_repo_path = self
-            .context
-            .clone_a_repo_by_url(CLONE_CRATES_DIR, &git_url_base, &mega_url_suffix)
-            .await
-            .unwrap_or_else(|_| panic!("Failed to clone repo {}", mega_url_suffix));
+        let clone_crates_dir =
+            env::var("CLONE_CRATES_DIR").unwrap_or_else(|_| CLONE_CRATES_DIR.to_string());
 
-        self.context
-            .parse_a_local_repo(local_repo_path, mega_url_suffix)
+        let local_repo_path = match self
+            .context
+            .clone_a_repo_by_url(&clone_crates_dir, &git_url_base, &mega_url_suffix)
+            .await
+        {
+            Ok(x) => x,
+            _ => {
+                tracing::error!("Failed to clone repo {}", mega_url_suffix);
+                return Err(());
+            }
+        };
+
+        let new_versions = self
+            .context
+            .parse_a_local_repo_and_return_new_versions(local_repo_path, mega_url_suffix)
             .await
             .unwrap();
 
+        for ver in new_versions {
+            self.handler.send_message(
+                &kafka_analysis_topic,
+                "",
+                &serde_json::to_string(&ver).unwrap(),
+            );
+        }
+
         self.context.write_tugraph_import_files();
+        Ok(())
     }
 }
 
@@ -140,12 +160,13 @@ struct ImportContext {
 impl ImportContext {
     /// Import data from mega
     /// It first clone the repositories locally from mega
-
-    async fn parse_a_local_repo(
+    async fn parse_a_local_repo_and_return_new_versions(
         &mut self,
         repo_path: PathBuf,
-        mega_url: String,
-    ) -> Result<(), String> {
+        git_url: String,
+    ) -> Result<Vec<model::general_model::VersionWithTag>, String> {
+        let mut new_versions = vec![];
+
         if repo_path.is_dir() && Path::new(&repo_path).join(".git").is_dir() {
             match Repository::open(&repo_path) {
                 Err(e) => {
@@ -160,11 +181,10 @@ impl ImportContext {
                         .await
                         .map_err(|x| format!("{:?}", x))?;
 
-                    let all_programs = self
-                        .collect_and_filter_programs(&repo_path, &mega_url)
-                        .await;
+                    let all_programs = self.collect_and_filter_programs(&repo_path, &git_url).await;
 
-                    let all_dependencies = self.collect_and_filter_versions(&repo_path).await;
+                    let all_dependencies =
+                        self.collect_and_filter_versions(&repo_path, &git_url).await;
 
                     for (program, has_type, uprogram) in all_programs {
                         self.programs.push(program.clone());
@@ -191,6 +211,13 @@ impl ImportContext {
                     for dependencies in all_dependencies {
                         let name = dependencies.crate_name.clone();
                         let version = dependencies.version.clone();
+                        let git_url = dependencies.git_url.clone();
+                        let tag_name = dependencies.tag_name.clone();
+
+                        // reserve for kafka sending
+                        new_versions.push(model::general_model::VersionWithTag::new(
+                            &name, &version, &git_url, &tag_name,
+                        ));
 
                         // check whether the crate version exists.
                         let (program, uprogram) = match get_program_by_name(&name) {
@@ -260,16 +287,16 @@ impl ImportContext {
         } else {
             tracing::error!("{} is not a directory", repo_path.display());
         }
-        Ok(())
+        Ok(new_versions)
     }
 
     async fn collect_and_filter_programs(
         &self,
         repo_path: &Path,
-        mega_url: &str,
+        git_url: &str,
     ) -> Vec<(Program, HasType, UProgram)> {
         let all_programs: Vec<(Program, HasType, UProgram)> =
-            extract_info_local(repo_path.to_path_buf(), mega_url.to_owned())
+            extract_info_local(repo_path.to_path_buf(), git_url.to_owned())
                 .await
                 .into_iter()
                 .filter(|(p, _, _)| {
@@ -286,11 +313,12 @@ impl ImportContext {
     async fn collect_and_filter_versions(
         &self,
         repo_path: &PathBuf,
+        git_url: &str,
     ) -> Vec<version_info::Dependencies> {
         // get all versions and dependencies
         // filter out new versions!!!
         let all_dependencies: Vec<version_info::Dependencies> = self
-            .parse_all_versions_of_a_repo(repo_path)
+            .parse_all_versions_of_a_repo(repo_path, git_url)
             .await
             .into_iter()
             .filter(|x| {
@@ -307,8 +335,10 @@ impl ImportContext {
 
     /// write data base into tugraph import files
     fn write_tugraph_import_files(&self) {
-        let tugraph_import_files = PathBuf::from(TUGRAPH_IMPORT_FILES_PG);
-
+        let tugraph_import_files = PathBuf::from(
+            env::var("TUGRAPH_IMPORT_FILES_PG")
+                .unwrap_or_else(|_| TUGRAPH_IMPORT_FILES_PG.to_string()),
+        );
         fs::create_dir_all(tugraph_import_files.clone()).unwrap_or_else(|e| error!("Error: {}", e));
 
         // write into csv

@@ -16,6 +16,9 @@ pub(crate) struct Dependencies {
     pub(crate) crate_name: String,
     pub(crate) version: String,
     pub(crate) dependencies: Vec<(String, String)>,
+
+    pub(crate) git_url: String,
+    pub(crate) tag_name: String,
 }
 
 impl ImportContext {
@@ -24,18 +27,17 @@ impl ImportContext {
     pub(crate) async fn parse_all_versions_of_a_repo(
         &self,
         repo_path: &PathBuf,
+        git_url: &str,
     ) -> Vec<Dependencies> {
         let mut crate_version_map: HashMap<(String, String), Dependencies> = HashMap::default();
 
-        let trees: Vec<Oid> = get_all_git_tags_with_time_sorted(repo_path)
-            .await
-            .into_iter()
-            .map(|(_, x, _)| x)
-            .collect();
+        let versions = get_all_git_tags_with_time_sorted(repo_path).await;
 
         // parse each version of a repository with an order of time, walk all the packages of it
-        for tree in trees.iter() {
-            let all_packages_dependencies = self.parse_a_repo_of_a_version(repo_path, *tree).await;
+        for (tag_name, tree, _) in versions.iter() {
+            let all_packages_dependencies = self
+                .parse_a_repo_of_a_version(repo_path, git_url, tag_name, *tree)
+                .await;
 
             // NOTE: At certain time, a version in Cargo.toml will exists in several tags,
             //  while a tag corresponds to a unique Cargo.toml version.
@@ -54,6 +56,8 @@ impl ImportContext {
     async fn parse_a_repo_of_a_version<'repo>(
         &self,
         repo_path: &PathBuf,
+        git_url: &str,
+        tag_name: &str,
         tree: Oid,
     ) -> Vec<Dependencies> {
         let mut res = Vec::new();
@@ -74,7 +78,7 @@ impl ImportContext {
                     .expect("Cargo.toml content is not valid UTF-8");
 
                 let dependencies = self
-                    .parse_a_package_of_a_version(content)
+                    .parse_a_package_of_a_version(content, git_url, tag_name)
                     .unwrap_or_default();
 
                 res.push(dependencies);
@@ -87,7 +91,12 @@ impl ImportContext {
         res
     }
 
-    fn parse_a_package_of_a_version(&self, cargo_toml_content: &str) -> Option<Dependencies> {
+    fn parse_a_package_of_a_version(
+        &self,
+        cargo_toml_content: &str,
+        git_url: &str,
+        tag_name: &str,
+    ) -> Option<Dependencies> {
         match cargo_toml_content.parse::<Value>() {
             Ok(toml) => {
                 if let Some(package) = toml.get("package") {
@@ -132,6 +141,8 @@ impl ImportContext {
                             crate_name,
                             version,
                             dependencies,
+                            git_url: git_url.to_string(),
+                            tag_name: tag_name.to_string(),
                         };
 
                         return Some(dependencies);

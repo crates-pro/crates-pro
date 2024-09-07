@@ -1,0 +1,21 @@
+rust_library(
+    name = "analysis",
+    srcs = [
+        "src/lib.rs",
+        "src/kafka_handler.rs",
+        "src/utils.rs"
+    ],
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    deps = [
+        "//third-party:serde",
+        "//third-party:serde_json",
+        "//third-party:tracing",
+        "//third-party:rdkafka",
+        "//third-party:tokio",
+        "//third-party:url",
+        "//third-party:tempfile",
+        "//project/crates-pro:model",
+    ],
+    visibility = ["PUBLIC"],
+)

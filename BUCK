@@ -11,6 +11,7 @@ filegroup(
 )
 
 pkg_deps = [
+    "//project/crates-pro:analysis",
     "//project/crates-pro:data_transporter",
     "//project/crates-pro:model",
     "//project/crates-pro:repo_import",
@@ -36,6 +37,12 @@ cargo.rust_binary(
 )
 
 # aliases
+alias(
+    name = "analysis",
+    actual = "//project/crates-pro/analysis:analysis",
+    visibility = ["PUBLIC"],
+)
+
 alias(
     name = "data_transporter",
     actual = "//project/crates-pro/data_transporter:data_transporter",

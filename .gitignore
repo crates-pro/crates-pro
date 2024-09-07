@@ -19,6 +19,8 @@ Cargo.lock
 # VS Code
 .vscode/
 
+output/
+
 lgraph.pid
 
 tugraph_import_files_pg/
