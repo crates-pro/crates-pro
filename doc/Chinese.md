@@ -156,14 +156,19 @@ docker exec pensive_villani /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-
 2. 多个标签可能对应于 Cargo.toml 中指定的单个版本，因此需要去重。
 3. 依赖项的版本可能会升级，因此需要创建一个反向依赖映射，每次添加新版本时，检查它不会替换其他版本。
 
-**反向依赖**
+**版本更新的处理**
 
-1. 首先找到自己的依赖项
-   - 将所有依赖项插入反向映射。
-   - 调用搜索以找到匹配的依赖项。
-2. 然后更新此新节点上的依赖关系，可能有以前的依赖关系，则更新；没有依赖关系则添加。
-   - 如果有对其他版本的依赖，则移除。
-   - 如果有对其他版本的依赖，则移除。
+不光要管现存的，也要管以前的！
+
+给定一个新的版本A
+1. ensure_dependency 首先找到A的依赖项
+   - 将A的所有依赖项直接插入反向映射。这是为了如果该依赖有新版本发布，可以第一时间为A更新依赖。
+   - 为A找到匹配的依赖版本，在actually_dependes_on_map中插入。
+2. ensure_dependent 找到依赖A的版本。
+   - 如果A不匹配这个版本，那就跳过。
+   - 如果A匹配这个版本，说明是新的。
+     - 如果根本没有actual_depends_on列表，就创建空列表，把A推进去即可
+     - 如果有，就要看有没有A的前序版本，有的话就替换，没有就push进去
 
 ## Tugraph 返回 JSON
 
@@ -175,7 +180,13 @@ docker exec pensive_villani /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-
 
 ## 一些工具命令
 
-
+检查offset
+```
+docker exec happy_kalam /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server 210.28.134.203:30092 \
+  --describe \
+  --group default_group
+```
 
 清空某个topic的offset
 ```

@@ -13,7 +13,6 @@ pub(crate) async fn extract_info_local(
     local_repo_path: PathBuf,
     git_url: String,
 ) -> Vec<(Program, HasType, UProgram)> {
-    tracing::info!("Start to parse repo metadata {:?}", local_repo_path);
     let mut res = vec![];
 
     // walk the directories of the project
@@ -80,7 +79,7 @@ pub(crate) async fn extract_info_local(
         }
     }
 
-    tracing::info!("Finish parsing repo metadata {:?}", local_repo_path);
+
 
     res
 }

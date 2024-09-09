@@ -5,6 +5,7 @@ use git2::{Oid, Repository};
 use git2::{TreeWalkMode, TreeWalkResult};
 use model::tugraph_model::DependsOn;
 use std::collections::HashMap;
+use std::mem;
 use std::path::PathBuf;
 use toml::Value;
 
@@ -240,7 +241,7 @@ impl VersionUpdater {
                     Ok(req) => req,
                     Err(_) => {
                         tracing::error!("failed to transform to VersionReq");
-                        continue; // 如果无法解析为有效的版本请求，则返回 None
+                        continue;
                     }
                 };
 
@@ -351,6 +352,53 @@ impl VersionParser {
             return matching_versions.last().map(|v| v.to_string());
         }
         None
+    }
+}
+
+impl VersionUpdater {
+    #[allow(unused)]
+    pub fn calculate_memory_usage(&self) -> String {
+        let stack_size = mem::size_of_val(self);
+
+        let mut heap_size = 0;
+
+        // Calculate heap size for reverse_depends_on_map
+        for (key, value) in &self.reverse_depends_on_map {
+            heap_size += key.capacity() * mem::size_of::<char>(); // String capacity
+            heap_size +=
+                value.capacity() * mem::size_of::<(String, model::general_model::Version)>();
+            for (s, _) in value {
+                heap_size += s.capacity() * mem::size_of::<char>(); // String capacity
+            }
+        }
+
+        // Calculate heap size for actually_depends_on_map
+        for value in self.actually_depends_on_map.values() {
+            heap_size += mem::size_of::<model::general_model::Version>(); // Key size
+            heap_size += value.capacity() * mem::size_of::<model::general_model::Version>();
+        }
+
+        format!(" [Version Updater: {}] ", stack_size + heap_size)
+            + &self.version_parser.calculate_memory_usage()
+    }
+}
+impl VersionParser {
+    #[allow(unused)]
+    fn calculate_memory_usage(&self) -> String {
+        let stack_size = mem::size_of_val(self);
+
+        let mut heap_size = 0;
+
+        // Calculate heap size for version_map
+        for (key, value) in &self.version_map {
+            heap_size += key.capacity() * mem::size_of::<char>(); // String capacity
+            heap_size += value.capacity() * mem::size_of::<String>();
+            for s in value {
+                heap_size += s.capacity() * mem::size_of::<char>(); // String capacity
+            }
+        }
+
+        format!(" [Version Parser: {}] ", stack_size + heap_size)
     }
 }
 

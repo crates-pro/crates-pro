@@ -31,13 +31,13 @@ impl ProducerContext for CustomContext {
 
     fn delivery(
         &self,
-        result: &rdkafka::producer::DeliveryResult,
+        _result: &rdkafka::producer::DeliveryResult,
         _delivery_opaque: Self::DeliveryOpaque,
     ) {
-        match result {
-            Ok(delivery) => tracing::info!("Delivered message to {:?}", delivery),
-            Err((error, _)) => tracing::error!("Failed to deliver message: {:?}", error),
-        }
+        // match result {
+        //     Ok(delivery) => tracing::info!("Delivered message to {:?}", delivery),
+        //     Err((error, _)) => tracing::error!("Failed to deliver message: {:?}", error),
+        // }
     }
 }
 
@@ -49,19 +49,25 @@ pub struct KafkaHandler {
 }
 
 impl KafkaHandler {
-    pub fn new(brokers: &str, group_id: &str) -> Self {
+    pub fn new(brokers: &str, group_id: &str, topic: &str) -> Self {
         let context = CustomContext;
 
         let consumer: LoggingConsumer = ClientConfig::new()
             .set("group.id", group_id)
             .set("bootstrap.servers", brokers)
             .set("enable.partition.eof", "false")
-            .set("session.timeout.ms", "6000")
+            .set("session.timeout.ms", "10000")
+            .set("heartbeat.interval.ms", "1500")
+            .set("max.poll.interval.ms", "3000000")
             .set("enable.auto.commit", "true")
             .set("auto.offset.reset", "earliest")
             .set_log_level(RDKafkaLogLevel::Debug)
             .create_with_context(context.clone())
             .expect("Consumer creation failed");
+
+        consumer
+            .subscribe(&[topic])
+            .expect("Can't subscribe to specified topic");
 
         let producer: BaseProducer<CustomContext> = ClientConfig::new()
             .set("bootstrap.servers", brokers)
@@ -71,10 +77,11 @@ impl KafkaHandler {
         KafkaHandler { consumer, producer }
     }
 
-    pub async fn consume_once(&self, topic: &str) -> Option<BorrowedMessage> {
-        self.consumer
-            .subscribe(&[topic])
-            .expect("Can't subscribe to specified topic");
+    pub async fn consume_once(&self) -> Option<BorrowedMessage> {
+        tracing::debug!("Trying to consume a message");
+        // self.consumer
+        //     .subscribe(&[topic])
+        //     .expect("Can't subscribe to specified topic");
 
         match self.consumer.recv().await {
             Err(e) => {
@@ -98,7 +105,9 @@ impl KafkaHandler {
         let record = BaseRecord::to(topic).key(key).payload(payload);
 
         match self.producer.send(record) {
-            Ok(_) => tracing::info!("Message sent successfully"),
+            Ok(_) => {
+                // tracing::info!("Message sent successfully");
+            }
             Err(e) => tracing::error!("Failed to send message: {:?}", e),
         }
 
@@ -107,6 +116,7 @@ impl KafkaHandler {
 }
 /// reset the mq
 pub async fn reset_kafka_offset() -> Result<(), Box<dyn std::error::Error>> {
+    tracing::info!("Start to reset import kafka");
     let output = Command::new("/opt/kafka/bin/kafka-consumer-groups.sh")
         .args([
             "--bootstrap-server",
@@ -133,5 +143,6 @@ pub async fn reset_kafka_offset() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Error: {}", stderr);
     }
 
+    tracing::info!("Finish to reset import kafka");
     Ok(())
 }
