@@ -173,6 +173,27 @@ docker exec pensive_villani /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-
 {"identity":17679,"label":"program","properties":{"description":"None","doc_url":"null","github_url":"null","id":"00022c9b-217c-4d8d-8859-85ce6d5f9e31","max_version":"0.0.0","mega_url":"null","name":"imessage-database","namespace":"null"}}
 ```
 
+## 一些工具命令
+
+
+
+清空某个topic的offset
+```
+docker exec pensive_villani /opt/kafka/bin/kafka-consumer-groups.sh     --bootstrap-server 210.28.134.203:30092     --group default_group     --reset-offsets     --to-offset 0     --execute     --topic REPO_SYNC_STATUS.dev.0902
+```
+
+检查ANALYSIS这个kafka topic
+```
+docker exec elegant_williams /opt/kafka/bin/kafka-console-consumer.sh     --bootstrap-server 210.28.134.203:30092     --topic ANALYSIS     --from-beginning     --timeout-ms 10000
+```
+
+## commit之前
+
+```
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+```
+
+
 ### 参考
 
 [1] https://tugraph-db.readthedocs.io/zh-cn/v4.0.0/5.developer-manual/1.installation/4.local-package-deployment.html

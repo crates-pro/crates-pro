@@ -1,7 +1,6 @@
 rust_library(
     name = "repo_import",
     srcs = [
-        "src/consumer.rs",
         "src/crate_info.rs",
         "src/git.rs",
         "src/kafka_handler.rs",

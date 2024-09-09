@@ -11,7 +11,7 @@ use walkdir::WalkDir;
 // Given a project path, parse the metadata
 pub(crate) async fn extract_info_local(
     local_repo_path: PathBuf,
-    mega_url: String,
+    git_url: String,
 ) -> Vec<(Program, HasType, UProgram)> {
     tracing::info!("Start to parse repo metadata {:?}", local_repo_path);
     let mut res = vec![];
@@ -52,7 +52,7 @@ pub(crate) async fn extract_info_local(
                         from_cargo_toml(local_repo_path.clone(), entry_path.to_path_buf(), &id)
                             .await
                             .unwrap();
-                    program.mega_url = Some(mega_url.clone());
+                    program.mega_url = Some(git_url.clone());
 
                     let uprogram = if islib {
                         UProgram::Library(Library::new(&id.to_string(), &name, -1, None))

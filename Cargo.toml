@@ -25,15 +25,17 @@ members = [
   "tuplugins/plugin1",
   "tuplugins/plugin2", # tugraph plugins, deal with concret logics
   "data_transporter",
+  "analysis",
 ]
 
 resolver = "2" # use resolver of version 2
 
 
 [dependencies]
-repo_import = { path = "repo_import" }
 model = { path = "model" }
 tudriver = { path = "tudriver" }
+repo_import = { path = "repo_import" }
+analysis = { path = "analysis" }
 data_transporter = { path = "data_transporter" }
 dotenvy = { workspace = true }
 tokio = { version = "1.36", features = ["full"] }

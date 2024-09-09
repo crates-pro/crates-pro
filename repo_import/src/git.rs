@@ -45,7 +45,7 @@ impl ImportContext {
 async fn clone(path: &PathBuf, url: &str) -> Result<(), git2::Error> {
     if !path.is_dir() {
         tracing::debug!("Start cloning repo into {:?} from URL {}", path, url);
-        Repository::clone(url, path).unwrap();
+        Repository::clone(url, path)?;
         tracing::debug!("Finish cloning repo into {:?}", path);
     } else {
         tracing::debug!("Directory {:?} is not empty, skipping Clone", path);
@@ -89,6 +89,7 @@ pub(crate) async fn hard_reset_to_head(repo_path: &PathBuf) -> Result<(), git2::
     Ok(())
 }
 
+/// return value: (tag_name, tree_id, commit_time)
 pub(crate) async fn get_all_git_tags_with_time_sorted(
     repo_path: &PathBuf,
 ) -> Vec<(String, Oid, i64)> {

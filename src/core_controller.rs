@@ -3,9 +3,12 @@
 //! parse them, and store it into tugraph, and notify
 //! other processes.
 
-use crate::cli::CratesProCli;
+use analysis::analyse_once;
+use data_transporter::Transporter;
 use repo_import::ImportDriver;
-use std::{env, sync::Arc, time::Duration};
+
+use crate::cli::CratesProCli;
+use std::{env, fs, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 pub struct CoreController {
@@ -62,7 +65,7 @@ impl CoreController {
                         state = state_clone1.lock().await; // 重新获取锁
                     }
 
-                    import_driver.import_from_mq_for_a_message().await;
+                    let _ = import_driver.import_from_mq_for_a_message().await;
                     drop(state);
 
                     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -82,6 +85,11 @@ impl CoreController {
                     }
                     drop(state);
                     println!("Analyzing crate...");
+
+                    let output_dir_path = "target/analysis";
+                    fs::create_dir(output_dir_path).unwrap();
+                    let _ = analyse_once(output_dir_path).await;
+
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             }
@@ -98,7 +106,7 @@ impl CoreController {
 
                     // process here
                     {
-                        let mut transporter = data_transporter::Transporter::new(
+                        let mut transporter = Transporter::new(
                             "bolt://172.17.0.1:7687",
                             "admin",
                             "73@TuGraph",

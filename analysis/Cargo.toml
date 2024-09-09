@@ -1,0 +1,14 @@
+[package]
+name = "analysis"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tracing = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+rdkafka = { workspace = true }
+tokio = { workspace = true }
+model = { workspace = true }
+tempfile = "3.3"
+url = "2.2.2"
