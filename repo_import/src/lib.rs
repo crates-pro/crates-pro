@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use version_info::VersionUpdater;
 
 const CLONE_CRATES_DIR: &str = "/mnt/crates/local_crates_file/";
-const TUGRAPH_IMPORT_FILES_PG: &str = "./tugraph_import_files_mq/";
+// const TUGRAPH_IMPORT_FILES_PG: &str = "./tugraph_import_files_mq/";
 
 pub use kafka_handler::reset_kafka_offset;
 
@@ -48,7 +48,8 @@ impl ImportDriver {
             ..Default::default()
         };
 
-        let handler = KafkaHandler::new(&broker, &group_id);
+        let handler =
+            KafkaHandler::new(&broker, &group_id, &env::var("KAFKA_IMPORT_TOPIC").unwrap());
 
         info!("Finish to setup Kafka client.");
 
@@ -56,10 +57,13 @@ impl ImportDriver {
     }
 
     pub async fn import_from_mq_for_a_message(&mut self) -> Result<(), ()> {
-        let kafka_import_topic = env::var("KAFKA_IMPORT_TOPIC").unwrap();
+        tracing::info!("Start to import from a message!");
+        // //tracing::debug
+        // println!("Context size: {}", self.context.calculate_memory_usage());
+        // let kafka_import_topic = env::var("KAFKA_IMPORT_TOPIC").unwrap();
         let kafka_analysis_topic = env::var("KAFKA_ANALYSIS_TOPIC").unwrap();
         let git_url_base = env::var("MEGA_BASE_URL").unwrap();
-        let message = match self.handler.consume_once(&kafka_import_topic).await {
+        let message = match self.handler.consume_once().await {
             None => {
                 tracing::warn!("No message in Kafka, please check it!");
                 return Err(());
@@ -117,6 +121,8 @@ impl ImportDriver {
         }
 
         self.context.write_tugraph_import_files();
+
+        tracing::info!("Finish to import from a message!");
         Ok(())
     }
 }
@@ -271,7 +277,7 @@ impl ImportContext {
                         self.versions.push(dep_version);
 
                         self.depends_on
-                            .append(&mut self.version_updater.to_depends_on_edges().await);
+                            .clone_from(&(self.version_updater.to_depends_on_edges().await));
 
                         // NOTE: memorize version, insert the new version into memory
                         self.version_memory
@@ -295,6 +301,7 @@ impl ImportContext {
         repo_path: &Path,
         git_url: &str,
     ) -> Vec<(Program, HasType, UProgram)> {
+        tracing::info!("Start to collect_and_filter_programs {:?}", repo_path);
         let all_programs: Vec<(Program, HasType, UProgram)> =
             extract_info_local(repo_path.to_path_buf(), git_url.to_owned())
                 .await
@@ -308,6 +315,7 @@ impl ImportContext {
                         ))
                 })
                 .collect();
+        tracing::info!("Finish to collect_and_filter_programs {:?}", repo_path);
         all_programs
     }
     async fn collect_and_filter_versions(
@@ -315,6 +323,7 @@ impl ImportContext {
         repo_path: &PathBuf,
         git_url: &str,
     ) -> Vec<version_info::Dependencies> {
+        tracing::info!("Start to collect_and_filter_versions {:?}", repo_path);
         // get all versions and dependencies
         // filter out new versions!!!
         let all_dependencies: Vec<version_info::Dependencies> = self
@@ -330,15 +339,15 @@ impl ImportContext {
                     ))
             })
             .collect();
+
+        tracing::info!("Finish to collect_and_filter_versions {:?}", repo_path);
         all_dependencies
     }
 
     /// write data base into tugraph import files
     fn write_tugraph_import_files(&self) {
-        let tugraph_import_files = PathBuf::from(
-            env::var("TUGRAPH_IMPORT_FILES_PG")
-                .unwrap_or_else(|_| TUGRAPH_IMPORT_FILES_PG.to_string()),
-        );
+        tracing::info!("Start to write");
+        let tugraph_import_files = PathBuf::from(env::var("TUGRAPH_IMPORT_FILES_PG").unwrap());
         fs::create_dir_all(tugraph_import_files.clone()).unwrap_or_else(|e| error!("Error: {}", e));
 
         // write into csv
@@ -403,5 +412,102 @@ impl ImportContext {
             tugraph_import_files.join("depends_on.csv"),
             self.depends_on.clone(),
         );
+        tracing::info!("Finish to write");
+    }
+}
+
+impl ImportContext {
+    #[allow(unused)]
+    fn calculate_memory_usage(&self) -> String {
+        use std::fmt::Write;
+        use std::mem;
+        let mut output = String::new();
+        let bytes_per_gb = 1_073_741_824; // 1024^3
+
+        let fields = [
+            (
+                "Programs",
+                self.programs.capacity(),
+                mem::size_of::<Program>(),
+            ),
+            (
+                "Libraries",
+                self.libraries.capacity(),
+                mem::size_of::<Library>(),
+            ),
+            (
+                "Applications",
+                self.applications.capacity(),
+                mem::size_of::<Application>(),
+            ),
+            (
+                "LibraryVersions",
+                self.library_versions.capacity(),
+                mem::size_of::<LibraryVersion>(),
+            ),
+            (
+                "ApplicationVersions",
+                self.application_versions.capacity(),
+                mem::size_of::<ApplicationVersion>(),
+            ),
+            (
+                "Versions",
+                self.versions.capacity(),
+                mem::size_of::<Version>(),
+            ),
+            (
+                "HasLibType",
+                self.has_lib_type.capacity(),
+                mem::size_of::<HasType>(),
+            ),
+            (
+                "HasAppType",
+                self.has_app_type.capacity(),
+                mem::size_of::<HasType>(),
+            ),
+            (
+                "LibHasVersion",
+                self.lib_has_version.capacity(),
+                mem::size_of::<HasVersion>(),
+            ),
+            (
+                "AppHasVersion",
+                self.app_has_version.capacity(),
+                mem::size_of::<HasVersion>(),
+            ),
+            (
+                "LibHasDepVersion",
+                self.lib_has_dep_version.capacity(),
+                mem::size_of::<HasDepVersion>(),
+            ),
+            (
+                "AppHasDepVersion",
+                self.app_has_dep_version.capacity(),
+                mem::size_of::<HasDepVersion>(),
+            ),
+            (
+                "DependsOn",
+                self.depends_on.capacity(),
+                mem::size_of::<DependsOn>(),
+            ),
+            (
+                "ProgramMemory",
+                self.program_memory.capacity(),
+                mem::size_of::<model::general_model::Program>(),
+            ),
+            (
+                "VersionMemory",
+                self.version_memory.capacity(),
+                mem::size_of::<model::general_model::Version>(),
+            ),
+        ];
+
+        for (name, capacity, size) in &fields {
+            let total_size_bytes = capacity * size;
+            let total_size_gb = total_size_bytes as f64 / bytes_per_gb as f64;
+            write!(output, " [{}: {:.4} GB]", name, total_size_gb).unwrap();
+        }
+
+        output
     }
 }

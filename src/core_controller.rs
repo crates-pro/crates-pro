@@ -68,7 +68,7 @@ impl CoreController {
                     let _ = import_driver.import_from_mq_for_a_message().await;
                     drop(state);
 
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::time::sleep(Duration::from_secs(0)).await;
                 }
             }
         });
