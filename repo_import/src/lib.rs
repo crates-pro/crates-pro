@@ -338,6 +338,7 @@ impl ImportContext {
                         &x.version,
                     ))
             })
+            //.filter(|x| semver::Version::parse(&x.version).is_ok())
             .collect();
 
         tracing::info!("Finish to collect_and_filter_versions {:?}", repo_path);
