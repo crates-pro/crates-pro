@@ -79,8 +79,6 @@ pub(crate) async fn extract_info_local(
         }
     }
 
-
-
     res
 }
 
@@ -156,7 +154,7 @@ async fn from_cargo_toml(
             .as_str()
             .map(String::from),
         get_namespace_by_repo_path(local_repo_path.to_str().unwrap()),
-        parsed["package"]["version"].as_str().map(String::from),
+        None,
         None,
         None,
         None,

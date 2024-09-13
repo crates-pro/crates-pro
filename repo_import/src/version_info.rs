@@ -78,11 +78,11 @@ impl ImportContext {
                 let content = std::str::from_utf8(blob.content())
                     .expect("Cargo.toml content is not valid UTF-8");
 
-                let dependencies = self
-                    .parse_a_package_of_a_version(content, git_url, tag_name)
-                    .unwrap_or_default();
-
-                res.push(dependencies);
+                if let Some(dependencies) =
+                    self.parse_a_package_of_a_version(content, git_url, tag_name)
+                {
+                    res.push(dependencies);
+                }
             }
 
             TreeWalkResult::Ok
@@ -233,7 +233,7 @@ impl VersionUpdater {
 
     async fn ensure_dependents(&mut self, cur_release: &model::general_model::Version) {
         let sem_ver = semver::Version::parse(&cur_release.version)
-            .unwrap_or_else(|_| panic!("failed to parse version {}", &cur_release.version));
+            .unwrap_or_else(|_| panic!("failed to parse version {:?}", &cur_release));
         let wrapped_reverse_map = self.reverse_depends_on_map.get(&cur_release.name);
         if let Some(reverse_map) = wrapped_reverse_map {
             for (required_version, reverse_dep) in reverse_map {

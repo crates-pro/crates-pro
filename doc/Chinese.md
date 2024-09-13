@@ -204,6 +204,12 @@ docker exec elegant_williams /opt/kafka/bin/kafka-console-consumer.sh     --boot
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
+## 运行
+
+```
+docker build -t my-crates-pro /home/rust/workspace/crates-pro-infra/build &&  docker run -it --init --rm -v /home/rust/crates-pro/output:/workdir/target my-crates-pro
+```
+
 
 ### 参考
 
