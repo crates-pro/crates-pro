@@ -120,7 +120,7 @@ impl ImportDriver {
             );
         }
 
-        //self.context.write_tugraph_import_files();
+        self.context.write_tugraph_import_files();
 
         tracing::info!("Finish to import from a message!");
         Ok(())
