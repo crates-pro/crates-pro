@@ -87,7 +87,7 @@ impl TuGraphClient {
     ///
     /// Returns:
     /// * `Result<(), Box<dyn Error>>` - Ok(()) if successful, or an error wrapped in Box<dyn Error> otherwise.
-    /// Example usage: Create a `person` vertex label with an ID of type INT32 and additional properties for `name` and `age`.
+    ///   Example usage: Create a `person` vertex label with an ID of type INT32 and additional properties for `name` and `age`.
     /// ```ignore
     ///     client.create_vertex_label("person", "id",  &[("name".to_string(), "STRING".to_string(), false), ("age".to_string(), "INT32".to_string(), false)]).await.unwrap();
     /// ```
