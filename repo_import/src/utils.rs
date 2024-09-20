@@ -46,7 +46,7 @@ pub(crate) fn write_into_csv<T: Serialize + Default + Debug>(
 ) -> Result<(), Box<dyn Error>> {
     // open the csv
 
-    let serialized = serde_json::to_value(&T::default()).unwrap();
+    let serialized = serde_json::to_value(T::default()).unwrap();
 
     if let serde_json::Value::Object(map) = serialized {
         //let field_names: Vec<String> = map.keys().cloned().collect();

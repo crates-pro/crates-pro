@@ -125,7 +125,10 @@ pub(crate) async fn get_all_git_tags_with_time_sorted(
 
         let commit_time = commit.time().seconds();
 
-        let tree_id = commit.tree().expect("Couldn't get the tree").id();
+        let tree_id = match commit.tree() {
+            Ok(tree) => tree.id(),
+            _ => continue,
+        };
 
         tags_with_dates.push((tag_name, tree_id, commit_time));
     }
