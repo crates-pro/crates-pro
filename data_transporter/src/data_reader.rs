@@ -5,6 +5,7 @@ use serde_json::Value;
 use std::error::Error;
 use tudriver::tugraph_client::TuGraphClient;
 
+#[derive(Clone)]
 pub struct DataReader {
     pub client: TuGraphClient,
 }

@@ -7,6 +7,7 @@ use std::io::{self, Read};
 
 /// doc: https://tugraph-db.readthedocs.io/zh-cn/latest/5.developer-manual/6.interface/1.query/1.cypher.html
 /// https://github.com/TuGraph-family/tugraph-db/blob/master/src/cypher/procedure/procedure.h
+#[derive(Clone)]
 pub struct TuGraphClient {
     pub graph: Graph,
 }
