@@ -1,9 +1,11 @@
 #[cfg(test)]
 mod integration_tests {
 
+    use serial_test::serial;
     use tudriver::tugraph_client::TuGraphClient; // Assuming this is the client module/library you are testing
 
     #[tokio::test]
+    #[serial]
     async fn test_tugraph_setup() {
         // Instantiate the TuGraphClient for testing
 
@@ -36,7 +38,7 @@ mod integration_tests {
         client
             .load_plugin(
                 "trace_dependencies1",
-                "/workspace/target/release/libplugin1.so",
+                "/workspace/target/debug/libplugin1.so",
             )
             .await
             .unwrap();
@@ -58,6 +60,7 @@ mod integration_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_plugin1() {
         // Instantiate the TuGraphClient for testing
 
@@ -92,7 +95,7 @@ mod integration_tests {
         client
             .load_plugin(
                 "trace_dependencies1",
-                "/workspace/target/release/libplugin1.so",
+                "/workspace/target/debug/libplugin1.so",
             )
             .await
             .unwrap();
@@ -127,6 +130,7 @@ mod integration_tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_plugin2() {
         // Instantiate the TuGraphClient for testing
 
@@ -161,7 +165,7 @@ mod integration_tests {
         client
             .load_plugin(
                 "trace_dependencies2",
-                "/workspace/target/release/libplugin2.so",
+                "/workspace/target/debug/libplugin2.so",
             )
             .await
             .unwrap();

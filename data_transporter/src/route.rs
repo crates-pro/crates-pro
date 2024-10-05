@@ -1,13 +1,15 @@
-use crate::data_reader::DataReader;
+use crate::data_reader::DataReaderTrait;
+use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse, Responder};
+use sanitize_filename::sanitize;
+use tokio::io::AsyncWriteExt;
 
-#[derive(Clone)]
 pub struct ApiHandler {
-    reader: DataReader,
+    reader: Box<dyn DataReaderTrait>,
 }
 
 impl ApiHandler {
-    pub async fn new(reader: DataReader) -> Self {
+    pub async fn new(reader: Box<dyn DataReaderTrait>) -> Self {
         Self { reader }
     }
 
@@ -36,5 +38,29 @@ impl ApiHandler {
             }
             Err(_) => HttpResponse::NotFound().body("Crate not found."),
         }
+    }
+
+    pub async fn upload_crate(mut payload: Multipart) -> impl Responder {
+        use futures_util::StreamExt as _;
+        let analysis_result = String::new();
+
+        while let Some(Ok(mut field)) = payload.next().await {
+            if let Some(content_disposition) = field.content_disposition() {
+                if let Some(filename) = content_disposition.get_filename() {
+                    let sanitized_filename = sanitize(filename);
+                    let filepath = format!("/var/www/uploads/{}", sanitized_filename);
+                    let mut f = tokio::fs::File::create(&filepath).await.unwrap();
+
+                    while let Some(chunk) = field.next().await {
+                        let data = chunk.unwrap();
+                        f.write_all(&data).await.unwrap();
+                    }
+
+                    // analyze
+                }
+            }
+        }
+
+        HttpResponse::Ok().json(analysis_result)
     }
 }
