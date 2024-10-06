@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y curl build-essential clang git cmake ne
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
+RUN rustup update stable
+
 # Set environment variable to include cargo bin
 ENV PATH="/root/.cargo/bin:${PATH}"
 
