@@ -23,7 +23,8 @@ rust_library(
         "//third-party:actix-multipart",
         "//third-party:futures-util",
         "//third-party:sanitize-filename",
-        "//third-party:actix-rt"
+        "//third-party:actix-rt",
+        "//third-party:async-trait"
     ],
     visibility = ["PUBLIC"],
 )
