@@ -1,4 +1,7 @@
-use crate::{data_packer::DataPacker, data_reader::DataReader};
+use crate::{
+    data_packer::DataPacker,
+    data_reader::{DataReader, DataReaderTrait},
+};
 
 pub struct Transporter {
     pub reader: DataReader,

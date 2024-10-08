@@ -1,11 +1,12 @@
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
-use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext, Rebalance, StreamConsumer};
-use rdkafka::error::KafkaResult;
+use rdkafka::consumer::{BaseConsumer, CommitMode, Consumer, ConsumerContext, Rebalance};
+use rdkafka::error::{KafkaError, KafkaResult};
 use rdkafka::message::{BorrowedMessage, Headers};
 use rdkafka::producer::{BaseProducer, BaseRecord, ProducerContext};
 use rdkafka::util::Timeout;
 use rdkafka::{ClientContext, Message, TopicPartitionList};
 use std::process::Command;
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct CustomContext;
@@ -41,18 +42,15 @@ impl ProducerContext for CustomContext {
     }
 }
 
-type LoggingConsumer = StreamConsumer<CustomContext>;
-
-pub struct KafkaHandler {
-    consumer: LoggingConsumer,
-    producer: BaseProducer<CustomContext>,
+pub enum KafkaHandler {
+    Consumer(BaseConsumer<CustomContext>),
+    Producer(BaseProducer<CustomContext>),
 }
-
 impl KafkaHandler {
-    pub fn new(brokers: &str, group_id: &str, topic: &str) -> Self {
+    pub fn new_consumer(brokers: &str, group_id: &str, topic: &str) -> Result<Self, KafkaError> {
         let context = CustomContext;
 
-        let consumer: LoggingConsumer = ClientConfig::new()
+        let consumer: BaseConsumer<CustomContext> = ClientConfig::new()
             .set("group.id", group_id)
             .set("bootstrap.servers", brokers)
             .set("enable.partition.eof", "false")
@@ -62,58 +60,67 @@ impl KafkaHandler {
             .set("enable.auto.commit", "true")
             .set("auto.offset.reset", "earliest")
             .set_log_level(RDKafkaLogLevel::Debug)
-            .create_with_context(context.clone())
-            .expect("Consumer creation failed");
+            .create_with_context(context)?;
 
-        consumer
-            .subscribe(&[topic])
-            .expect("Can't subscribe to specified topic");
+        consumer.subscribe(&[topic])?;
+
+        Ok(KafkaHandler::Consumer(consumer))
+    }
+
+    pub fn new_producer(brokers: &str) -> Result<Self, KafkaError> {
+        let context = CustomContext;
 
         let producer: BaseProducer<CustomContext> = ClientConfig::new()
             .set("bootstrap.servers", brokers)
-            .create_with_context(context)
-            .expect("Producer creation failed");
+            .create_with_context(context)?;
 
-        KafkaHandler { consumer, producer }
+        Ok(KafkaHandler::Producer(producer))
     }
 
-    pub async fn consume_once(&self) -> Option<BorrowedMessage> {
-        tracing::debug!("Trying to consume a message");
-        // self.consumer
-        //     .subscribe(&[topic])
-        //     .expect("Can't subscribe to specified topic");
+    pub async fn consume_once(&self) -> Result<BorrowedMessage, KafkaError> {
+        if let KafkaHandler::Consumer(consumer) = self {
+            tracing::debug!("Trying to consume a message");
 
-        match self.consumer.recv().await {
-            Err(e) => {
-                tracing::warn!("Kafka error: {}", e);
-                None
-            }
-            Ok(m) => {
-                tracing::debug!("{:?}", m);
-                if let Some(headers) = m.headers() {
-                    for header in headers.iter() {
-                        tracing::info!("  Header {:#?}: {:?}", header.key, header.value);
-                    }
+            match consumer.poll(Duration::from_secs(1)) {
+                None => {
+                    tracing::info!("No message received");
+                    Err(KafkaError::NoMessageReceived)
                 }
-                self.consumer.commit_message(&m, CommitMode::Async).unwrap();
-                Some(m)
+                Some(m) => {
+                    let m = m?;
+                    tracing::debug!("{:?}", m);
+                    if let Some(headers) = m.headers() {
+                        for header in headers.iter() {
+                            tracing::info!("Header {}: {:?}", header.key, header.value);
+                        }
+                    }
+                    consumer.commit_message(&m, CommitMode::Async).unwrap();
+                    Ok(m)
+                }
             }
+        } else {
+            unreachable!("Called consume_once on a producer");
         }
     }
 
-    pub fn send_message(&self, topic: &str, key: &str, payload: &str) {
-        let record = BaseRecord::to(topic).key(key).payload(payload);
+    pub async fn send_message(&self, topic: &str, key: &str, payload: &str) {
+        if let KafkaHandler::Producer(producer) = self {
+            let record = BaseRecord::to(topic).key(key).payload(payload);
 
-        match self.producer.send(record) {
-            Ok(_) => {
-                // tracing::info!("Message sent successfully");
+            match producer.send(record) {
+                Ok(_) => {
+                    tracing::info!("Message sent successfully");
+                }
+                Err(e) => tracing::error!("Failed to send message: {:?}", e),
             }
-            Err(e) => tracing::error!("Failed to send message: {:?}", e),
-        }
 
-        self.producer.poll(Timeout::Never);
+            producer.poll(Timeout::Never);
+        } else {
+            tracing::error!("Called send_message on a consumer");
+        }
     }
 }
+
 /// reset the mq
 pub async fn reset_kafka_offset() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Start to reset import kafka");

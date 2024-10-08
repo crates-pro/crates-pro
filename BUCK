@@ -24,6 +24,7 @@ pkg_deps = [
     "//third-party:tokio",
     "//third-party:tracing",
     "//third-party:tracing-subscriber",
+    "//third-party:serial_test"
 ]
 
 # targets

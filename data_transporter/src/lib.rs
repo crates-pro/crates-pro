@@ -12,7 +12,8 @@ pub use transporter::Transporter;
 
 use crate::data_reader::DataReader; // 确保导入你的 DataReader
 use crate::route::ApiHandler;
-use actix_web::{web, App, HttpServer}; // 确保导入你的 ApiHandler
+use actix_multipart::Multipart;
+use actix_web::{web, App, HttpServer};
 
 pub async fn run_api_server(
     uri: &str,
@@ -21,7 +22,7 @@ pub async fn run_api_server(
     db: &str,
 ) -> std::io::Result<()> {
     let reader = DataReader::new(uri, user, password, db).await.unwrap();
-    let api_handler = Arc::new(ApiHandler::new(reader).await);
+    let api_handler = Arc::new(ApiHandler::new(Box::new(reader)).await);
 
     HttpServer::new(move || {
         let api_handler_clone = Arc::clone(&api_handler);
@@ -38,6 +39,14 @@ pub async fn run_api_server(
                 web::get().to(
                     |data: web::Data<Arc<ApiHandler>>, name: web::Path<String>| async move {
                         data.get_crate_details(name.into_inner().into()).await
+                    },
+                ),
+            )
+            .route(
+                "/api/crates",
+                web::post().to(
+                    |_data: web::Data<Arc<ApiHandler>>, payload: Multipart| async move {
+                        ApiHandler::upload_crate(payload).await
                     },
                 ),
             )

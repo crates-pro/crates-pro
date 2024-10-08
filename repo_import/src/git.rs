@@ -36,7 +36,7 @@ impl ImportContext {
 
         insert_namespace_by_repo_path(path.to_str().unwrap().to_string(), namespace.clone());
 
-        trace!("Finish clone all the repos\n");
+        tracing::trace!("Finish clone all the repos\n");
 
         Ok(path)
     }
@@ -167,5 +167,5 @@ pub(crate) async fn _print_all_tags(repo: &Repository, v: bool) {
         }
     }
 
-    debug!("TAGS {:?} tags: {}", repo.path(), s);
+    tracing::debug!("TAGS {:?} tags: {}", repo.path(), s);
 }

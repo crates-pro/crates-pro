@@ -5,6 +5,24 @@ use serde_json::Value;
 use std::error::Error;
 use tudriver::tugraph_client::TuGraphClient;
 
+use async_trait::async_trait;
+
+#[async_trait]
+pub trait DataReaderTrait: Send + Sync {
+    async fn get_all_programs_id(&self) -> Vec<String>;
+    async fn get_program(&self, program_id: &str) -> Result<Program, Box<dyn Error>>;
+    async fn get_type(&self, program_id: &str) -> Result<(UProgram, bool), Box<dyn Error>>;
+    async fn get_versions(
+        &self,
+        program_id: &str,
+        is_lib: bool,
+    ) -> Result<Vec<crate::VersionInfo>, Box<dyn Error>>;
+    async fn get_dependency_nodes(
+        &self,
+        name_and_version: &str,
+    ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>>;
+}
+
 #[derive(Clone)]
 pub struct DataReader {
     pub client: TuGraphClient,
@@ -24,8 +42,11 @@ impl DataReader {
         let client = TuGraphClient::new(uri, user, password, db).await?;
         Ok(DataReader { client })
     }
+}
 
-    pub async fn get_all_programs_id(&self) -> Vec<String> {
+#[async_trait]
+impl DataReaderTrait for DataReader {
+    async fn get_all_programs_id(&self) -> Vec<String> {
         self.client.test_ping().await;
 
         let query = "
@@ -49,7 +70,7 @@ impl DataReader {
         programs
     }
 
-    pub async fn get_program(&self, program_id: &str) -> Result<Program, Box<dyn Error>> {
+    async fn get_program(&self, program_id: &str) -> Result<Program, Box<dyn Error>> {
         let query = format!(
             "
             MATCH (p: program {{id: '{}'}})
@@ -64,7 +85,7 @@ impl DataReader {
         Ok(program)
     }
 
-    pub async fn get_type(&self, program_id: &str) -> Result<(UProgram, bool), Box<dyn Error>> {
+    async fn get_type(&self, program_id: &str) -> Result<(UProgram, bool), Box<dyn Error>> {
         let mut islib = false;
 
         let query = format!(
@@ -95,7 +116,7 @@ impl DataReader {
         Ok((uprograms[0].clone(), islib))
     }
 
-    pub async fn get_versions(
+    async fn get_versions(
         &self,
         program_id: &str,
         is_lib: bool,
@@ -153,7 +174,7 @@ impl DataReader {
         Ok(versions)
     }
 
-    pub async fn get_dependency_nodes(
+    async fn get_dependency_nodes(
         &self,
         name_and_version: &str,
     ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>> {

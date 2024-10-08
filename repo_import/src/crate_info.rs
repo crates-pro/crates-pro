@@ -74,7 +74,7 @@ pub(crate) async fn extract_info_local(
 
                     res.push((program, has_type, uprogram));
                 }
-                Err(e) => warn!("Error parsing name {}: {}", entry_path.display(), e),
+                Err(e) => tracing::warn!("Error parsing name {}: {}", entry_path.display(), e),
             }
         }
     }

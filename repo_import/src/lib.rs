@@ -4,25 +4,22 @@ mod kafka_handler;
 mod utils;
 mod version_info;
 
-extern crate pretty_env_logger;
-#[macro_use]
-extern crate log;
 extern crate lazy_static;
+extern crate pretty_env_logger;
 
 use crate::crate_info::extract_info_local;
 use crate::kafka_handler::KafkaHandler;
 use crate::utils::{get_program_by_name, name_join_version, write_into_csv};
-
 use git::hard_reset_to_head;
 use git2::Repository;
-use log::*;
 use model::{repo_sync_model, tugraph_model::*};
+use rdkafka::error::KafkaError;
+use rdkafka::message::BorrowedMessage;
 use rdkafka::Message;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-
 use version_info::VersionUpdater;
 
 const CLONE_CRATES_DIR: &str = "/mnt/crates/local_crates_file/";
@@ -30,14 +27,26 @@ const CLONE_CRATES_DIR: &str = "/mnt/crates/local_crates_file/";
 
 pub use kafka_handler::reset_kafka_offset;
 
+pub enum MessageKind {
+    Mega,
+    UserUpload,
+}
+
+pub struct ImportMessage<'a> {
+    kind: MessageKind,
+    message: BorrowedMessage<'a>,
+}
+
 pub struct ImportDriver {
     context: ImportContext,
-    handler: KafkaHandler,
+    import_handler: KafkaHandler,
+    user_import_handler: KafkaHandler,
+    sender_handler: KafkaHandler,
 }
 
 impl ImportDriver {
     pub async fn new(dont_clone: bool) -> Self {
-        info!("Start to setup Kafka client.");
+        tracing::info!("Start to setup Kafka client.");
         let broker = env::var("KAFKA_BROKER").unwrap();
         let group_id = env::var("KAFKA_GROUP_ID").unwrap();
 
@@ -48,12 +57,53 @@ impl ImportDriver {
             ..Default::default()
         };
 
-        let handler =
-            KafkaHandler::new(&broker, &group_id, &env::var("KAFKA_IMPORT_TOPIC").unwrap());
+        // Data from Mega
+        let import_handler = KafkaHandler::new_consumer(
+            &broker,
+            &group_id,
+            &env::var("KAFKA_IMPORT_TOPIC").unwrap_or("REPO_SYNC_STATUS.dev.0902".to_owned()),
+        )
+        .expect("Invalid import kafka handler");
 
-        info!("Finish to setup Kafka client.");
+        // Data from user-uploading
+        let user_import_handler = KafkaHandler::new_consumer(
+            &broker,
+            &group_id,
+            &env::var("KAFKA_USER_IMPORT_TOPIC").unwrap_or("USER_IMPORT".to_owned()),
+        )
+        .expect("Invalid import kafka handler");
 
-        Self { context, handler }
+        // sending for analysis
+        let sender_handler =
+            KafkaHandler::new_producer(&broker).expect("Invalid import kafka handler");
+
+        tracing::info!("Finish to setup Kafka client.");
+
+        Self {
+            context,
+            import_handler,
+            user_import_handler,
+            sender_handler,
+        }
+    }
+
+    async fn consume_message(&self) -> Result<ImportMessage, KafkaError> {
+        // try to get data from user_import_handler
+        if let Ok(message) = self.user_import_handler.consume_once().await {
+            return Ok(ImportMessage {
+                kind: MessageKind::UserUpload,
+                message,
+            });
+        }
+        // if there is no data from user_import_handler，try to fetch data from import_handler
+        else if let Ok(message) = self.import_handler.consume_once().await {
+            return Ok(ImportMessage {
+                kind: MessageKind::Mega,
+                message,
+            });
+        };
+
+        Err(KafkaError::NoMessageReceived)
     }
 
     pub async fn import_from_mq_for_a_message(&mut self) -> Result<(), ()> {
@@ -63,12 +113,13 @@ impl ImportDriver {
         // let kafka_import_topic = env::var("KAFKA_IMPORT_TOPIC").unwrap();
         let kafka_analysis_topic = env::var("KAFKA_ANALYSIS_TOPIC").unwrap();
         let git_url_base = env::var("MEGA_BASE_URL").unwrap();
-        let message = match self.handler.consume_once().await {
-            None => {
+
+        let ImportMessage { kind, message } = match self.consume_message().await {
+            Err(_) => {
                 tracing::warn!("No message in Kafka, please check it!");
                 return Err(());
             }
-            Some(m) => m,
+            Ok(m) => m,
         };
 
         let model =
@@ -112,12 +163,16 @@ impl ImportDriver {
             .await
             .unwrap();
 
-        for ver in new_versions {
-            self.handler.send_message(
-                &kafka_analysis_topic,
-                "",
-                &serde_json::to_string(&ver).unwrap(),
-            );
+        if matches!(kind, MessageKind::UserUpload) {
+            for ver in new_versions {
+                self.sender_handler
+                    .send_message(
+                        &kafka_analysis_topic,
+                        "",
+                        &serde_json::to_string(&ver).unwrap(),
+                    )
+                    .await;
+            }
         }
 
         self.context.write_tugraph_import_files();
@@ -349,7 +404,8 @@ impl ImportContext {
     fn write_tugraph_import_files(&self) {
         tracing::info!("Start to write");
         let tugraph_import_files = PathBuf::from(env::var("TUGRAPH_IMPORT_FILES_PG").unwrap());
-        fs::create_dir_all(tugraph_import_files.clone()).unwrap_or_else(|e| error!("Error: {}", e));
+        fs::create_dir_all(tugraph_import_files.clone())
+            .unwrap_or_else(|e| tracing::error!("Error: {}", e));
 
         // write into csv
         write_into_csv(

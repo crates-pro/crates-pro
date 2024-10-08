@@ -150,7 +150,7 @@ impl ImportContext {
                     }
                 }
             }
-            Err(_) => error!("Failed to parse Cargo.toml for {:?}", cargo_toml_content),
+            Err(_) => tracing::error!("Failed to parse Cargo.toml for {:?}", cargo_toml_content),
         }
         None
     }

@@ -19,8 +19,8 @@ jobs:
 
       - name: Setup Docker and Run cargo check
         run: |
-          docker pull xizheyin/crates-pro:latest
-          docker run --name rust-container -d -v ${{ github.workspace }}:/github/workspace --workdir /github/workspace xizheyin/crates-pro:latest tail -f /dev/null
+          docker pull changanyyy/crates-pro:latest
+          docker run --name rust-container -d -v ${{ github.workspace }}:/github/workspace --workdir /github/workspace changanyyy/crates-pro:latest tail -f /dev/null
           docker exec rust-container sh -c "rustup default stable && cargo check"
           docker stop rust-container
 
@@ -30,8 +30,8 @@ jobs:
       - uses: actions/checkout@v3 
       - name: Setup Docker and Run cargo clippy
         run: |
-          docker pull xizheyin/crates-pro:latest
-          docker run --name rust-container -d -v ${{ github.workspace }}:/github/workspace --workdir /github/workspace xizheyin/crates-pro:latest tail -f /dev/null
+          docker pull changanyyy/crates-pro:latest
+          docker run --name rust-container -d -v ${{ github.workspace }}:/github/workspace --workdir /github/workspace changanyyy/crates-pro:latest tail -f /dev/null
           docker exec rust-container sh -c "rustup default stable && cargo clippy --workspace --all-targets --all-features -- -D warnings"
           docker stop rust-container
   
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v3 
       - name: Run cargo doc
         run: |
-          docker pull xizheyin/crates-pro:latest
-          docker run --name rust-container -d -v ${{ github.workspace }}:/github/workspace --workdir /github/workspace xizheyin/crates-pro:latest tail -f /dev/null
+          docker pull changanyyy/crates-pro:latest
+          docker run --name rust-container -d -v ${{ github.workspace }}:/github/workspace --workdir /github/workspace changanyyy/crates-pro:latest tail -f /dev/null
           docker exec rust-container sh -c "rustup default stable && cargo doc"
           docker stop rust-container

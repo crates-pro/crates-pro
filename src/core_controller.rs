@@ -4,7 +4,7 @@
 //! other processes.
 
 use analysis::analyse_once;
-use data_transporter::run_api_server;
+use data_transporter::{run_api_server, Transporter};
 use repo_import::ImportDriver;
 
 use crate::cli::CratesProCli;
@@ -95,43 +95,47 @@ impl CoreController {
             }
         });
 
-        //let state_clone3: Arc<tokio::sync::Mutex<SharedState>> = Arc::clone(&shared_state);
+        let state_clone3: Arc<tokio::sync::Mutex<SharedState>> = Arc::clone(&shared_state);
+        let package_task = tokio::spawn(async move {
+            if package {
+                loop {
+                    {
+                        let mut state = state_clone3.lock().await;
+                        state.is_packaging = true;
+                    }
+
+                    // process here
+                    {
+                        let mut transporter = Transporter::new(
+                            "bolt://172.17.0.1:7687",
+                            "admin",
+                            "73@TuGraph",
+                            "cratespro",
+                        )
+                        .await;
+
+                        transporter.transport_data().await.unwrap();
+                    }
+
+                    {
+                        let mut state = state_clone3.lock().await;
+                        state.is_packaging = false;
+                    }
+
+                    // after one hour
+                    tokio::time::sleep(Duration::from_secs(30 * 60)).await;
+                }
+            }
+        });
+
         if package {
             run_api_server("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "cratespro")
                 .await
                 .unwrap();
         }
-        // loop {
-        //     {
-        //         let mut state = state_clone3.lock().await;
-        //         state.is_packaging = true;
-        //     }
-
-        //     // process here
-        //     {
-        //         let mut transporter = Transporter::new(
-        //             "bolt://172.17.0.1:7687",
-        //             "admin",
-        //             "73@TuGraph",
-        //             "cratespro",
-        //         )
-        //         .await;
-
-        //         transporter.transport_data().await.unwrap();
-        //     }
-
-        //     {
-        //         let mut state = state_clone3.lock().await;
-        //         state.is_packaging = false;
-        //     }
-
-        //     // after one hour
-        //     tokio::time::sleep(Duration::from_secs(30 * 60)).await;
-        // }
-        //}
 
         import_task.await.unwrap();
         analyze_task.await.unwrap();
-        //package_task.await.unwrap();
+        package_task.await.unwrap();
     }
 }
