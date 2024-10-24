@@ -13,7 +13,7 @@ use toml::Value;
 /// extracted from a `cargo.toml` file
 #[allow(unused)]
 #[derive(Debug, Default, Clone)]
-pub(crate) struct Dependencies {
+pub struct Dependencies {
     pub(crate) crate_name: String,
     pub(crate) version: String,
     pub(crate) dependencies: Vec<(String, String)>,
@@ -252,7 +252,7 @@ impl VersionUpdater {
                             if x.name == cur_release.name {
                                 found = true;
                                 let prev_sem_ver = semver::Version::parse(&x.version).unwrap();
-                                if sem_ver < prev_sem_ver {
+                                if sem_ver > prev_sem_ver {
                                     //replace
                                     x.version.clone_from(&cur_release.version);
                                 }
@@ -300,7 +300,7 @@ impl VersionUpdater {
 }
 
 #[derive(Default, Debug)]
-pub(crate) struct VersionParser {
+pub struct VersionParser {
     version_map: HashMap<String, Vec<String>>,
 }
 
