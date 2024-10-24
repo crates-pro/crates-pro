@@ -1,8 +1,8 @@
+use crate::{utils::extract_namespace, utils::insert_namespace_by_repo_path, ImportContext};
 use git2::{build::CheckoutBuilder, ObjectType, Oid, Repository};
 use std::path::PathBuf;
+use std::time::Instant;
 use url::Url;
-
-use crate::{utils::extract_namespace, utils::insert_namespace_by_repo_path, ImportContext};
 
 impl ImportContext {
     /// clone repo locally
@@ -33,11 +33,14 @@ impl ImportContext {
             clone(&path, git_url.as_ref()).await?;
         }
         // finish cloning, store namespace ...
-
+        let insert_time = Instant::now();
         insert_namespace_by_repo_path(path.to_str().unwrap().to_string(), namespace.clone());
-
+        let insert_need_time = insert_time.elapsed();
         tracing::trace!("Finish clone all the repos\n");
-
+        tracing::info!(
+            "insert_namespace_by_repo_path need time: {:?}",
+            insert_need_time
+        );
         Ok(path)
     }
 }
@@ -113,14 +116,24 @@ pub(crate) async fn get_all_git_tags_with_time_sorted(
 
         // Convert annotated and light-weight tag into commit
         let commit = if let Some(tag) = obj.as_tag() {
-            tag.target()
-                .expect("Couldn't get tag target")
-                .peel_to_commit()
-                .expect("Couldn't peel to commit")
+            /*tag.target()
+            .expect("Couldn't get tag target")
+            .peel_to_commit()
+            .expect("Couldn't peel to commit")*/
+            let tmp = tag.target().expect("Couldn't get tag target");
+            match tmp.peel_to_commit() {
+                Ok(commit) => commit,
+                Err(e) => {
+                    tracing::info!("Couldn't peel to commit: {:?}", e);
+                    continue;
+                }
+            }
         } else if let Some(commit) = obj.as_commit() {
             commit.clone()
         } else {
-            panic!("Error!");
+            //panic!("Error!");
+            tracing::info!("Error");
+            continue;
         };
 
         let commit_time = commit.time().seconds();
