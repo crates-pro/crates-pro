@@ -97,42 +97,42 @@
 
   "files": [
     {
-      "path": "/home/rust/crates-pro/tugraph_import_files/program.csv",
+      "path": "/home/rust/output/tugraph_import_files_mq/program.csv",
       "header": 1,
       "format": "CSV",
       "label": "program",
       "columns": ["description","doc_url","github_url","id","max_version","mega_url","name","namespace"]
     },
     {
-      "path": "/home/rust/crates-pro/tugraph_import_files/library.csv",
+      "path": "/home/rust/output/tugraph_import_files_mq/library.csv",
       "header": 1,
       "format": "CSV",
       "label": "library",
       "columns": ["cratesio","downloads","id","name"]
     },
     {
-      "path": "/home/rust/crates-pro/tugraph_import_files/application.csv",
+      "path": "/home/rust/output/tugraph_import_files_mq/application.csv",
       "header": 1,
       "format": "CSV",
       "label": "application",
       "columns": ["id", "name"]
     },
     {
-      "path": "/home/rust/crates-pro/tugraph_import_files/library_version.csv",
+      "path": "/home/rust/output/tugraph_import_files_mq/library_version.csv",
       "header": 1,
       "format": "CSV",
       "label": "library_version",
       "columns": ["documentation","id","name","name_and_version","version"]
     },
     {
-      "path": "/home/rust/crates-pro/tugraph_import_files/application_version.csv",
+      "path": "/home/rust/output/tugraph_import_files_mq/application_version.csv",
       "header": 1,
       "format": "CSV",
       "label": "application_version",
       "columns": ["id","name","name_and_version","version"]
     },
         {
-      "path": "/home/rust/crates-pro/tugraph_import_files/version.csv",
+      "path": "/home/rust/output/tugraph_import_files_mq/version.csv",
       "header": 1,
       "format": "CSV",
       "label": "version",
@@ -142,7 +142,7 @@
     
     
     {
-      "path": "/home/rust/crates-pro/tugraph_import_files/has_lib_type.csv",
+      "path": "/home/rust/output/tugraph_import_files_mq/has_lib_type.csv",
       "header": 1,
       "format": "CSV",
       "label": "has_type",
@@ -151,7 +151,7 @@
       "columns": ["DST_ID", "SRC_ID"]
     },
     {
-      "path": "/home/rust/crates-pro/tugraph_import_files/has_app_type.csv",
+      "path": "/home/rust/output/tugraph_import_files_mq/has_app_type.csv",
       "header": 1,
       "format": "CSV",
       "label": "has_type",
@@ -160,7 +160,7 @@
       "columns": ["DST_ID", "SRC_ID"]
     },
     {
-      "path": "/home/rust/crates-pro/tugraph_import_files/lib_has_version.csv",
+      "path": "/home/rust/output/tugraph_import_files_mq/lib_has_version.csv",
       "header": 1,
       "format": "CSV",
       "label": "has_version",
@@ -169,7 +169,7 @@
       "columns": ["DST_ID", "SRC_ID"]
     },
     {
-      "path": "/home/rust/crates-pro/tugraph_import_files/app_has_version.csv",
+      "path": "/home/rust/output/tugraph_import_files_mq/app_has_version.csv",
       "header": 1,
       "format": "CSV",
       "label": "has_version",
@@ -178,7 +178,7 @@
       "columns": ["DST_ID", "SRC_ID"]
     },
     {
-      "path": "/home/rust/crates-pro/tugraph_import_files/lib_has_dep_version.csv",
+      "path": "/home/rust/output/tugraph_import_files_mq/lib_has_dep_version.csv",
       "header": 1,
       "format": "CSV",
       "label": "has_dep_version",
@@ -187,7 +187,7 @@
       "columns": ["DST_ID", "SRC_ID"]
     },
     {
-      "path": "/home/rust/crates-pro/tugraph_import_files/app_has_dep_version.csv",
+      "path": "/home/rust/output/tugraph_import_files_mq/app_has_dep_version.csv",
       "header": 1,
       "format": "CSV",
       "label": "has_dep_version",
@@ -196,7 +196,7 @@
       "columns": ["DST_ID", "SRC_ID"]
     },
     {
-      "path": "/home/rust/crates-pro/tugraph_import_files/depends_on.csv",
+      "path": "/home/rust/output/tugraph_import_files_mq/depends_on.csv",
       "header": 1,
       "format": "CSV",
       "label": "depends_on",
