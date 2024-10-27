@@ -56,7 +56,7 @@ impl CoreController {
 
                 // conduct repo parsing and importing
                 let mut import_driver = ImportDriver::new(dont_clone).await;
-
+                let mut count = 0;
                 loop {
                     let mut state = state_clone1.lock().await;
                     while state.is_packaging {
@@ -66,6 +66,19 @@ impl CoreController {
                     }
 
                     let _ = import_driver.import_from_mq_for_a_message().await;
+                    count += 1;
+                    //let _ = import_driver.context.write_tugraph_import_files();
+                    if count == 1000 {
+                        import_driver.context.depends_on.clone_from(
+                            &(import_driver
+                                .context
+                                .version_updater
+                                .to_depends_on_edges()
+                                .await),
+                        );
+                        import_driver.context.write_tugraph_import_files();
+                        count = 0;
+                    }
                     drop(state);
 
                     tokio::time::sleep(Duration::from_secs(0)).await;
