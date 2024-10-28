@@ -52,7 +52,6 @@ pub(crate) async fn extract_info_local(
                             .await
                             .unwrap();
                     program.mega_url = Some(git_url.clone());
-
                     let uprogram = if islib {
                         UProgram::Library(Library::new(&id.to_string(), &name, -1, None))
                     } else {

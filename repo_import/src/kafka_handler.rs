@@ -81,7 +81,7 @@ impl KafkaHandler {
         if let KafkaHandler::Consumer(consumer) = self {
             tracing::debug!("Trying to consume a message");
 
-            match consumer.poll(Duration::from_secs(1)) {
+            match consumer.poll(Duration::from_secs(0)) {
                 None => {
                     tracing::info!("No message received");
                     Err(KafkaError::NoMessageReceived)
