@@ -52,7 +52,7 @@ pub(crate) async fn extract_info_local(
                             .await
                             .unwrap();
                     let mut name2 = "".to_string();
-                    if program.name.clone() == "".to_string() {
+                    if program.name == "" {
                         if let Some(namespace) = program.namespace.clone() {
                             let namespace_str = namespace.as_str();
                             let parts: Vec<String> =
@@ -65,17 +65,15 @@ pub(crate) async fn extract_info_local(
                     }
                     program.mega_url = Some(git_url.clone());
                     let uprogram = if islib {
-                        if program.name.clone() == "".to_string() {
+                        if program.name == "" {
                             UProgram::Library(Library::new(&id.to_string(), &name2, -1, None))
                         } else {
                             UProgram::Library(Library::new(&id.to_string(), &name, -1, None))
                         }
+                    } else if program.name == "" {
+                        UProgram::Application(Application::new(id.to_string(), &name2))
                     } else {
-                        if program.name.clone() == "".to_string() {
-                            UProgram::Application(Application::new(id.to_string(), &name2))
-                        } else {
-                            UProgram::Application(Application::new(id.to_string(), &name))
-                        }
+                        UProgram::Application(Application::new(id.to_string(), &name))
                     };
 
                     let has_type = HasType {
