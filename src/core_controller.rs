@@ -4,10 +4,12 @@
 //! other processes.
 
 use analysis::analyse_once;
+#[allow(unused_imports)]
 use data_transporter::{run_api_server, Transporter};
 use repo_import::ImportDriver;
 
 use crate::cli::CratesProCli;
+#[allow(unused_imports)]
 use std::{env, fs, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
@@ -50,9 +52,12 @@ impl CoreController {
         let state_clone1: Arc<tokio::sync::Mutex<SharedState>> = Arc::clone(&shared_state);
         let import_task = tokio::spawn(async move {
             if import {
-                repo_import::reset_kafka_offset()
-                    .await
-                    .unwrap_or_else(|x| panic!("{}", x));
+                let test = env::var("Test_OR_NOT").unwrap().eq("1");
+                if !test {
+                    repo_import::reset_kafka_offset()
+                        .await
+                        .unwrap_or_else(|x| panic!("{}", x));
+                }
 
                 // conduct repo parsing and importing
                 let mut import_driver = ImportDriver::new(dont_clone).await;
@@ -97,27 +102,33 @@ impl CoreController {
                         state = state_clone2.lock().await;
                     }
                     drop(state);
-                    println!("Analyzing crate...");
+                    //println!("Analyzing crate...");
 
-                    let output_dir_path = "target/analysis";
-                    fs::create_dir(output_dir_path).unwrap();
+                    let output_dir_path = "/home/rust/output/analysis";
+
+                    /*match fs::create_dir(output_dir_path) {
+                        Ok(_) => {}
+                        Err(_) => {}
+                    }*/
+
                     let _ = analyse_once(output_dir_path).await;
 
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             }
         });
-
+        #[allow(unused_variables)]
         let state_clone3: Arc<tokio::sync::Mutex<SharedState>> = Arc::clone(&shared_state);
         let package_task = tokio::spawn(async move {
             if package {
-                loop {
+                /*loop {
                     {
                         let mut state = state_clone3.lock().await;
                         state.is_packaging = true;
                     }
 
                     // process here
+                    /*
                     {
                         let mut transporter = Transporter::new(
                             "bolt://172.17.0.1:7687",
@@ -128,7 +139,7 @@ impl CoreController {
                         .await;
 
                         transporter.transport_data().await.unwrap();
-                    }
+                    }*/
 
                     {
                         let mut state = state_clone3.lock().await;
@@ -137,7 +148,7 @@ impl CoreController {
 
                     // after one hour
                     tokio::time::sleep(Duration::from_secs(30 * 60)).await;
-                }
+                }*/
             }
         });
 

@@ -1,10 +1,22 @@
 use model::tugraph_model::{Program, UProgram, UVersion};
+use serde::{Deserialize, Serialize};
 use tokio_postgres::{Error, NoTls};
-
 pub struct DBHandler {
-    client: tokio_postgres::Client,
+    pub client: tokio_postgres::Client,
 }
-
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CveInfo {
+    cve_id: String,
+    url: String,
+    description: String,
+    crate_name: String,
+    start_version: String,
+    end_version: String,
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Allcve {
+    cves: Vec<CveInfo>,
+}
 impl DBHandler {
     pub async fn connect() -> Result<Self, Error> {
         let (client, connection) = tokio_postgres::connect(
@@ -245,5 +257,42 @@ impl DBHandler {
         tracing::info!("Finish to insert all versions.");
 
         Ok(())
+    }
+    pub async fn get_all_cvelist(&self) -> Result<Allcve, Error> {
+        let getcve = "SELECT cve_id, name, start_version, end_version FROM cves;";
+        let raws = self.client.query(getcve, &[]).await.unwrap();
+        let mut getcves = vec![];
+        for raw in raws {
+            let front = "https://www.cve.org/CVERecord?id=";
+            let cve_id: String = raw.get(0);
+            let cve_url = front.to_string() + &cve_id;
+            let cve_info = CveInfo {
+                cve_id: raw.get(0),
+                url: cve_url,
+                description: "".to_string(),
+                crate_name: raw.get(1),
+                start_version: raw.get(2),
+                end_version: raw.get(3),
+            };
+            getcves.push(cve_info);
+        }
+        let res = Allcve { cves: getcves };
+        Ok(res)
+    }
+    pub async fn get_cve_by_cratename(&self, cratename: &str) -> Result<Vec<String>, Error> {
+        let rows = self
+            .client
+            .query(
+                "SELECT cve_id FROM cves WHERE name = $1;",
+                &[&cratename.to_string()],
+            )
+            .await
+            .unwrap();
+        let mut cves = vec![];
+        for row in rows {
+            let cve_id: String = row.get(0);
+            cves.push(cve_id);
+        }
+        Ok(cves)
     }
 }

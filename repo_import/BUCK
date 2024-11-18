@@ -38,6 +38,7 @@ rust_library(
         "//third-party:url",
         "//third-party:uuid",
         "//third-party:walkdir",
+        "//third-party:zip"
     ],
     visibility = ["PUBLIC"],
 )

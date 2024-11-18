@@ -21,6 +21,7 @@ uuid = { version = "1.8.0", features = [
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ] }
 async-trait = "0.1"
-
+zip = "2.2.0"
+repo_import = { path = "../repo_import" }
 [dev-dependencies]
 actix-rt = "2.10"
