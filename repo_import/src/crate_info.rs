@@ -51,7 +51,7 @@ pub(crate) async fn extract_info_local(
                         from_cargo_toml(local_repo_path.clone(), entry_path.to_path_buf(), &id)
                             .await
                             .unwrap();
-                    let mut name2 = "".to_string();
+                    /*let mut name2 = "".to_string();
                     if program.name == "" {
                         if let Some(namespace) = program.namespace.clone() {
                             let namespace_str = namespace.as_str();
@@ -72,6 +72,12 @@ pub(crate) async fn extract_info_local(
                         }
                     } else if program.name == "" {
                         UProgram::Application(Application::new(id.to_string(), &name2))
+                    } else {
+                        UProgram::Application(Application::new(id.to_string(), &name))
+                    };*/
+                    program.mega_url = Some(git_url.clone());
+                    let uprogram = if islib {
+                        UProgram::Library(Library::new(&id.to_string(), &name, -1, None))
                     } else {
                         UProgram::Application(Application::new(id.to_string(), &name))
                     };
