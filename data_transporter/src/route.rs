@@ -94,7 +94,7 @@ impl ApiHandler {
         let nname: String = name.into_inner().into();
         let nversion: String = version.into_inner().into();
         let mut name_and_version = nname.clone() + "/" + &nversion.clone();
-        if nversion == "".to_string() {
+        if nversion.is_empty() {
             //get max_version
             let max_version = self.reader.get_max_version(nname.clone()).await.unwrap();
             name_and_version = nname.clone() + "/" + &max_version;
