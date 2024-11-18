@@ -34,12 +34,12 @@ impl TuGraphClient {
             .fetch_size(10000)
             .db(graph_name)
             .build()?;
-        tracing::trace!(
+        tracing::info!(
             "Begin to connect to Tugraph, uri: {uri}, user: {user}, password: {password}, db: {db}"
         );
 
         let graph = Graph::connect(config).await.unwrap();
-        tracing::trace!("Success to connect to Tugraph");
+        tracing::info!("Success to connect to Tugraph");
         Ok(TuGraphClient { graph })
     }
 
@@ -61,7 +61,9 @@ impl TuGraphClient {
 
     pub async fn exec_query(&self, q: &str) -> Result<Vec<String>, Box<dyn Error>> {
         let mut labels = vec![];
+        tracing::info!("start query");
         let mut result = self.graph.execute(query(q)).await?;
+        tracing::info!("end query");
         while let Some(row) = result.next().await? {
             let value: Value = row.to().unwrap(); // 打印出 row 的内容以调试
                                                   //println!("{:#?}", value);

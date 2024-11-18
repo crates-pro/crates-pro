@@ -12,8 +12,23 @@ pub use transporter::Transporter;
 
 use crate::data_reader::DataReader; // 确保导入你的 DataReader
 use crate::route::ApiHandler;
+
 use actix_multipart::Multipart;
-use actix_web::{web, App, HttpServer};
+use actix_web::{
+    
+    web::{self},
+    App, HttpServer,
+};
+#[derive(Deserialize)]
+pub struct Query {
+    query: String,
+    pagination: Pagination,
+}
+#[derive(Deserialize)]
+pub struct Pagination {
+    page: usize,
+    per_page: usize,
+}
 
 pub async fn run_api_server(
     uri: &str,
@@ -21,13 +36,15 @@ pub async fn run_api_server(
     password: &str,
     db: &str,
 ) -> std::io::Result<()> {
+    tracing::info!("Start run_api_server");
     let reader = DataReader::new(uri, user, password, db).await.unwrap();
     let api_handler = Arc::new(ApiHandler::new(Box::new(reader)).await);
 
     HttpServer::new(move || {
         let api_handler_clone = Arc::clone(&api_handler);
+        tracing::info!("start route");
         App::new()
-            .app_data(web::Data::from(api_handler_clone))
+            .app_data(web::Data::new(api_handler_clone))
             .route(
                 "/api/crates",
                 web::get().to(|data: web::Data<Arc<ApiHandler>>| async move {
@@ -43,20 +60,48 @@ pub async fn run_api_server(
                 ),
             )
             .route(
-                "/api/crates",
+                "/api/cvelist",
+                web::get().to(
+                    |data: web::Data<Arc<ApiHandler>>| async move {
+                        data.get_cves().await
+                    },
+                ),
+            )
+            .route(
+                "/api/submit",
                 web::post().to(
                     |_data: web::Data<Arc<ApiHandler>>, payload: Multipart| async move {
+                        println!("submit!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
                         ApiHandler::upload_crate(payload).await
                     },
                 ),
             )
+            .route("/api/search", web::post().to(
+                |data: web::Data<Arc<ApiHandler>>,payload: web::Json<Query>| async move{
+                    let query = payload.into_inner();
+                    data.query_crates(query).await
+            },),)
+            .route("/api/crates/{crateName}/{version}/dependencies", 
+            web::get().to(|data:web::Data<Arc<ApiHandler>>,crate_name:web::Path<String>,version:web::Path<String>|async move{
+              
+                data.get_dependency(crate_name.into_inner().into(),version.into_inner().into()).await
+            }))
+            .route("/api/crates/{crateName}/{version}/dependents", 
+            web::get().to(|data:web::Data<Arc<ApiHandler>>,crate_name:web::Path<String>,version:web::Path<String>|async move{
+              
+                data.get_dependent(crate_name.into_inner().into(),version.into_inner().into()).await
+            }))
+            .route("/api/crates/{crateName}/{version}", 
+            web::get().to(|data:web::Data<Arc<ApiHandler>>,crate_name:web::Path<String>,version:web::Path<String>|async move{
+                data.get_crates_front_info(crate_name.into_inner().into(),version.into_inner().into()).await
+            }))
     })
     .bind("0.0.0.0:6888")?
     .run()
     .await
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize,Clone)]
 pub struct NameVersion {
     pub name: String,
     pub version: String,

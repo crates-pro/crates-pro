@@ -44,9 +44,9 @@ pub struct ImportMessage<'a> {
 
 pub struct ImportDriver {
     pub context: ImportContext,
-    import_handler: KafkaHandler,
-    user_import_handler: KafkaHandler,
-    sender_handler: KafkaHandler,
+    pub import_handler: KafkaHandler,
+    pub user_import_handler: KafkaHandler,
+    pub sender_handler: KafkaHandler,
 }
 
 impl ImportDriver {
@@ -95,6 +95,7 @@ impl ImportDriver {
     async fn consume_message(&self) -> Result<ImportMessage, KafkaError> {
         // try to get data from user_import_handler
         if let Ok(message) = self.user_import_handler.consume_once().await {
+            tracing::info!("Receive a user upload message!");
             return Ok(ImportMessage {
                 kind: MessageKind::UserUpload,
                 message,
@@ -144,84 +145,110 @@ impl ImportDriver {
             message.offset(),
             message.timestamp()
         );
-
-        let mega_url_suffix = model.unwrap().mega_url;
-
-        let clone_crates_dir =
-            env::var("NEW_CRATES_DIR").unwrap_or_else(|_| CLONE_CRATES_DIR.to_string());
-        //changes clone_or_not_clone
-        let git_url = {
-            let git_url_base = Url::parse(&git_url_base)
-                .unwrap_or_else(|_| panic!("Failed to parse mega url base: {}", &git_url_base));
-            git_url_base
-                .join(&mega_url_suffix)
-                .expect("Failed to join url path")
-        };
-        let namespace = extract_namespace(git_url.as_ref()).expect("Failed to parse URL");
-        let path = PathBuf::from(&clone_crates_dir).join(namespace.clone());
-
-        //changes
-        if !path.is_dir() {
-            tracing::info!("dir {} not exist", path.to_str().unwrap().to_string());
-            let clone_start_time = Instant::now();
-            let local_repo_path = match self
-                .context
-                .clone_a_repo_by_url(&clone_crates_dir, &git_url_base, &mega_url_suffix)
-                .await
-            {
-                Ok(x) => x,
-                _ => {
-                    tracing::error!("Failed to clone repo {}", mega_url_suffix);
-                    return Err(());
-                }
-            };
-            let clone_need_time = clone_start_time.elapsed();
-            tracing::info!("clone need time: {:?}", clone_need_time);
+        if matches!(kind, MessageKind::UserUpload) {
+            //from user upload
+            tracing::info!("user upload path:{}", model.clone().unwrap().mega_url);
+            let usr_upload_path = model.unwrap().mega_url;
+            let namespace = extract_namespace(&usr_upload_path).expect("Failed to parse URL");
+            let path = PathBuf::from(&usr_upload_path);
+            insert_namespace_by_repo_path(path.to_str().unwrap().to_string(), namespace.clone());
             let new_versions = self
                 .context
-                .parse_a_local_repo_and_return_new_versions(local_repo_path, mega_url_suffix)
+                .parse_a_local_repo_and_return_new_versions(path, "".to_string())
                 .await
                 .unwrap();
-
-            if matches!(kind, MessageKind::UserUpload) {
-                for ver in new_versions {
-                    self.sender_handler
-                        .send_message(
-                            &kafka_analysis_topic,
-                            "",
-                            &serde_json::to_string(&ver).unwrap(),
-                        )
-                        .await;
-                }
+            for ver in new_versions {
+                self.sender_handler
+                    .send_message(
+                        &kafka_analysis_topic,
+                        "",
+                        &serde_json::to_string(&ver).unwrap(),
+                    )
+                    .await;
             }
         } else {
-            tracing::info!("dir {} already exist", path.to_str().unwrap().to_string());
-            let insert_time = Instant::now();
-            insert_namespace_by_repo_path(path.to_str().unwrap().to_string(), namespace.clone());
-            let insert_need_time = insert_time.elapsed();
-            tracing::info!(
-                "insert_namespace_by_repo_path need time: {:?}",
-                insert_need_time
-            );
-            let new_versions = self
-                .context
-                .parse_a_local_repo_and_return_new_versions(path, mega_url_suffix)
-                .await
-                .unwrap();
+            //from mega
+            let mega_url_suffix = model.unwrap().mega_url;
 
-            if matches!(kind, MessageKind::UserUpload) {
-                for ver in new_versions {
-                    self.sender_handler
-                        .send_message(
-                            &kafka_analysis_topic,
-                            "",
-                            &serde_json::to_string(&ver).unwrap(),
-                        )
-                        .await;
+            let clone_crates_dir =
+                env::var("NEW_CRATES_DIR").unwrap_or_else(|_| CLONE_CRATES_DIR.to_string());
+            //changes clone_or_not_clone
+            let git_url = {
+                let git_url_base = Url::parse(&git_url_base)
+                    .unwrap_or_else(|_| panic!("Failed to parse mega url base: {}", &git_url_base));
+                git_url_base
+                    .join(&mega_url_suffix)
+                    .expect("Failed to join url path")
+            };
+            let namespace = extract_namespace(git_url.as_ref()).expect("Failed to parse URL");
+            let path = PathBuf::from(&clone_crates_dir).join(namespace.clone());
+
+            //changes
+            if !path.is_dir() {
+                //if user_upload, no clone
+                tracing::info!("dir {} not exist", path.to_str().unwrap().to_string());
+                let clone_start_time = Instant::now();
+                let local_repo_path = match self
+                    .context
+                    .clone_a_repo_by_url(&clone_crates_dir, &git_url_base, &mega_url_suffix)
+                    .await
+                {
+                    Ok(x) => x,
+                    _ => {
+                        tracing::error!("Failed to clone repo {}", mega_url_suffix);
+                        return Err(());
+                    }
+                };
+                let clone_need_time = clone_start_time.elapsed();
+                tracing::info!("clone need time: {:?}", clone_need_time);
+                let new_versions = self
+                    .context
+                    .parse_a_local_repo_and_return_new_versions(local_repo_path, mega_url_suffix)
+                    .await
+                    .unwrap();
+
+                if matches!(kind, MessageKind::UserUpload) {
+                    for ver in new_versions {
+                        self.sender_handler
+                            .send_message(
+                                &kafka_analysis_topic,
+                                "",
+                                &serde_json::to_string(&ver).unwrap(),
+                            )
+                            .await;
+                    }
                 }
-            }
-        } //changes
+            } else {
+                tracing::info!("dir {} already exist", path.to_str().unwrap().to_string());
+                let insert_time = Instant::now();
+                insert_namespace_by_repo_path(
+                    path.to_str().unwrap().to_string(),
+                    namespace.clone(),
+                );
+                let insert_need_time = insert_time.elapsed();
+                tracing::info!(
+                    "insert_namespace_by_repo_path need time: {:?}",
+                    insert_need_time
+                );
+                let new_versions = self
+                    .context
+                    .parse_a_local_repo_and_return_new_versions(path, mega_url_suffix)
+                    .await
+                    .unwrap();
 
+                if matches!(kind, MessageKind::UserUpload) {
+                    for ver in new_versions {
+                        self.sender_handler
+                            .send_message(
+                                &kafka_analysis_topic,
+                                "",
+                                &serde_json::to_string(&ver).unwrap(),
+                            )
+                            .await;
+                    }
+                }
+            } //changes
+        }
         //self.context.write_tugraph_import_files();
 
         tracing::info!("Finish to import from a message!");

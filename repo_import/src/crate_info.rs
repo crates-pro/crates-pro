@@ -51,11 +51,31 @@ pub(crate) async fn extract_info_local(
                         from_cargo_toml(local_repo_path.clone(), entry_path.to_path_buf(), &id)
                             .await
                             .unwrap();
+                    let mut name2 = "".to_string();
+                    if program.name.clone() == "".to_string() {
+                        if let Some(namespace) = program.namespace.clone() {
+                            let namespace_str = namespace.as_str();
+                            let parts: Vec<String> =
+                                namespace_str.split('/').map(|x| x.to_string()).collect();
+                            if parts.len() == 2 {
+                                program.name = parts[1].clone();
+                                name2 = parts[1].clone();
+                            }
+                        }
+                    }
                     program.mega_url = Some(git_url.clone());
                     let uprogram = if islib {
-                        UProgram::Library(Library::new(&id.to_string(), &name, -1, None))
+                        if program.name.clone() == "".to_string() {
+                            UProgram::Library(Library::new(&id.to_string(), &name2, -1, None))
+                        } else {
+                            UProgram::Library(Library::new(&id.to_string(), &name, -1, None))
+                        }
                     } else {
-                        UProgram::Application(Application::new(id.to_string(), &name))
+                        if program.name.clone() == "".to_string() {
+                            UProgram::Application(Application::new(id.to_string(), &name2))
+                        } else {
+                            UProgram::Application(Application::new(id.to_string(), &name))
+                        }
                     };
 
                     let has_type = HasType {
