@@ -261,22 +261,22 @@ impl DBHandler {
     pub async fn get_all_cvelist(&self) -> Result<Allcve, Error> {
         let getcve = "SELECT cve_id, name, start_version, end_version FROM cves;";
         let raws = self.client.query(getcve, &[]).await.unwrap();
-        let mut cves = vec![];
+        let mut getcves = vec![];
         for raw in raws {
             let front = "https://www.cve.org/CVERecord?id=";
             let cve_id: String = raw.get(0);
-            let url = front.to_string() + &cve_id;
+            let cve_url = front.to_string() + &cve_id;
             let cve_info = CveInfo {
                 cve_id: raw.get(0),
-                url: url,
+                url: cve_url,
                 description: "".to_string(),
                 crate_name: raw.get(1),
                 start_version: raw.get(2),
                 end_version: raw.get(3),
             };
-            cves.push(cve_info);
+            getcves.push(cve_info);
         }
-        let res = Allcve { cves: cves };
+        let res = Allcve { cves: getcves };
         Ok(res)
     }
     pub async fn get_cve_by_cratename(&self, cratename: &str) -> Result<Vec<String>, Error> {

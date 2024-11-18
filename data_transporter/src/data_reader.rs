@@ -268,7 +268,6 @@ impl DataReaderTrait for DataReader {
     }
     async fn count_dependencies(&self, nameversion: NameVersion) -> Result<usize, Box<dyn Error>> {
         let name_and_version = nameversion.name + "/" + &nameversion.version;
-        let mut node_count = 0;
         let mut all_nodes = self
             .get_direct_dependency_nodes(&name_and_version)
             .await
@@ -279,7 +278,7 @@ impl DataReaderTrait for DataReader {
                 all_nodes.push(indirect_node);
             }
         }
-        node_count = all_nodes.len();
+        let node_count = all_nodes.len();
         Ok(node_count)
     }
     async fn get_direct_dependent_nodes(

@@ -91,8 +91,8 @@ impl ApiHandler {
         name: web::Path<String>,
         version: web::Path<String>,
     ) -> impl Responder {
-        let nname: String = name.into_inner().into();
-        let nversion: String = version.into_inner().into();
+        let nname: String = name.into_inner();
+        let nversion: String = version.into_inner();
         let mut name_and_version = nname.clone() + "/" + &nversion.clone();
         if nversion.is_empty() {
             //get max_version
@@ -134,6 +134,7 @@ impl ApiHandler {
             }
         }
         let indirect_dependent_count = all_dependent_nodes.len() - direct_dependent_count;
+        #[allow(unused_variables)]
         let (client, connection) = tokio_postgres::connect(
             "host=172.17.0.1 port=30432 user=mega password=mega dbname=cratespro",
             NoTls,
@@ -141,15 +142,15 @@ impl ApiHandler {
         .await
         .unwrap();
         let dbhandler = DBHandler { client };
-        let cves = dbhandler.get_cve_by_cratename(&nname).await.unwrap();
+        let getcves = dbhandler.get_cve_by_cratename(&nname).await.unwrap();
         let lib_versions = self.reader.get_lib_version(nname.clone()).await.unwrap();
         let app_versions = self.reader.get_app_version(nname.clone()).await.unwrap();
-        let mut versions = vec![];
+        let mut getversions = vec![];
         for version in lib_versions {
-            versions.push(version);
+            getversions.push(version);
         }
         for version in app_versions {
-            versions.push(version);
+            getversions.push(version);
         }
         let dcy_count = DependencyCount {
             direct: direct_dependency_count,
@@ -164,12 +165,13 @@ impl ApiHandler {
             description: "".to_string(),
             dependencies: dcy_count,
             dependents: dt_count,
-            cves: cves,
-            versions: versions,
+            cves: getcves,
+            versions: getversions,
         };
         HttpResponse::Ok().json(res)
     }
     pub async fn get_cves(&self) -> impl Responder {
+        #[allow(unused_variables)]
         let (client, connection) = tokio_postgres::connect(
             "host=172.17.0.1 port=30432 user=mega password=mega dbname=cratespro",
             NoTls,
@@ -191,7 +193,7 @@ impl ApiHandler {
             .get_direct_dependency_nodes(&name_and_version)
             .await
             .unwrap();
-        let direct_count = all_nodes.len();
+        let getdirect_count = all_nodes.len();
         for node in all_nodes.clone() {
             let nodes = self
                 .reader
@@ -202,32 +204,28 @@ impl ApiHandler {
                 all_nodes.push(indirect_node);
             }
         }
-        let indirect_count = all_nodes.len() - direct_count;
+        let getindirect_count = all_nodes.len() - getdirect_count;
         let mut deps = vec![];
-        for i in 0..direct_count - 1 {
-            let dep_count = self
-                .reader
-                .count_dependencies(all_nodes[i].clone())
-                .await
-                .unwrap();
+        for item in all_nodes.iter().take(getdirect_count - 1) {
+            let dep_count = self.reader.count_dependencies(item.clone()).await.unwrap();
             let dep = DependencyCrateInfo {
-                crate_name: all_nodes[i].clone().name,
-                version: all_nodes[i].clone().version,
+                crate_name: item.clone().name,
+                version: item.clone().version,
                 relation: "Direct".to_string(),
                 license: "".to_string(),
                 dependencies: dep_count,
             };
             deps.push(dep);
         }
-        for i in direct_count..all_nodes.len() - 1 {
-            let dep_count = self
-                .reader
-                .count_dependencies(all_nodes[i].clone())
-                .await
-                .unwrap();
+        for item in all_nodes
+            .iter()
+            .take(all_nodes.len() - 1)
+            .skip(getdirect_count)
+        {
+            let dep_count = self.reader.count_dependencies(item.clone()).await.unwrap();
             let dep = DependencyCrateInfo {
-                crate_name: all_nodes[i].clone().name,
-                version: all_nodes[i].clone().version,
+                crate_name: item.clone().name,
+                version: item.clone().version,
                 relation: "Indirect".to_string(),
                 license: "".to_string(),
                 dependencies: dep_count,
@@ -235,8 +233,8 @@ impl ApiHandler {
             deps.push(dep);
         }
         let res_deps = DependencyInfo {
-            direct_count: direct_count,
-            indirect_count: indirect_count,
+            direct_count: getdirect_count,
+            indirect_count: getindirect_count,
             data: deps,
         };
         HttpResponse::Ok().json(res_deps)
@@ -252,7 +250,7 @@ impl ApiHandler {
             .get_direct_dependent_nodes(&name_and_version)
             .await
             .unwrap();
-        let direct_count = all_nodes.len();
+        let getdirect_count = all_nodes.len();
         for node in all_nodes.clone() {
             let nodes = self
                 .reader
@@ -263,12 +261,12 @@ impl ApiHandler {
                 all_nodes.push(indirect_node);
             }
         }
-        let indirect_count = all_nodes.len() - direct_count;
+        let getindirect_count = all_nodes.len() - getdirect_count;
         let mut deps = vec![];
-        for i in 0..direct_count - 1 {
+        for (i, item) in all_nodes.iter().enumerate().take(getdirect_count - 1) {
             let dep = DependentData {
-                crate_name: all_nodes[i].clone().name,
-                version: all_nodes[i].clone().version,
+                crate_name: item.clone().name,
+                version: item.clone().version,
                 relation: "Direct".to_string(),
             };
             deps.push(dep);
@@ -276,20 +274,25 @@ impl ApiHandler {
                 break;
             }
         }
-        for i in direct_count..all_nodes.len() - 1 {
+        for (i, item) in all_nodes
+            .iter()
+            .enumerate()
+            .take(all_nodes.len() - 1)
+            .skip(getdirect_count)
+        {
             let dep = DependentData {
-                crate_name: all_nodes[i].clone().name,
-                version: all_nodes[i].clone().version,
+                crate_name: item.clone().name,
+                version: item.clone().version,
                 relation: "Indirect".to_string(),
             };
             deps.push(dep);
-            if i - direct_count == 49 {
+            if i - getdirect_count == 49 {
                 break;
             }
         }
         let res_deps = DependentInfo {
-            direct_count: direct_count,
-            indirect_count: indirect_count,
+            direct_count: getdirect_count,
+            indirect_count: getindirect_count,
             data: deps,
         };
         HttpResponse::Ok().json(res_deps)
@@ -299,8 +302,8 @@ impl ApiHandler {
         let page = q.pagination.page;
         let per_page = q.pagination.per_page;
         let programs = self.reader.get_program_by_name(&name).await.unwrap();
-        let total_page = programs.len() / per_page;
-        let mut items = vec![];
+        let gettotal_page = programs.len() / per_page;
+        let mut getitems = vec![];
         for i in page * 20..page * 20 + 19 {
             if i >= programs.len() {
                 break;
@@ -310,18 +313,19 @@ impl ApiHandler {
                 version: programs[i].clone().max_version.unwrap(),
                 date: "".to_string(),
             };
-            items.push(query_item);
+            getitems.push(query_item);
         }
         let response = QueryCratesInfo {
             code: 200,
             message: "成功".to_string(),
             data: QueryData {
-                total_page: total_page,
-                items: items,
+                total_page: gettotal_page,
+                items: getitems,
             },
         };
         HttpResponse::Ok().json(response)
     }
+    #[allow(dead_code)]
     pub async fn get_all_crates_id(&self) -> impl Responder {
         tracing::info!("get all crates func run");
         let program_ids = { self.reader.get_all_programs_id() }.await;
@@ -441,11 +445,14 @@ impl ApiHandler {
                         };
                         let kafka_user_import_topic = env::var("KAFKA_USER_IMPORT_TOPIC").unwrap();
                         let import_driver = ImportDriver::new(false).await;
-                        let _ = import_driver.user_import_handler.send_message(
-                            &kafka_user_import_topic,
-                            "",
-                            &serde_json::to_string(&sent_payload).unwrap(),
-                        );
+                        let _ = import_driver
+                            .user_import_handler
+                            .send_message(
+                                &kafka_user_import_topic,
+                                "",
+                                &serde_json::to_string(&sent_payload).unwrap(),
+                            )
+                            .await;
                         break;
                     } else {
                         let filepath =
@@ -459,14 +466,14 @@ impl ApiHandler {
                         break;
                     }
                     // analyze
-                } else if Some("link") == field.name() {
-                    // 处理 URL 链接
-                    let mut url = String::new();
-                    while let Some(chunk) = field.next().await {
-                        url.push_str(&String::from_utf8(chunk.unwrap().to_vec()).unwrap());
-                    }
-                    println!("Received URL: {}", url);
-                }
+                } /*else if Some("link") == field.name() {
+                      // 处理 URL 链接
+                      let mut url = String::new();
+                      while let Some(chunk) = field.next().await {
+                          url.push_str(&String::from_utf8(chunk.unwrap().to_vec()).unwrap());
+                      }
+                      println!("Received URL: {}", url);
+                  }*/
             }
         }
 
