@@ -4,10 +4,12 @@
 //! other processes.
 
 use analysis::analyse_once;
+#[allow(unused_imports)]
 use data_transporter::{run_api_server, Transporter};
 use repo_import::ImportDriver;
 
 use crate::cli::CratesProCli;
+#[allow(unused_imports)]
 use std::{env, fs, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
@@ -104,10 +106,10 @@ impl CoreController {
 
                     let output_dir_path = "/home/rust/output/analysis";
 
-                    match fs::create_dir(output_dir_path) {
+                    /*match fs::create_dir(output_dir_path) {
                         Ok(_) => {}
                         Err(_) => {}
-                    }
+                    }*/
 
                     let _ = analyse_once(output_dir_path).await;
 
@@ -115,7 +117,7 @@ impl CoreController {
                 }
             }
         });
-
+        #[allow(unused_variables)]
         let state_clone3: Arc<tokio::sync::Mutex<SharedState>> = Arc::clone(&shared_state);
         let package_task = tokio::spawn(async move {
             if package {
