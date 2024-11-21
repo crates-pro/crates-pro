@@ -26,6 +26,7 @@ members = [
   "tuplugins/plugin2", # tugraph plugins, deal with concret logics
   "data_transporter",
   "analysis",
+  "mega_tool",
 ]
 
 resolver = "2" # use resolver of version 2
@@ -45,7 +46,7 @@ tracing-subscriber = { workspace = true }
 tracing = { workspace = true }
 rdkafka = { workspace = true, features = ["cmake-build"] }
 structopt = { workspace = true }
-
+mega_tool = { path = "mega_tool" }
 
 [workspace.dependencies]
 serde = "1.0.197"
