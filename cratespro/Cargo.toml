@@ -1,0 +1,35 @@
+[package]
+name = "crates_pro"
+version = "0.1.0"
+edition = "2021"
+default-run = "crates_pro"
+
+[[bin]]
+name = "crates_pro"
+path = "src/main.rs"
+
+[[bin]]
+name = "benchmark_controller"
+path = "src/bin/benchmark_controller.rs"
+
+[[bin]]
+name = "senseleak_controller"
+path = "src/bin/senseleak_controller.rs"
+
+[dependencies]
+model = { workspace = true }
+tudriver = { workspace = true }
+repo_import = { workspace = true }
+analysis = { workspace = true}
+data_transporter = { workspace = true }
+dotenvy = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+neo4rs = { workspace = true }
+serde_json = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing = { workspace = true }
+rdkafka = { workspace = true, features = ["cmake-build"] }
+structopt = { workspace = true }
+
+[dev-dependencies]
+serial_test = "0.5"
