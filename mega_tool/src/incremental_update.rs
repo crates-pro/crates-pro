@@ -364,7 +364,7 @@ pub async fn incremental_update() {
         for crate_info in crates_info {
             grouped_crates
                 .entry(crate_info.path.to_str().unwrap().to_owned().clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(crate_info);
         }
 
