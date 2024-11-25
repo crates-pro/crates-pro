@@ -1,10 +1,3 @@
-use std::{
-    fs::{self, File},
-    io::{BufRead, BufReader, Write},
-    path::PathBuf,
-    str::FromStr,
-};
-
 use clap::Parser;
 
 use mega_tool::{
