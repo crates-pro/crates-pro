@@ -33,7 +33,6 @@ flate2 = "1.0.30"
 git2 = "0.19.0"
 serde_json = "1.0.120"
 
-
 [[bin]]
 name = "mega_tool"   # 设置编译后的二进制文件名称
 path = "src/main.rs" # 可选，默认情况下，Cargo 会查找 src/main.rs 文件

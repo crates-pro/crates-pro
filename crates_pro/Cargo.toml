@@ -20,7 +20,7 @@ path = "src/bin/senseleak_controller.rs"
 model = { workspace = true }
 tudriver = { workspace = true }
 repo_import = { workspace = true }
-analysis = { workspace = true}
+analysis = { workspace = true }
 data_transporter = { workspace = true }
 dotenvy = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env,
     fs::{self, File},
     io::{self, BufRead, BufReader, Seek, SeekFrom},
@@ -10,16 +10,16 @@ use std::{
     time::Duration,
 };
 
+use entity::{db_enums::RepoSyncStatus, repo_sync_status};
 use flate2::bufread::GzDecoder;
 use git2::{Repository, Signature};
 use rdkafka::producer::FutureProducer;
+use regex::Regex;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set, Unchanged};
 use tar::Archive;
 use tokio::time::sleep;
 use url::Url;
 use walkdir::WalkDir;
-
-use entity::{db_enums::RepoSyncStatus, repo_sync_status};
 
 use crate::{
     kafka::{self},
@@ -58,9 +58,13 @@ pub async fn incremental_update() {
             .output()
             .expect("Failed to execute `freighter crates download`");
 
+        println!("freighter-done!");
         // 从日志中读出增量信息
-        let crates_info =
-            parse_log_file(log_file_path, last_location_u64).expect("Failed to parse log file");
+        let download_txt_dir = Path::new("/home/rust/freighter/log/");
+        let crate_names = read_latest_crate_list(download_txt_dir)
+            .expect("Failed to get download.txt crates name");
+        let crates_info = parse_log_file(log_file_path, last_location_u64, &crate_names)
+            .expect("Failed to parse log file");
 
         for crate_info in &crates_info {
             println!("re: {:?}", crate_info);
@@ -321,41 +325,142 @@ pub async fn incremental_update() {
         Ok(())
     }
 
+    /// 从目录中读取最新的 `download_*.txt` 文件，解析出 crate 名集合
+    fn read_latest_crate_list(dir: &Path) -> io::Result<HashSet<String>> {
+        let mut latest_file: Option<PathBuf> = None;
+        let mut latest_timestamp: Option<i64> = None;
+
+        // 遍历目录下的文件
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            //println!("open txt {:?}", path);
+            // 检查文件是否符合 `download_*.txt` 命名格式
+            if let Some(file_name) = path.file_name().and_then(|name| name.to_str()) {
+                if file_name.starts_with("download_") && file_name.ends_with(".txt") {
+                    // 提取时间戳部分
+                    let timestamp_str = file_name
+                        .trim_start_matches("download_")
+                        .trim_end_matches(".txt");
+
+                    let parts: Vec<&str> = timestamp_str.split('_').collect();
+                    let date_part = parts[0].replace('-', "");
+                    let time_part = parts[1].replace('-', "");
+
+                    // 拼接日期和时间部分
+                    let formatted_str = format!("{}{}", date_part, time_part);
+                    // 尝试将时间戳转换为数字
+                    if let Ok(timestamp) = formatted_str.parse::<i64>() {
+                        if latest_timestamp.is_none() || timestamp > latest_timestamp.unwrap() {
+                            latest_timestamp = Some(timestamp);
+                            latest_file = Some(path);
+                        }
+                    }
+                }
+            }
+        }
+
+        //println!("open txt {:?}", latest_file);
+        // 如果找到最新文件，读取文件内容
+        if let Some(latest_file_path) = latest_file {
+            let file = fs::File::open(latest_file_path)?;
+            let reader = BufReader::new(file);
+            let mut crate_names = HashSet::new();
+
+            for line in reader.lines() {
+                let line = line?;
+                crate_names.insert(line);
+            }
+
+            Ok(crate_names)
+        } else {
+            // 如果未找到符合条件的文件，则返回空集合
+            Ok(HashSet::new())
+        }
+    }
+
     // 读取日志文件并解析出所需的信息
-    fn parse_log_file(log_file_path: &Path, last_position: u64) -> io::Result<Vec<CrateInfo>> {
+    fn parse_log_file(
+        log_file_path: &Path,
+        last_position: u64,
+        crate_names: &HashSet<String>,
+    ) -> io::Result<Vec<CrateInfo>> {
         let mut file = File::open(log_file_path)?;
         file.seek(SeekFrom::Start(last_position))?; // 从上次位置开始读取
         let reader = BufReader::new(file);
 
         let mut crates_info = Vec::new();
+        /*for line_result in reader.lines() {
+            let line = line_result?;
+            for crate_name in crate_names {
+                if line.contains("File { fd: ")
+                    && line.contains("path: \"")
+                    && line.contains(crate_name)
+                {
+                    let start = line.find("path: \"").unwrap() + "path: \"".len();
+                    let end = line.rfind('"').unwrap();
+                    let path_str = line[start..end].to_string();
+
+                    let full_path = PathBuf::from(&path_str);
+                    // Get the parent directory as the `path` you need
+                    let path = full_path.parent().unwrap().to_path_buf();
+                    let version = full_path
+                        .file_name()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .split('-')
+                        .last()
+                        .unwrap()
+                        .replace(".crate", "");
+
+                    crates_info.push(CrateInfo {
+                        path,
+                        full_path,
+                        version,
+                    });
+                }
+            }
+        }*/
+
+        let regex = Regex::new(r#"path: "([^"]+)""#).unwrap(); // 提取 path 字段的正则
+
         for line_result in reader.lines() {
             let line = line_result?;
-            if line.contains("&&&[NEW]")
-                && line.contains("File { fd: ")
-                && line.contains("path: \"")
-            {
-                let start = line.find("path: \"").unwrap() + "path: \"".len();
-                let end = line.rfind('"').unwrap();
-                let path_str = line[start..end].to_string();
+            if line.contains("File { fd: ") && line.contains("path: \"") {
+                // 使用正则提取路径
+                if let Some(captures) = regex.captures(&line) {
+                    let path_str = captures.get(1).unwrap().as_str();
+                    let full_path = PathBuf::from(path_str);
 
-                let full_path = PathBuf::from(&path_str);
-                // Get the parent directory as the `path` you need
-                let path = full_path.parent().unwrap().to_path_buf();
-                let version = full_path
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .split('-')
-                    .last()
-                    .unwrap()
-                    .replace(".crate", "");
+                    // 获取文件名部分作为 crate 名进行校验
+                    if let Some(file_name) = full_path.file_name() {
+                        let file_name = file_name.to_str().unwrap();
+                        let crate_name = full_path
+                            .parent()
+                            .and_then(|p| p.file_name())
+                            .and_then(|n| n.to_str())
+                            .unwrap();
 
-                crates_info.push(CrateInfo {
-                    path,
-                    full_path,
-                    version,
-                });
+                        //println!("Correct crate name: {}", crate_name); // 调试输出
+
+                        // 确保 crate 名精确匹配
+                        if crate_names.contains(crate_name) {
+                            let path = full_path.parent().unwrap().to_path_buf();
+                            let version =
+                                file_name.split('-').last().unwrap().replace(".crate", "");
+
+                            //println!("Correct crate version: {}", version); // 调试输出
+
+                            crates_info.push(CrateInfo {
+                                path,
+                                full_path,
+                                version,
+                            });
+                        }
+                    }
+                }
             }
         }
 

@@ -2,7 +2,7 @@
 
 [workspace]
 members = [
-  "cratespro",
+  "crates_pro",
   "repo_import",       # extract repo and import data into tugraph
   "model",             # internal info struct,such as `crate info` `library info` `app info`
   "tudriver",          # tugraph client, deal with the quary from router
@@ -13,7 +13,7 @@ members = [
   "mega_tool",
 ]
 
-default-members = ["cratespro", "mega_tool"]
+default-members = ["crates_pro", "mega_tool"]
 
 resolver = "2" # use resolver of version 2
 
@@ -21,9 +21,9 @@ resolver = "2" # use resolver of version 2
 [workspace.dependencies]
 model = { path = "model" }
 tudriver = { path = "tudriver" }
-repo_import = { path = "repo_import"}
+repo_import = { path = "repo_import" }
 data_transporter = { path = "data_transporter" }
-analysis = { path = "analysis"}
+analysis = { path = "analysis" }
 
 serde = "1.0.197"
 chrono = "0.4.37"
