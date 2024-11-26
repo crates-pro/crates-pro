@@ -1,24 +1,8 @@
-[package]
-name = "crates_pro"
-version = "0.1.0"
-edition = "2021"
-default-run = "crates_pro"
-
-[[bin]]
-name = "crates_pro"
-path = "src/main.rs"
-
-[[bin]]
-name = "benchmark_controller"
-path = "src/bin/benchmark_controller.rs"
-
-[[bin]]
-name = "senseleak_controller"
-path = "src/bin/senseleak_controller.rs"
 
 
 [workspace]
 members = [
+  "crates_pro",
   "repo_import",       # extract repo and import data into tugraph
   "model",             # internal info struct,such as `crate info` `library info` `app info`
   "tudriver",          # tugraph client, deal with the quary from router
@@ -26,28 +10,21 @@ members = [
   "tuplugins/plugin2", # tugraph plugins, deal with concret logics
   "data_transporter",
   "analysis",
+  "mega_tool",
 ]
+
+default-members = ["crates_pro", "mega_tool"]
 
 resolver = "2" # use resolver of version 2
 
 
-[dependencies]
+[workspace.dependencies]
 model = { path = "model" }
 tudriver = { path = "tudriver" }
 repo_import = { path = "repo_import" }
-analysis = { path = "analysis" }
 data_transporter = { path = "data_transporter" }
-dotenvy = { workspace = true }
-tokio = { version = "1.36", features = ["full"] }
-neo4rs = { workspace = true }
-serde_json = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing = { workspace = true }
-rdkafka = { workspace = true, features = ["cmake-build"] }
-structopt = { workspace = true }
+analysis = { path = "analysis" }
 
-
-[workspace.dependencies]
 serde = "1.0.197"
 chrono = "0.4.37"
 sea-orm = "1.0.0"
@@ -61,7 +38,6 @@ tokio = { version = "1.36", features = ["full"] }
 tower = "0.4"
 tugraph = "0.1.4"
 crates_sync = { path = "crates_sync" }
-model = { path = "model" }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15.7"
@@ -70,7 +46,3 @@ pretty_env_logger = "0.5"
 structopt = { version = "0.3", default-features = false }
 rdkafka = "0.36.2"
 futures = "0.3"
-
-
-[dev-dependencies]
-serial_test = "0.5"

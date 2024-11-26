@@ -1,0 +1,38 @@
+[package]
+name = "mega_tool"
+version = "0.0.1-alpha"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+storage = { path = "storage" }
+entity = { path = "storage/entity" }
+
+rdkafka = { version = "0.36.2", features = ["cmake-build"] }
+sea-orm = { version = "0.12.15", features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+    "macros",
+] }
+anyhow = "1.0.81"
+serde = { version = "1.0.197" }
+dotenvy = "0.15.7"
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+thiserror = "1.0.58"
+tokio = { version = "1.37.0", features = ["macros", "rt-multi-thread"] }
+clap = { version = "4.5.4", features = ["derive"] }
+async-trait = "0.1.79"
+chrono = "0.4.37"
+regex = "1.10.4"
+url = "2.5.0"
+walkdir = "2.5.0"
+tar = "0.4.41"
+flate2 = "1.0.30"
+git2 = "0.19.0"
+serde_json = "1.0.120"
+
+[[bin]]
+name = "mega_tool"   # 设置编译后的二进制文件名称
+path = "src/main.rs" # 可选，默认情况下，Cargo 会查找 src/main.rs 文件
