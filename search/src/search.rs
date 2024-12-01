@@ -79,34 +79,12 @@ async fn search_crate_without_ai(
 ) -> Result<Vec<RecommendCrate>, Box<dyn std::error::Error>> {
     let tsquery_keyword = keyword.replace(" ", " & ");
     let query = format!("{}:*", tsquery_keyword);
-    let direct_rows = client
-        .query(
-            &format!(
-                "SELECT {0}.id, {0}.name, {0}.description, {0}.downloads
-                FROM {0}
-                WHERE {0}.name = $1",
-                table_name
-            ),
-            &[&keyword],
-        )
-        .await?;
-    let mut recommend_crates = Vec::<RecommendCrate>::new();
-    for i in direct_rows.iter() {
-        let id: String = i.get("id");
-        let name: String = i.get("name");
-        let description: String = i.get("description");
-        let downloads: i64 = i.get("downloads");
-        recommend_crates.push(RecommendCrate {
-            id,
-            name,
-            description,
-            downloads,
-        });
-    }
+
     let statement = gen_search_sql(table_name, sort_by);
     let rows = client.query(statement.as_str(), &[&query]).await?;
+    let mut recommend_crates = Vec::<RecommendCrate>::new();
 
-    for row in rows.iter().take(10) {
+    for row in rows.iter() {
         let id: String = row.get("id");
         let name: String = row.get("name");
         let description: String = row.get("description");
@@ -118,5 +96,14 @@ async fn search_crate_without_ai(
             downloads,
         });
     }
+    if let Some(pos) = recommend_crates
+        .iter()
+        .position(|recommend_crate| recommend_crate.name == keyword)
+    {
+        let direct_crate = recommend_crates.remove(pos);
+        recommend_crates.insert(0, direct_crate);
+    }
+
+
     Ok(recommend_crates)
 }
