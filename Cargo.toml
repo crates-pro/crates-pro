@@ -10,10 +10,10 @@ members = [
   "tuplugins/plugin2", # tugraph plugins, deal with concret logics
   "data_transporter",
   "analysis",
-  "mega_tool",
+  "sync_tool",
 ]
 
-default-members = ["crates_pro", "mega_tool"]
+default-members = ["crates_pro", "sync_tool"]
 
 resolver = "2" # use resolver of version 2
 

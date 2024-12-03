@@ -1,4 +1,6 @@
-use entity::{db_enums::CrateType, repo_sync_status};
+use entity::{
+    db_enums::CrateType, db_enums::MessageKind, db_enums::SourceOfData, repo_sync_status,
+};
 use sea_orm::{
     ActiveValue::NotSet, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel,
     QueryFilter, Set,
@@ -32,6 +34,8 @@ pub async fn get_record(
             err_message: Set(None),
             created_at: Set(chrono::Utc::now().naive_utc()),
             updated_at: Set(chrono::Utc::now().naive_utc()),
+            message_kind: Set(MessageKind::Mega),
+            sourc_of_data: Set(SourceOfData::Cratesio),
         }
     } else {
         let res = model.unwrap();

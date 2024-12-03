@@ -25,3 +25,20 @@ pub enum CrateType {
     Application,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[sea_orm(rs_type = "String", db_type = "String(Some(1))")]
+pub enum MessageKind {
+    #[sea_orm(string_value = "mega")]
+    Mega,
+    #[sea_orm(string_value = "user")]
+    User,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[sea_orm(rs_type = "String", db_type = "String(Some(1))")]
+pub enum SourceOfData {
+    #[sea_orm(string_value = "cratesio")]
+    Cratesio,
+    #[sea_orm(string_value = "github")]
+    Github,
+}

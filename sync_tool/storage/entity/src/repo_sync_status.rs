@@ -3,7 +3,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::db_enums::{CrateType, RepoSyncStatus};
+use crate::db_enums::{CrateType, MessageKind, RepoSyncStatus, SourceOfData};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
 #[sea_orm(table_name = "repo_sync_status")]
@@ -22,6 +22,8 @@ pub struct Model {
     pub err_message: Option<String>,
     pub created_at: DateTime,
     pub updated_at: DateTime,
+    pub message_kind: MessageKind,
+    pub sourc_of_data: SourceOfData,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
