@@ -12,19 +12,22 @@ pub enum SearchSortCriteria {
     Downloads,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RecommendCrate {
     pub id: String,
     pub name: String,
     pub description: String,
     pub downloads: i64,
+    pub namespace: String,
+    pub max_version: String,
+    pub rank: f32,
 }
 
 impl<'a> SearchModule<'a> {
     pub async fn new(pg_client: &'a PgClient) -> Self {
         let table_name = env::var("TABLE_NAME").unwrap_or_else(|_| "crates".to_string());
         SearchModule {
-            pg_client: pg_client,
+            pg_client,
             table_name,
         }
     }
@@ -34,7 +37,11 @@ impl<'a> SearchModule<'a> {
         keyword: &str,
         sort_by: SearchSortCriteria,
     ) -> Result<Vec<RecommendCrate>, Box<dyn std::error::Error>> {
-        search_crate_without_ai(self.pg_client, &self.table_name, keyword, sort_by).await
+        let mut crates =
+            search_crate_without_ai(self.pg_client, &self.table_name, keyword, sort_by).await?;
+        sort_crates(&mut crates);
+        rearrange_crates(&mut crates, keyword);
+        Ok(crates)
     }
 }
 
@@ -43,7 +50,7 @@ fn gen_search_sql(table_name: &str, sort_by: SearchSortCriteria) -> String {
         //TODO: 实现综合排序
         SearchSortCriteria::Comprehensive => {
             format!(
-                "SELECT {0}.id, {0}.name, {0}.description, ts_rank({0}.tsv, to_tsquery($1)) AS rank,{0}.downloads
+                "SELECT {0}.id, {0}.name, {0}.description, ts_rank({0}.tsv, to_tsquery($1)) AS rank,{0}.downloads,{0}.namespace,{0}.max_version
                 FROM {0}
                 WHERE {0}.tsv @@ to_tsquery($1)
                 ORDER BY rank DESC",
@@ -52,7 +59,7 @@ fn gen_search_sql(table_name: &str, sort_by: SearchSortCriteria) -> String {
         }
         SearchSortCriteria::Relavance => {
             format!(
-                "SELECT {0}.id, {0}.name, {0}.description, ts_rank({0}.tsv, to_tsquery($1)) AS rank,{0}.downloads
+                "SELECT {0}.id, {0}.name, {0}.description, ts_rank({0}.tsv, to_tsquery($1)) AS rank,{0}.downloads,{0}.namespace,{0}.max_version
                 FROM {0}
                 WHERE {0}.tsv @@ to_tsquery($1)
                 ORDER BY rank DESC",
@@ -61,7 +68,7 @@ fn gen_search_sql(table_name: &str, sort_by: SearchSortCriteria) -> String {
         }
         SearchSortCriteria::Downloads => {
             format!(
-                "SELECT {0}.id, {0}.name, {0}.description, ts_rank({0}.tsv, to_tsquery($1)) AS rank, {0}.downloads
+                "SELECT {0}.id, {0}.name, {0}.description, ts_rank({0}.tsv, to_tsquery($1)) AS rank, {0}.downloads,{0}.namespace,{0}.max_version
                 FROM {0}
                 WHERE {0}.tsv @@ to_tsquery($1)
                 ORDER BY downloads DESC",
@@ -70,6 +77,31 @@ fn gen_search_sql(table_name: &str, sort_by: SearchSortCriteria) -> String {
         }
     }
 }
+
+fn sort_crates(crate_vec: &mut Vec<RecommendCrate>) {
+    crate_vec.sort_by(|a, b| {
+        b.rank
+            .partial_cmp(&a.rank)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| b.max_version.cmp(&a.max_version))
+    });
+}
+
+fn rearrange_crates(crates: &mut Vec<RecommendCrate>, keyword: &str) {
+    let mut matching_crates: Vec<RecommendCrate> = Vec::new();
+    crates.retain(|c| {
+        if c.name == keyword {
+            matching_crates.push(c.clone());
+            false
+        } else {
+            true
+        }
+    });
+    sort_crates_vec(&mut matching_crates);
+    crates.splice(0..0, matching_crates);
+}
+
 
 async fn search_crate_without_ai(
     client: &PgClient,
@@ -85,25 +117,24 @@ async fn search_crate_without_ai(
     let mut recommend_crates = Vec::<RecommendCrate>::new();
 
     for row in rows.iter() {
-        let id: String = row.get("id");
-        let name: String = row.get("name");
-        let description: String = row.get("description");
-        let downloads: i64 = row.get("downloads");
+        let id: Option<String> = row.get("id");
+        let name: Option<String> = row.get("name");
+        let description: Option<String> = row.get("description");
+        let downloads: Option<i64> = row.get("downloads");
+        let namespace: Option<String> = row.get("namespace");
+        let max_version: Option<String> = row.get("max_version");
+        let rank: Option<f32> = row.get("rank");
+
         recommend_crates.push(RecommendCrate {
-            id,
-            name,
-            description,
-            downloads,
+            id: id.unwrap_or_default(),
+            name: name.unwrap_or_default(),
+            description: description.unwrap_or_default(),
+            downloads: downloads.unwrap_or(0),
+            namespace: namespace.unwrap_or_default(),
+            max_version: max_version.unwrap_or_default(),
+            rank: rank.unwrap_or(0.0),
         });
     }
-    if let Some(pos) = recommend_crates
-        .iter()
-        .position(|recommend_crate| recommend_crate.name == keyword)
-    {
-        let direct_crate = recommend_crates.remove(pos);
-        recommend_crates.insert(0, direct_crate);
-    }
-
 
     Ok(recommend_crates)
 }
