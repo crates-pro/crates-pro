@@ -1,0 +1,17 @@
+                                                                    Table "public.repo_sync_status"
+   Column    |            Type             | Collation | Nullable |                   Default                    | Storage  | Compression | Stats target | Description 
+-------------+-----------------------------+-----------+----------+----------------------------------------------+----------+-------------+--------------+-------------
+ id          | integer                     |           | not null | nextval('repo_sync_status_id_seq'::regclass) | plain    |             |              | 
+ crate_name  | text                        |           | not null |                                              | extended |             |              | 
+ github_url  | text                        |           |          |                                              | extended |             |              | 
+ mega_url    | text                        |           | not null |                                              | extended |             |              | 
+ crate_type  | character varying(20)       |           | not null |                                              | extended |             |              | 
+ status      | character varying(20)       |           | not null |                                              | extended |             |              | 
+ err_message | text                        |           |          |                                              | extended |             |              | 
+ created_at  | timestamp without time zone |           | not null |                                              | plain    |             |              | 
+ updated_at  | timestamp without time zone |           | not null |                                              | plain    |             |              | 
+Indexes:
+    "repo_sync_status_pkey" PRIMARY KEY, btree (id)
+    "uniq_repo_name" UNIQUE CONSTRAINT, btree (crate_name)
+Access method: heap
+

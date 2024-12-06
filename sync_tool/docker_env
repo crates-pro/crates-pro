@@ -1,0 +1,5 @@
+MEGA_DB_SQLX_LOGGING = false
+MEGA_DB_POSTGRESQL_URL="postgres://postgres:postgres@localhost:5432/mega"
+KAFKA_BROKER="localhost:30092"
+KAFKA_TOPIC="REPO_SYNC_STATUS.dev.0902"
+KAFKA_GROUP_ID="default_group"
