@@ -497,6 +497,7 @@ impl ApiHandler {
         };
         HttpResponse::Ok().json(res_deps)
     }
+    #[allow(clippy::vec_init_then_push)]
     pub async fn query_crates(&self, q: Query) -> impl Responder {
         //add yj's search module
         let name = q.query;
@@ -544,6 +545,7 @@ impl ApiHandler {
             if i >= uniq_res.len() {
                 break;
             }
+            let mut mv = vec![];
             let program_name = uniq_res[i].clone().name;
             let getnamespace = uniq_res[i].clone().namespace;
             let parts: Vec<&str> = getnamespace.split('/').collect();
@@ -551,8 +553,6 @@ impl ApiHandler {
             let nsb = parts[1].to_string();
             //let endtime3 = starttime3.elapsed();
             //println!("get_max_version need time:{:?}", endtime3);
-            #[allow(clippy::vec_init_then_push)]
-            let mut mv = vec![];
             /*if let Some(maxversion) = programs[i].clone().max_version {
                 mv.push(maxversion);
             } else {
