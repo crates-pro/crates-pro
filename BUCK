@@ -15,6 +15,7 @@ pkg_deps = [
     "//project/crates-pro:data_transporter",
     "//project/crates-pro:model",
     "//project/crates-pro:repo_import",
+    "//project/crates-pro:search",
     "//project/crates-pro:tudriver",
     "//third-party:dotenvy",
     "//third-party:neo4rs",
@@ -62,8 +63,14 @@ alias(
     visibility = ["PUBLIC"],
 )
 
+
 alias(
     name = "tudriver",
     actual = "//project/crates-pro/tudriver:tudriver",
+    visibility = ["PUBLIC"],
+)
+alias(
+    name = "search",
+    actual = "//project/crates-pro/search:search",
     visibility = ["PUBLIC"],
 )
