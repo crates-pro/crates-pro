@@ -11,7 +11,7 @@ impl<'a> SearchPrepare<'a> {
     pub async fn new(pg_client: &'a PgClient) -> Self {
         let table_name = env::var("TABLE_NAME").unwrap_or_else(|_| "crates".to_string());
         SearchPrepare {
-            pg_client: pg_client,
+            pg_client,
             table_name,
         }
     }
