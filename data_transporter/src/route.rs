@@ -112,12 +112,12 @@ impl ApiHandler {
                     .split_once('-')
                     .or_else(|| a.split_once('+'))
                     .map(|(a, _)| a)
-                    .unwrap_or(&a);
+                    .unwrap_or(a);
                 let b_base = b
                     .split_once('-')
                     .or_else(|| b.split_once('+'))
                     .map(|(b, _)| b)
-                    .unwrap_or(&b);
+                    .unwrap_or(b);
 
                 // 比较主版本号
                 a_base
@@ -147,7 +147,7 @@ impl ApiHandler {
         let mut name_and_version = nname.clone() + "/" + &nversion.clone();
         let namespace = nsfront.clone() + "/" + &nsbehind.clone();
         //println!("{}", name_and_version);
-        if nversion == "default".to_string() {
+        if nversion == *"default" {
             //get max_version
             println!("enter default");
             let new_lib_versions = self
@@ -191,13 +191,13 @@ impl ApiHandler {
             .query_crates_info_from_pg(&qid, nname.clone())
             .await
             .unwrap();
-        if qres.len() == 0 {
+        if qres.is_empty() {
             let mut githuburl = self
                 .reader
                 .get_github_url(namespace.clone(), nname.clone())
                 .await
                 .unwrap();
-            if githuburl == "null".to_string() || githuburl == "None".to_string() {
+            if githuburl == *"null" || githuburl == *"None" {
                 githuburl = "".to_string();
             }
             let mut docurl = self
@@ -205,7 +205,7 @@ impl ApiHandler {
                 .get_doc_url(namespace.clone(), nname.clone())
                 .await
                 .unwrap();
-            if docurl == "null".to_string() || docurl == "None".to_string() {
+            if docurl == *"null" || docurl == *"None" {
                 docurl = "".to_string();
             }
             let direct_dependency_nodes = self
@@ -536,7 +536,7 @@ impl ApiHandler {
             .collect();
         println!("total programs: {}", uniq_res.len());
         let mut gettotal_page = uniq_res.len() / per_page;
-        if uniq_res.len() == 0 || uniq_res.len() % per_page != 0 {
+        if uniq_res.is_empty() || uniq_res.len() % per_page != 0 {
             gettotal_page += 1;
         }
         let mut getitems = vec![];
@@ -551,6 +551,7 @@ impl ApiHandler {
             let nsb = parts[1].to_string();
             //let endtime3 = starttime3.elapsed();
             //println!("get_max_version need time:{:?}", endtime3);
+            #[allow(clippy::vec_init_then_push)]
             let mut mv = vec![];
             /*if let Some(maxversion) = programs[i].clone().max_version {
                 mv.push(maxversion);
@@ -559,7 +560,7 @@ impl ApiHandler {
             }*/
             mv.push(uniq_res[i].clone().max_version);
             //println!("maxversion {}", mv[0].clone());
-            if mv[0].clone() == "null".to_string() {
+            if mv[0].clone() == *"null" {
                 mv[0] = "0.0.0".to_string();
             }
             let query_item = QueryItem {

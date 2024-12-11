@@ -140,7 +140,6 @@ RETURN n.github_url
             let parsed: Value = serde_json::from_str(&res).unwrap();
             if let Some(url) = parsed.get("n.github_url").and_then(|v| v.as_str()) {
                 nodes.push(url.to_string());
-            } else {
             }
         }
         Ok(nodes[0].clone())
@@ -164,7 +163,6 @@ RETURN n.doc_url
             let parsed: Value = serde_json::from_str(&res).unwrap();
             if let Some(url) = parsed.get("n.doc_url").and_then(|v| v.as_str()) {
                 nodes.push(url.to_string());
-            } else {
             }
         }
         Ok(nodes[0].clone())
