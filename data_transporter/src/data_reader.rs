@@ -2,7 +2,10 @@ use model::tugraph_model::{
     Application, ApplicationVersion, Library, LibraryVersion, Program, UProgram, UVersion,
 };
 use serde_json::Value;
-use std::error::Error;
+use std::{
+    collections::{HashSet, VecDeque},
+    error::Error,
+};
 use tudriver::tugraph_client::TuGraphClient;
 
 use async_trait::async_trait;
@@ -23,6 +26,12 @@ pub trait DataReaderTrait: Send + Sync {
         &self,
         name_and_version: &str,
     ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>>;
+    async fn new_get_direct_dependency_nodes(
+        &self,
+        namespace: &str,
+        nameversion: &str,
+    ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>>;
+    #[allow(dead_code)]
     async fn get_program_by_name(&self, program_name: &str)
         -> Result<Vec<Program>, Box<dyn Error>>;
     async fn get_indirect_dependency_nodes(
@@ -34,20 +43,62 @@ pub trait DataReaderTrait: Send + Sync {
         &self,
         name_and_version: &str,
     ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>>;
+    async fn new_get_direct_dependent_nodes(
+        &self,
+        namespace: &str,
+        nameversion: &str,
+    ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>>;
     async fn get_indirect_dependent_nodes(
         &self,
         nameversion: NameVersion,
     ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>>;
-    async fn get_max_version(&self, name: String) -> Result<String, Box<dyn Error>>;
+
+    //async fn get_max_version(&self, name: String) -> Result<String, Box<dyn Error>>;
+    #[allow(dead_code)]
     async fn get_lib_version(&self, name: String) -> Result<Vec<String>, Box<dyn Error>>;
+    async fn new_get_lib_version(
+        &self,
+        namespace: String,
+        name: String,
+    ) -> Result<Vec<String>, Box<dyn Error>>;
+    #[allow(dead_code)]
     async fn get_app_version(&self, name: String) -> Result<Vec<String>, Box<dyn Error>>;
+    async fn new_get_app_version(
+        &self,
+        namespace: String,
+        name: String,
+    ) -> Result<Vec<String>, Box<dyn Error>>;
+    async fn get_all_dependencies(
+        &self,
+        nameversion: NameVersion,
+    ) -> Result<HashSet<String>, Box<dyn Error>>;
+    async fn new_get_all_dependencies(
+        &self,
+        namespace: String,
+        nameversion: String,
+    ) -> Result<HashSet<String>, Box<dyn Error>>;
+    #[allow(dead_code)]
+    async fn get_all_dependents(
+        &self,
+        nameversion: NameVersion,
+    ) -> Result<HashSet<String>, Box<dyn Error>>;
+    async fn new_get_all_dependents(
+        &self,
+        namespace: String,
+        nameversion: String,
+    ) -> Result<HashSet<String>, Box<dyn Error>>;
+    async fn get_github_url(
+        &self,
+        namespace: String,
+        name: String,
+    ) -> Result<String, Box<dyn Error>>;
+    async fn get_doc_url(&self, namespace: String, name: String) -> Result<String, Box<dyn Error>>;
 }
 
 #[derive(Clone)]
 pub struct DataReader {
     pub client: TuGraphClient,
 }
-
 impl DataReader {
     /// let client_ =
     /// TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "default")
@@ -66,6 +117,173 @@ impl DataReader {
 
 #[async_trait]
 impl DataReaderTrait for DataReader {
+    async fn get_github_url(
+        &self,
+        namespace: String,
+        name: String,
+    ) -> Result<String, Box<dyn Error>> {
+        let query = format!(
+            "
+            MATCH (n:program {{namespace:'{}'}}) WHERE n.name='{}'
+RETURN n.github_url 
+        ",
+            &namespace, &name
+        );
+        let results = self.client.exec_query(&query).await?;
+        let mut res = vec![];
+        for node in results {
+            res.push(node);
+        }
+        let unique_items: HashSet<String> = res.clone().into_iter().collect();
+        let mut nodes = vec![];
+        for res in unique_items {
+            let parsed: Value = serde_json::from_str(&res).unwrap();
+            if let Some(url) = parsed.get("n.github_url").and_then(|v| v.as_str()) {
+                nodes.push(url.to_string());
+            } else {
+            }
+        }
+        Ok(nodes[0].clone())
+    }
+    async fn get_doc_url(&self, namespace: String, name: String) -> Result<String, Box<dyn Error>> {
+        let query = format!(
+            "
+            MATCH (n:program {{namespace:'{}'}}) WHERE n.name='{}'
+RETURN n.doc_url 
+        ",
+            &namespace, &name
+        );
+        let results = self.client.exec_query(&query).await?;
+        let mut res = vec![];
+        for node in results {
+            res.push(node);
+        }
+        let unique_items: HashSet<String> = res.clone().into_iter().collect();
+        let mut nodes = vec![];
+        for res in unique_items {
+            let parsed: Value = serde_json::from_str(&res).unwrap();
+            if let Some(url) = parsed.get("n.doc_url").and_then(|v| v.as_str()) {
+                nodes.push(url.to_string());
+            } else {
+            }
+        }
+        Ok(nodes[0].clone())
+    }
+    async fn get_all_dependencies(
+        &self,
+        nameversion: NameVersion,
+    ) -> Result<HashSet<String>, Box<dyn Error>> {
+        let mut queue = VecDeque::new();
+        let mut visited = HashSet::new();
+        let name_and_version = nameversion.name.clone() + "/" + &nameversion.version.clone();
+        queue.push_back(name_and_version.to_string());
+
+        while let Some(current) = queue.pop_front() {
+            // 如果当前库没有被访问过
+            if visited.insert(current.clone()) {
+                // 获取当前库的直接依赖
+                for dep in self.get_direct_dependency_nodes(&current).await.unwrap() {
+                    let tmp = dep.name.clone() + "/" + &dep.version.clone();
+                    queue.push_back(tmp);
+                }
+            }
+        }
+        visited.remove(&name_and_version);
+
+        Ok(visited)
+    }
+    async fn new_get_all_dependencies(
+        &self,
+        namespace: String,
+        nameversion: String,
+    ) -> Result<HashSet<String>, Box<dyn Error>> {
+        let mut queue = VecDeque::new();
+        let mut visited = HashSet::new();
+        for node in self
+            .new_get_direct_dependency_nodes(&namespace, &nameversion)
+            .await
+            .unwrap()
+        {
+            let nameandversion = node.clone().name + "/" + &node.clone().version;
+            queue.push_back(nameandversion.clone());
+        }
+        //queue.push_back(name_and_version.to_string());
+        let mut count = 0;
+        while let Some(current) = queue.pop_front() {
+            // 如果当前库没有被访问过
+            count += 1;
+            if count == 500 {
+                break;
+            }
+            if visited.insert(current.clone()) {
+                // 获取当前库的直接依赖
+                for dep in self.get_direct_dependency_nodes(&current).await.unwrap() {
+                    let tmp = dep.name.clone() + "/" + &dep.version.clone();
+                    queue.push_back(tmp);
+                }
+            }
+        }
+        //visited.remove(&name_and_version);
+
+        Ok(visited)
+    }
+    async fn get_all_dependents(
+        &self,
+        nameversion: NameVersion,
+    ) -> Result<HashSet<String>, Box<dyn Error>> {
+        let mut queue = VecDeque::new();
+        let mut visited = HashSet::new();
+        let name_and_version = nameversion.name.clone() + "/" + &nameversion.version.clone();
+        queue.push_back(name_and_version.to_string());
+
+        while let Some(current) = queue.pop_front() {
+            // 如果当前库没有被访问过
+            if visited.insert(current.clone()) {
+                // 获取当前库的直接依赖
+                for dep in self.get_direct_dependent_nodes(&current).await.unwrap() {
+                    let tmp = dep.name.clone() + "/" + &dep.version.clone();
+                    queue.push_back(tmp);
+                }
+            }
+        }
+        visited.remove(&name_and_version);
+
+        Ok(visited)
+    }
+    async fn new_get_all_dependents(
+        &self,
+        namespace: String,
+        nameversion: String,
+    ) -> Result<HashSet<String>, Box<dyn Error>> {
+        let mut queue = VecDeque::new();
+        let mut visited = HashSet::new();
+        for node in self
+            .new_get_direct_dependent_nodes(&namespace, &nameversion)
+            .await
+            .unwrap()
+        {
+            let nameandversion = node.clone().name + "/" + &node.clone().version;
+            queue.push_back(nameandversion.clone());
+        }
+        //queue.push_back(name_and_version.to_string());
+        //let mut count = 0;
+        let len = queue.len();
+        if len < 500 {
+            while let Some(current) = queue.pop_front() {
+                // 如果当前库没有被访问过
+                if visited.insert(current.clone()) {
+                    // 获取当前库的直接依赖
+                    for dep in self.get_direct_dependent_nodes(&current).await.unwrap() {
+                        let tmp = dep.name.clone() + "/" + &dep.version.clone();
+                        queue.push_back(tmp);
+                    }
+                }
+            }
+        }
+        //visited.remove(&name_and_version);
+
+        Ok(visited)
+    }
     async fn get_all_programs_id(&self) -> Vec<String> {
         //tracing::info!("start test ping");
         //self.client.test_ping().await;
@@ -73,7 +291,6 @@ impl DataReaderTrait for DataReader {
         let query = "
             MATCH (p: program)
             RETURN p 
-            LIMIT 100
         ";
 
         let results = self.client.exec_query(query).await.unwrap();
@@ -203,6 +420,7 @@ impl DataReaderTrait for DataReader {
         &self,
         name_and_version: &str,
     ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>> {
+        //println!("enter get_direct_dependency_nodes");
         let query = format!(
             "
                 MATCH (n:version {{name_and_version: '{}'}})-[:depends_on]->(m:version)
@@ -212,10 +430,48 @@ impl DataReaderTrait for DataReader {
         );
 
         let results = self.client.exec_query(&query).await?;
+        //println!("query success of get_direct_dependency_nodes");
+        let unique_items: HashSet<String> = results.clone().into_iter().collect();
         let mut nodes = vec![];
         //println!("{:?}", results);
 
-        for result in results {
+        for result in unique_items {
+            let result_json: Value = serde_json::from_str(&result).unwrap();
+            let name_version_str: String =
+                serde_json::from_value(result_json["name_and_version"].clone()).unwrap();
+
+            if let Some(name_version) = crate::NameVersion::from_string(&name_version_str) {
+                nodes.push(name_version);
+            }
+        }
+
+        Ok(nodes)
+    }
+    async fn new_get_direct_dependency_nodes(
+        &self,
+        namespace: &str,
+        nameversion: &str,
+    ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>> {
+        //println!("enter get_direct_dependency_nodes");
+        let query1 = format!(
+            "
+                MATCH (p:program {{namespace: '{}'}})-[:has_type]->(l)-[:has_version]->(lv {{name_and_version: '{}'}})-[:has_dep_version]->(vs:version)-[:depends_on]->(m:version)
+RETURN m.name_and_version as name_and_version
+                ",
+            namespace,
+            nameversion,
+        );
+        let results1 = self.client.exec_query(&query1).await?;
+        let mut res = vec![];
+        for node in results1 {
+            res.push(node);
+        }
+        let unique_items: HashSet<String> = res.clone().into_iter().collect();
+        //println!("query success of get_direct_dependency_nodes");
+        let mut nodes = vec![];
+        //println!("{:?}", results);
+
+        for result in unique_items {
             let result_json: Value = serde_json::from_str(&result).unwrap();
             let name_version_str: String =
                 serde_json::from_value(result_json["name_and_version"].clone()).unwrap();
@@ -237,8 +493,10 @@ impl DataReaderTrait for DataReader {
             .await
             .unwrap();
         for node in nodes.clone() {
+            println!("{} {}", node.clone().name, node.clone().version);
             let new_nodes = self.get_indirect_dependency_nodes(node).await.unwrap();
             for new_node in new_nodes {
+                println!("{} {}", new_node.clone().name, new_node.clone().version);
                 nodes.push(new_node);
             }
         }
@@ -267,7 +525,7 @@ impl DataReaderTrait for DataReader {
         Ok(programs)
     }
     async fn count_dependencies(&self, nameversion: NameVersion) -> Result<usize, Box<dyn Error>> {
-        let name_and_version = nameversion.name + "/" + &nameversion.version;
+        /*let name_and_version = nameversion.name + "/" + &nameversion.version;
         let mut all_nodes = self
             .get_direct_dependency_nodes(&name_and_version)
             .await
@@ -279,7 +537,10 @@ impl DataReaderTrait for DataReader {
             }
         }
         let node_count = all_nodes.len();
-        Ok(node_count)
+        Ok(node_count)*/
+
+        let all_nodes = self.get_all_dependencies(nameversion).await.unwrap();
+        Ok(all_nodes.len())
     }
     async fn get_direct_dependent_nodes(
         &self,
@@ -294,10 +555,47 @@ impl DataReaderTrait for DataReader {
         );
 
         let results = self.client.exec_query(&query).await?;
+        let unique_items: HashSet<String> = results.clone().into_iter().collect();
         let mut nodes = vec![];
         //println!("{:?}", results);
 
-        for result in results {
+        for result in unique_items {
+            let result_json: Value = serde_json::from_str(&result).unwrap();
+            let name_version_str: String =
+                serde_json::from_value(result_json["name_and_version"].clone()).unwrap();
+
+            if let Some(name_version) = crate::NameVersion::from_string(&name_version_str) {
+                nodes.push(name_version);
+            }
+        }
+
+        Ok(nodes)
+    }
+    async fn new_get_direct_dependent_nodes(
+        &self,
+        namespace: &str,
+        nameversion: &str,
+    ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>> {
+        //println!("enter get_direct_dependency_nodes");
+        let query1 = format!(
+            "
+                MATCH (p:program {{namespace: '{}'}})-[:has_type]->(l)-[:has_version]->(lv {{name_and_version:'{}'}})-[:has_dep_version]->(vs:version)<-[:depends_on]-(m:version)
+RETURN m.name_and_version as name_and_version
+                ",
+            namespace,
+            nameversion
+        );
+        let results1 = self.client.exec_query(&query1).await?;
+        let mut res = vec![];
+        for node in results1 {
+            res.push(node);
+        }
+        let unique_items: HashSet<String> = res.clone().into_iter().collect();
+        //println!("query success of get_direct_dependency_nodes");
+        let mut nodes = vec![];
+        //println!("{:?}", results);
+
+        for result in unique_items {
             let result_json: Value = serde_json::from_str(&result).unwrap();
             let name_version_str: String =
                 serde_json::from_value(result_json["name_and_version"].clone()).unwrap();
@@ -326,7 +624,7 @@ impl DataReaderTrait for DataReader {
         }
         Ok(nodes)
     }
-    async fn get_max_version(&self, name: String) -> Result<String, Box<dyn Error>> {
+    /*async fn get_max_version(&self, name: String) -> Result<String, Box<dyn Error>> {
         let query = format!(
             "
                  MATCH (n:program {{name:'{}'}}) RETURN n.max_version LIMIT 1
@@ -336,15 +634,64 @@ impl DataReaderTrait for DataReader {
         let results = self.client.exec_query(&query).await?;
         let max_version = &results[0];
         Ok(max_version.to_string())
-    }
+    }*/
+
     async fn get_lib_version(&self, name: String) -> Result<Vec<String>, Box<dyn Error>> {
         let query = format!(
             "
             MATCH (n:library_version {{name: '{}'}}) RETURN n.version LIMIT 100",
             name
         );
+        //let starttime = Instant::now();
         let results = self.client.exec_query(&query).await.unwrap();
-        Ok(results)
+        //let endtime = starttime.elapsed();
+        //println!("query need time:{:?}", endtime);
+        let mut realres = vec![];
+        //let starttime2 = Instant::now();
+        for res in results {
+            let parsed: Value = serde_json::from_str(&res).unwrap();
+            if let Some(version) = parsed.get("n.version").and_then(|v| v.as_str()) {
+                //println!("Version: {}", version);
+                realres.push(version.to_string());
+            } else {
+                //println!("Version not found");
+            }
+        }
+        //let endtime2 = starttime2.elapsed();
+        //println!("rest query need time:{:?}", endtime2);
+        Ok(realres)
+    }
+    async fn new_get_lib_version(
+        &self,
+        namespace: String,
+        name: String,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
+        let query = format!(
+            "
+            MATCH (p:program {{namespace: '{}'}})-[:has_type]->(l)-[:has_version]->(lv {{name:'{}'}})
+RETURN lv.version",
+            namespace,
+            name,
+        );
+        //let starttime = Instant::now();
+        let results = self.client.exec_query(&query).await.unwrap();
+        let unique_items: HashSet<String> = results.clone().into_iter().collect();
+        //let endtime = starttime.elapsed();
+        //println!("query need time:{:?}", endtime);
+        let mut realres = vec![];
+        //let starttime2 = Instant::now();
+        for res in unique_items {
+            let parsed: Value = serde_json::from_str(&res).unwrap();
+            if let Some(version) = parsed.get("lv.version").and_then(|v| v.as_str()) {
+                //println!("Version: {}", version);
+                realres.push(version.to_string());
+            } else {
+                //println!("Version not found");
+            }
+        }
+        //let endtime2 = starttime2.elapsed();
+        //println!("rest query need time:{:?}", endtime2);
+        Ok(realres)
     }
     async fn get_app_version(&self, name: String) -> Result<Vec<String>, Box<dyn Error>> {
         let query = format!(
@@ -353,6 +700,48 @@ impl DataReaderTrait for DataReader {
             name
         );
         let results = self.client.exec_query(&query).await.unwrap();
-        Ok(results)
+        let mut realres = vec![];
+        for res in results {
+            let parsed: Value = serde_json::from_str(&res).unwrap();
+            if let Some(version) = parsed.get("n.version").and_then(|v| v.as_str()) {
+                //println!("Version: {}", version);
+                realres.push(version.to_string());
+            } else {
+                //println!("Version not found");
+            }
+        }
+        Ok(realres)
+    }
+    async fn new_get_app_version(
+        &self,
+        namespace: String,
+        name: String,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
+        let query = format!(
+            "
+            MATCH (p:program {{namespace: '{}'}})-[:has_type]->(a:application)-[:has_version]->(av:application_version {{name:'{}'}})
+RETURN av.version",
+            namespace,
+            name,
+        );
+        //let starttime = Instant::now();
+        let results = self.client.exec_query(&query).await.unwrap();
+        let unique_items: HashSet<String> = results.clone().into_iter().collect();
+        //let endtime = starttime.elapsed();
+        //println!("query need time:{:?}", endtime);
+        let mut realres = vec![];
+        //let starttime2 = Instant::now();
+        for res in unique_items {
+            let parsed: Value = serde_json::from_str(&res).unwrap();
+            if let Some(version) = parsed.get("av.version").and_then(|v| v.as_str()) {
+                //println!("Version: {}", version);
+                realres.push(version.to_string());
+            } else {
+                //println!("Version not found");
+            }
+        }
+        //let endtime2 = starttime2.elapsed();
+        //println!("rest query need time:{:?}", endtime2);
+        Ok(realres)
     }
 }

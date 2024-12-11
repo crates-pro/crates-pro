@@ -1,7 +1,12 @@
+use std::cmp::Ordering;
+use std::collections::HashSet;
+//use std::collections::HashSet;
 use std::env;
+use std::error::Error;
 
 use crate::data_reader::DataReaderTrait;
 use crate::db::DBHandler;
+use crate::NameVersion;
 use crate::Query;
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse, Responder};
@@ -9,10 +14,17 @@ use model::repo_sync_model;
 use model::repo_sync_model::CrateType;
 use repo_import::ImportDriver;
 use sanitize_filename::sanitize;
+use search::crates_search::RecommendCrate;
+//use search::crates_search::RecommendCrate;
+use search::crates_search::SearchModule;
+use search::crates_search::SearchSortCriteria;
+use search::search_prepare;
 use serde::Deserialize;
 use serde::Serialize;
 use std::io::Cursor;
 use std::io::Read;
+//use std::time::Instant;
+use semver::Version;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio_postgres::NoTls;
@@ -36,6 +48,8 @@ struct QueryItem {
     name: String,
     version: String,
     date: String,
+    nsfront: String,
+    nsbehind: String,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DependencyCrateInfo {
@@ -65,75 +79,100 @@ pub struct DependentData {
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Crateinfo {
-    crate_name: String,
-    description: String,
-    dependencies: DependencyCount,
-    dependents: DependentCount,
-    cves: Vec<String>,
-    versions: Vec<String>,
+    pub crate_name: String,
+    pub description: String,
+    pub dependencies: DependencyCount,
+    pub dependents: DependentCount,
+    pub cves: Vec<String>,
+    pub license: String,
+    pub github_url: String,
+    pub doc_url: String,
+    pub versions: Vec<String>,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DependencyCount {
-    direct: usize,
-    indirect: usize,
+    pub direct: usize,
+    pub indirect: usize,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DependentCount {
-    direct: usize,
-    indirect: usize,
+    pub direct: usize,
+    pub indirect: usize,
 }
 impl ApiHandler {
     pub async fn new(reader: Box<dyn DataReaderTrait>) -> Self {
         Self { reader }
     }
-    pub async fn get_crates_front_info(
+    pub async fn get_max_version(&self, versions: Vec<String>) -> Result<String, Box<dyn Error>> {
+        let res = versions
+            .into_iter()
+            .max_by(|a, b| {
+                // 提取主版本号（即+或-之前的部分）
+                let a_base = a
+                    .split_once('-')
+                    .or_else(|| a.split_once('+'))
+                    .map(|(a, _)| a)
+                    .unwrap_or(&a);
+                let b_base = b
+                    .split_once('-')
+                    .or_else(|| b.split_once('+'))
+                    .map(|(b, _)| b)
+                    .unwrap_or(&b);
+
+                // 比较主版本号
+                a_base
+                    .split('.')
+                    .zip(b_base.split('.'))
+                    .map(|(a_part, b_part)| {
+                        a_part
+                            .parse::<i32>()
+                            .unwrap()
+                            .cmp(&b_part.parse::<i32>().unwrap())
+                    })
+                    // 如果所有部分都相等，则认为两个版本号相等
+                    .find(|cmp_result| !cmp_result.is_eq())
+                    .unwrap_or(Ordering::Equal)
+            })
+            .unwrap_or_else(|| "0.0.0".to_string());
+
+        Ok(res)
+    }
+    pub async fn new_get_crates_front_info(
         &self,
-        name: web::Path<String>,
-        version: web::Path<String>,
+        nname: String,
+        nversion: String,
+        nsfront: String,
+        nsbehind: String,
     ) -> impl Responder {
-        let nname: String = name.into_inner();
-        let nversion: String = version.into_inner();
         let mut name_and_version = nname.clone() + "/" + &nversion.clone();
-        if nversion.is_empty() {
+        let namespace = nsfront.clone() + "/" + &nsbehind.clone();
+        //println!("{}", name_and_version);
+        if nversion == "default".to_string() {
             //get max_version
-            let max_version = self.reader.get_max_version(nname.clone()).await.unwrap();
-            name_and_version = nname.clone() + "/" + &max_version;
+            println!("enter default");
+            let new_lib_versions = self
+                .reader
+                .new_get_lib_version(namespace.clone(), nname.clone())
+                .await
+                .unwrap();
+            let new_app_versions = self
+                .reader
+                .new_get_app_version(namespace.clone(), nname.clone())
+                .await
+                .unwrap();
+            let mut getnewversions = vec![];
+            for version in new_lib_versions {
+                getnewversions.push(version);
+            }
+            for version in new_app_versions {
+                getnewversions.push(version);
+            }
+
+            let maxversion = self.get_max_version(getnewversions).await.unwrap();
+
+            name_and_version = nname.clone() + "/" + &maxversion.clone();
         } //get dependency count
-        let mut all_dependency_nodes = self
-            .reader
-            .get_direct_dependency_nodes(&name_and_version)
-            .await
-            .unwrap();
-        let direct_dependency_count = all_dependency_nodes.len();
-        for node in all_dependency_nodes.clone() {
-            let nodes = self
-                .reader
-                .get_indirect_dependency_nodes(node)
-                .await
-                .unwrap();
-            for indirect_node in nodes {
-                all_dependency_nodes.push(indirect_node);
-            }
-        }
-        let indirect_dependency_count = all_dependency_nodes.len() - direct_dependency_count;
-        //get dependent count
-        let mut all_dependent_nodes = self
-            .reader
-            .get_direct_dependent_nodes(&name_and_version)
-            .await
-            .unwrap();
-        let direct_dependent_count = all_dependent_nodes.len();
-        for node in all_dependent_nodes.clone() {
-            let nodes = self
-                .reader
-                .get_indirect_dependent_nodes(node)
-                .await
-                .unwrap();
-            for indirect_node in nodes {
-                all_dependent_nodes.push(indirect_node);
-            }
-        }
-        let indirect_dependent_count = all_dependent_nodes.len() - direct_dependent_count;
+        println!("name_and_version:{}", name_and_version);
         #[allow(unused_variables)]
         let (client, connection) = tokio_postgres::connect(
             "host=172.17.0.1 port=30432 user=mega password=mega dbname=cratespro",
@@ -141,36 +180,155 @@ impl ApiHandler {
         )
         .await
         .unwrap();
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
         let dbhandler = DBHandler { client };
-        let getcves = dbhandler.get_cve_by_cratename(&nname).await.unwrap();
-        let lib_versions = self.reader.get_lib_version(nname.clone()).await.unwrap();
-        let app_versions = self.reader.get_app_version(nname.clone()).await.unwrap();
-        let mut getversions = vec![];
-        for version in lib_versions {
-            getversions.push(version);
+        let qid = namespace.clone() + "/" + &nname + "/" + &nversion;
+        let qres = dbhandler
+            .query_crates_info_from_pg(&qid, nname.clone())
+            .await
+            .unwrap();
+        if qres.len() == 0 {
+            let mut githuburl = self
+                .reader
+                .get_github_url(namespace.clone(), nname.clone())
+                .await
+                .unwrap();
+            if githuburl == "null".to_string() || githuburl == "None".to_string() {
+                githuburl = "".to_string();
+            }
+            let mut docurl = self
+                .reader
+                .get_doc_url(namespace.clone(), nname.clone())
+                .await
+                .unwrap();
+            if docurl == "null".to_string() || docurl == "None".to_string() {
+                docurl = "".to_string();
+            }
+            let direct_dependency_nodes = self
+                .reader
+                .new_get_direct_dependency_nodes(&namespace, &name_and_version)
+                .await
+                .unwrap();
+            let direct_dependency_count = direct_dependency_nodes.len();
+            println!(
+                "finish get_direct_dependency_nodes:{}",
+                direct_dependency_count
+            ); //ok
+            let all_dependency_nodes = self
+                .reader
+                .new_get_all_dependencies(namespace.clone(), name_and_version.clone())
+                .await
+                .unwrap();
+            let mut indirect_dependency = vec![];
+            for node in all_dependency_nodes {
+                let mut dr = false;
+                for node2 in direct_dependency_nodes.clone() {
+                    let nv = node2.name.clone() + "/" + &node2.version.clone();
+                    if node == nv {
+                        dr = true;
+                        break;
+                    }
+                }
+                if !dr {
+                    indirect_dependency.push(node);
+                }
+            }
+            let indirect_dependency_count = indirect_dependency.len();
+            //get dependent count
+            let direct_dependent_nodes = self
+                .reader
+                .new_get_direct_dependent_nodes(&namespace, &name_and_version)
+                .await
+                .unwrap();
+            let direct_dependent_count = direct_dependent_nodes.len();
+            println!(
+                "finish get_direct_dependent_nodes:{}",
+                direct_dependent_count
+            );
+            let all_dependent_nodes = self
+                .reader
+                .new_get_all_dependents(namespace.clone(), name_and_version.clone())
+                .await
+                .unwrap();
+            let mut indirect_dependent = vec![];
+            for node in all_dependent_nodes {
+                let mut dr = false;
+                for node2 in direct_dependent_nodes.clone() {
+                    let nv = node2.name.clone() + "/" + &node2.version.clone();
+                    if node == nv {
+                        dr = true;
+                        break;
+                    }
+                }
+                if !dr {
+                    indirect_dependent.push(node);
+                }
+            }
+            let indirect_dependent_count = indirect_dependent.len();
+
+            let getcves = dbhandler.get_cve_by_cratename(&nname).await.unwrap();
+            let getlicense = dbhandler
+                .get_license_by_name(&namespace, &nname)
+                .await
+                .unwrap();
+            let lib_versions = self
+                .reader
+                .new_get_lib_version(namespace.clone(), nname.clone())
+                .await
+                .unwrap();
+            let mut getversions = vec![];
+            for version in lib_versions {
+                getversions.push(version);
+            }
+            getversions.sort_by(|a, b| {
+                // 尝试解析字符串为 Version 对象
+                let version_a = Version::parse(a);
+                let version_b = Version::parse(b);
+
+                match (version_a, version_b) {
+                    (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
+                    _ => Ordering::Equal,                // 处理解析错误的情况
+                }
+            });
+            let dcy_count = DependencyCount {
+                direct: direct_dependency_count,
+                indirect: indirect_dependency_count,
+            };
+            let dt_count = DependentCount {
+                direct: direct_dependent_count,
+                indirect: indirect_dependent_count,
+            };
+            let res = Crateinfo {
+                crate_name: nname.clone(),
+                description: "".to_string(),
+                dependencies: dcy_count,
+                dependents: dt_count,
+                cves: getcves,
+                versions: getversions,
+                license: getlicense[0].clone(),
+                github_url: githuburl,
+                doc_url: docurl,
+            };
+            dbhandler
+                .insert_crates_info_into_pg(
+                    res.clone(),
+                    namespace.clone(),
+                    nname.clone(),
+                    nversion.clone(),
+                )
+                .await
+                .unwrap();
+            HttpResponse::Ok().json(res)
+        } else {
+            HttpResponse::Ok().json(qres[0].clone())
         }
-        for version in app_versions {
-            getversions.push(version);
-        }
-        let dcy_count = DependencyCount {
-            direct: direct_dependency_count,
-            indirect: indirect_dependency_count,
-        };
-        let dt_count = DependentCount {
-            direct: direct_dependent_count,
-            indirect: indirect_dependent_count,
-        };
-        let res = Crateinfo {
-            crate_name: nname.clone(),
-            description: "".to_string(),
-            dependencies: dcy_count,
-            dependents: dt_count,
-            cves: getcves,
-            versions: getversions,
-        };
-        HttpResponse::Ok().json(res)
     }
     pub async fn get_cves(&self) -> impl Responder {
+        //println!("enter get cve");
         #[allow(unused_variables)]
         let (client, connection) = tokio_postgres::connect(
             "host=172.17.0.1 port=30432 user=mega password=mega dbname=cratespro",
@@ -178,35 +336,55 @@ impl ApiHandler {
         )
         .await
         .unwrap();
+        //println!("connect client");
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
         let dbhd = DBHandler { client };
         let cves = dbhd.get_all_cvelist().await.unwrap();
+        //println!("{:?}", cves);
         HttpResponse::Ok().json(cves)
     }
-    pub async fn get_dependency(
+    pub async fn new_get_dependency(
         &self,
-        name: web::Path<String>,
-        version: web::Path<String>,
+        name: String,
+        version: String,
+        nsfront: String,
+        nsbehind: String,
     ) -> impl Responder {
-        let name_and_version = name.into_inner() + "/" + &version.into_inner();
-        let mut all_nodes = self
+        //let name_and_version = name.clone() + "/" + &version;
+        let namespace = nsfront.clone() + "/" + &nsbehind.clone();
+        let nameversion = name.clone() + "/" + &version.clone();
+        let direct_nodes = self
             .reader
-            .get_direct_dependency_nodes(&name_and_version)
+            .new_get_direct_dependency_nodes(&namespace, &nameversion)
             .await
             .unwrap();
-        let getdirect_count = all_nodes.len();
-        for node in all_nodes.clone() {
-            let nodes = self
-                .reader
-                .get_indirect_dependency_nodes(node)
-                .await
-                .unwrap();
-            for indirect_node in nodes {
-                all_nodes.push(indirect_node);
+        let getdirect_count = direct_nodes.len();
+        let all_dependency_nodes = self
+            .reader
+            .new_get_all_dependencies(namespace.clone(), nameversion.clone())
+            .await
+            .unwrap();
+        let mut indirect_dependency = vec![];
+        for node in all_dependency_nodes {
+            let mut dr = false;
+            for node2 in direct_nodes.clone() {
+                let nv = node2.name.clone() + "/" + &node2.version.clone();
+                if node == nv {
+                    dr = true;
+                    break;
+                }
+            }
+            if !dr {
+                indirect_dependency.push(node);
             }
         }
-        let getindirect_count = all_nodes.len() - getdirect_count;
+        let indirect_dependency_count = indirect_dependency.len();
         let mut deps = vec![];
-        for item in all_nodes.iter().take(getdirect_count - 1) {
+        for item in direct_nodes {
             let dep_count = self.reader.count_dependencies(item.clone()).await.unwrap();
             let dep = DependencyCrateInfo {
                 crate_name: item.clone().name,
@@ -217,101 +395,179 @@ impl ApiHandler {
             };
             deps.push(dep);
         }
-        for item in all_nodes
-            .iter()
-            .take(all_nodes.len() - 1)
-            .skip(getdirect_count)
-        {
-            let dep_count = self.reader.count_dependencies(item.clone()).await.unwrap();
+        for item in indirect_dependency {
+            let parts: Vec<&str> = item.split('/').collect();
+            let newitem = NameVersion {
+                name: parts[0].to_string(),
+                version: parts[1].to_string(),
+            };
+            let dep_count = self
+                .reader
+                .count_dependencies(newitem.clone())
+                .await
+                .unwrap();
+
             let dep = DependencyCrateInfo {
-                crate_name: item.clone().name,
-                version: item.clone().version,
+                crate_name: parts[0].to_string(),
+                version: parts[1].to_string(),
                 relation: "Indirect".to_string(),
                 license: "".to_string(),
                 dependencies: dep_count,
             };
             deps.push(dep);
         }
+
         let res_deps = DependencyInfo {
             direct_count: getdirect_count,
-            indirect_count: getindirect_count,
+            indirect_count: indirect_dependency_count,
             data: deps,
         };
         HttpResponse::Ok().json(res_deps)
     }
-    pub async fn get_dependent(
+
+    pub async fn new_get_dependent(
         &self,
-        name: web::Path<String>,
-        version: web::Path<String>,
+        name: String,
+        version: String,
+        nsfront: String,
+        nsbehind: String,
     ) -> impl Responder {
-        let name_and_version = name.into_inner() + "/" + &version.into_inner();
-        let mut all_nodes = self
+        //let name_and_version = name.clone() + "/" + &version;
+        let namespace = nsfront.clone() + "/" + &nsbehind.clone();
+        let nameversion = name.clone() + "/" + &version.clone();
+        let direct_nodes = self
             .reader
-            .get_direct_dependent_nodes(&name_and_version)
+            .new_get_direct_dependent_nodes(&namespace, &nameversion)
             .await
             .unwrap();
-        let getdirect_count = all_nodes.len();
-        for node in all_nodes.clone() {
-            let nodes = self
-                .reader
-                .get_indirect_dependent_nodes(node)
-                .await
-                .unwrap();
-            for indirect_node in nodes {
-                all_nodes.push(indirect_node);
+        let getdirect_count = direct_nodes.len();
+        let all_dependent_nodes = self
+            .reader
+            .new_get_all_dependents(namespace.clone(), nameversion.clone())
+            .await
+            .unwrap();
+        let mut indirect_dependent = vec![];
+        for node in all_dependent_nodes {
+            let mut dr = false;
+            for node2 in direct_nodes.clone() {
+                let nv = node2.name.clone() + "/" + &node2.version.clone();
+                if node == nv {
+                    dr = true;
+                    break;
+                }
+            }
+            if !dr {
+                indirect_dependent.push(node);
             }
         }
-        let getindirect_count = all_nodes.len() - getdirect_count;
+        let indirect_dependent_count = indirect_dependent.len();
         let mut deps = vec![];
-        for (i, item) in all_nodes.iter().enumerate().take(getdirect_count - 1) {
+        let mut count1 = 0;
+        for item in direct_nodes {
             let dep = DependentData {
                 crate_name: item.clone().name,
                 version: item.clone().version,
                 relation: "Direct".to_string(),
             };
             deps.push(dep);
-            if i == 49 {
+            count1 += 1;
+            if count1 == 50 {
                 break;
             }
         }
-        for (i, item) in all_nodes
-            .iter()
-            .enumerate()
-            .take(all_nodes.len() - 1)
-            .skip(getdirect_count)
-        {
+        let mut count2 = 0;
+        for item in indirect_dependent {
+            let parts: Vec<&str> = item.split('/').collect();
             let dep = DependentData {
-                crate_name: item.clone().name,
-                version: item.clone().version,
+                crate_name: parts[0].to_string(),
+                version: parts[1].to_string(),
                 relation: "Indirect".to_string(),
             };
-            deps.push(dep);
-            if i - getdirect_count == 49 {
+            count2 += 1;
+            if count2 == 50 {
                 break;
             }
+            deps.push(dep);
         }
+
         let res_deps = DependentInfo {
             direct_count: getdirect_count,
-            indirect_count: getindirect_count,
+            indirect_count: indirect_dependent_count,
             data: deps,
         };
         HttpResponse::Ok().json(res_deps)
     }
     pub async fn query_crates(&self, q: Query) -> impl Responder {
+        //add yj's search module
         let name = q.query;
+        println!("name: {}", name);
         let page = q.pagination.page;
+        println!("page: {}", page);
         let per_page = q.pagination.per_page;
-        let programs = self.reader.get_program_by_name(&name).await.unwrap();
-        let gettotal_page = programs.len() / per_page;
+        println!("per_page: {}", per_page);
+        //
+        //let programs = self.reader.get_program_by_name(&name).await.unwrap();
+        //
+        //
+        let (client, connection) = tokio_postgres::connect(
+            "host=172.17.0.1 port=30432 user=mega password=mega dbname=cratespro",
+            NoTls,
+        )
+        .await
+        .unwrap();
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+        let pre_search = search_prepare::SearchPrepare::new(&client).await;
+        pre_search.prepare_tsv().await.unwrap();
+        let question = name.clone();
+        let search_module = SearchModule::new(&client).await;
+        let res = search_module
+            .search_crate(&question, SearchSortCriteria::Relavance)
+            .await
+            .unwrap();
+        //
+        let mut seen = HashSet::new();
+        let uniq_res: Vec<RecommendCrate> = res
+            .into_iter()
+            .filter(|x| seen.insert((x.name.clone(), x.namespace.clone())))
+            .collect();
+        println!("total programs: {}", uniq_res.len());
+        let mut gettotal_page = uniq_res.len() / per_page;
+        if uniq_res.len() == 0 || uniq_res.len() % per_page != 0 {
+            gettotal_page += 1;
+        }
         let mut getitems = vec![];
-        for i in page * 20..page * 20 + 19 {
-            if i >= programs.len() {
+        for i in (page - 1) * 20..(page - 1) * 20 + 20 {
+            if i >= uniq_res.len() {
                 break;
             }
+            let program_name = uniq_res[i].clone().name;
+            let getnamespace = uniq_res[i].clone().namespace;
+            let parts: Vec<&str> = getnamespace.split('/').collect();
+            let nsf = parts[0].to_string();
+            let nsb = parts[1].to_string();
+            //let endtime3 = starttime3.elapsed();
+            //println!("get_max_version need time:{:?}", endtime3);
+            let mut mv = vec![];
+            /*if let Some(maxversion) = programs[i].clone().max_version {
+                mv.push(maxversion);
+            } else {
+                mv.push("0.0.0".to_string());
+            }*/
+            mv.push(uniq_res[i].clone().max_version);
+            //println!("maxversion {}", mv[0].clone());
+            if mv[0].clone() == "null".to_string() {
+                mv[0] = "0.0.0".to_string();
+            }
             let query_item = QueryItem {
-                name: programs[i].clone().name,
-                version: programs[i].clone().max_version.unwrap(),
+                name: program_name.clone(),
+                version: mv[0].clone(),
                 date: "".to_string(),
+                nsfront: nsf,
+                nsbehind: nsb,
             };
             getitems.push(query_item);
         }
@@ -323,6 +579,7 @@ impl ApiHandler {
                 items: getitems,
             },
         };
+        println!("response {:?}", response);
         HttpResponse::Ok().json(response)
     }
     #[allow(dead_code)]
