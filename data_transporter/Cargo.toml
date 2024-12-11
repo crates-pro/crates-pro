@@ -15,6 +15,7 @@ tokio-postgres = "0.7"
 actix-multipart = "0.7"
 futures-util = "0.3"
 sanitize-filename = "0.5"
+semver = "1.0"
 uuid = { version = "1.8.0", features = [
     "v4",                # Lets you generate random UUIDs
     "fast-rng",          # Use a faster (but still sufficiently random) RNG
@@ -23,5 +24,6 @@ uuid = { version = "1.8.0", features = [
 async-trait = "0.1"
 zip = "2.2.0"
 repo_import = { path = "../repo_import" }
+search = { path = "../search" }
 [dev-dependencies]
 actix-rt = "2.10"

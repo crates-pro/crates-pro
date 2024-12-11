@@ -12,8 +12,9 @@ rust_library(
     edition = "2021",
     deps = [
         "//project/crates-pro:model",
-        "//project/crates-pro:tudriver",
         "//project/crates-pro:repo_import",
+        "//project/crates-pro:search",
+        "//project/crates-pro:tudriver",
         "//third-party:serde",
         "//third-party:serde_json",
         "//third-party:tokio",
@@ -26,7 +27,8 @@ rust_library(
         "//third-party:sanitize-filename",
         "//third-party:actix-rt",
         "//third-party:async-trait",
-        "//third-party:zip"
+        "//third-party:zip",
+        "//third-party:semver"
     ],
     visibility = ["PUBLIC"],
 )
