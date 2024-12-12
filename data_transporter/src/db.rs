@@ -1,3 +1,4 @@
+use crate::route::{Crateinfo, DependencyCount, DependentCount};
 use model::tugraph_model::{Program, UProgram, UVersion};
 use serde::{Deserialize, Serialize};
 use tokio_postgres::{Error, NoTls};
@@ -259,8 +260,15 @@ impl DBHandler {
         Ok(())
     }
     pub async fn get_all_cvelist(&self) -> Result<Allcve, Error> {
-        let getcve = "SELECT cve_id, name, start_version, end_version FROM cves;";
-        let raws = self.client.query(getcve, &[]).await.unwrap();
+        //let getcve = "SELECT cve_id, name, start_version, end_version FROM cves;";
+
+        let raws = self
+            .client
+            .query(
+                "SELECT cve_id, name, start_version, end_version,description FROM cves;",
+                &[],
+            )
+            .await?;
         let mut getcves = vec![];
         for raw in raws {
             let front = "https://www.cve.org/CVERecord?id=";
@@ -269,7 +277,7 @@ impl DBHandler {
             let cve_info = CveInfo {
                 cve_id: raw.get(0),
                 url: cve_url,
-                description: "".to_string(),
+                description: raw.get(4),
                 crate_name: raw.get(1),
                 start_version: raw.get(2),
                 end_version: raw.get(3),
@@ -277,6 +285,7 @@ impl DBHandler {
             getcves.push(cve_info);
         }
         let res = Allcve { cves: getcves };
+
         Ok(res)
     }
     pub async fn get_cve_by_cratename(&self, cratename: &str) -> Result<Vec<String>, Error> {
@@ -294,5 +303,122 @@ impl DBHandler {
             cves.push(cve_id);
         }
         Ok(cves)
+    }
+    pub async fn get_license_by_name(
+        &self,
+        namespace: &str,
+        name: &str,
+    ) -> Result<Vec<String>, Error> {
+        let rows = self
+            .client
+            .query(
+                "SELECT license FROM license WHERE program_namespace = $1 and program_name = $2;",
+                &[&namespace.to_string(), &name.to_string()],
+            )
+            .await
+            .unwrap();
+        let mut licenses = vec![];
+        for row in rows {
+            let new_license: String = row.get(0);
+            licenses.push(new_license);
+        }
+        Ok(licenses)
+    }
+    pub async fn query_crates_info_from_pg(
+        &self,
+        id: &str,
+        name: String,
+    ) -> Result<Vec<Crateinfo>, Box<dyn std::error::Error>> {
+        let rows = self
+            .client
+            .query(
+                "SELECT * FROM crates_info WHERE id = $1;",
+                &[&id.to_string()],
+            )
+            .await
+            .unwrap();
+        let mut cf = vec![];
+        for row in rows {
+            let desc: String = row.get("description");
+            let dcyct: i32 = row.get("direct_dependency");
+            let indcyct: i32 = row.get("indirect_dependency");
+            let dtct: i32 = row.get("direct_dependent");
+            let indtct: i32 = row.get("indirect_dependent");
+            let cs: String = row.get("cves");
+            let vs: String = row.get("versions");
+            let lcs: String = row.get("license");
+            let gu: String = row.get("github_url");
+            let du: String = row.get("doc_url");
+            let mut getcves = vec![];
+            let partscs: Vec<&str> = cs.split('/').collect();
+            for part in partscs {
+                getcves.push(part.to_string());
+            }
+            let mut getversions = vec![];
+            let partsvs: Vec<&str> = vs.split('/').collect();
+            for part in partsvs {
+                getversions.push(part.to_string());
+            }
+            let res_crates_info = Crateinfo {
+                crate_name: name.clone(),
+                description: desc.clone(),
+                dependencies: DependencyCount {
+                    direct: dcyct as usize,
+                    indirect: indcyct as usize,
+                },
+                dependents: DependentCount {
+                    direct: dtct as usize,
+                    indirect: indtct as usize,
+                },
+                cves: getcves,
+                license: lcs.clone(),
+                github_url: gu.clone(),
+                doc_url: du.clone(),
+                versions: getversions,
+            };
+            cf.push(res_crates_info);
+        }
+        Ok(cf)
+    }
+    pub async fn insert_crates_info_into_pg(
+        &self,
+        crateinfo: Crateinfo,
+        namespace: String,
+        name: String,
+        version: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let id = namespace.clone() + "/" + &name + "/" + &version;
+        let dcyct = crateinfo.dependencies.direct as i32;
+        let indcyct = crateinfo.dependencies.indirect as i32;
+        let dtct = crateinfo.dependents.direct as i32;
+        let indtct = crateinfo.dependents.indirect as i32;
+        let cs = crateinfo.cves.clone().join("/");
+        let vs = crateinfo.versions.clone().join("/");
+        self.client
+            .execute(
+                "
+                        INSERT INTO crates_info (
+                            id,description,direct_dependency,indirect_dependency,
+                            direct_dependent,indirect_dependent,cves,versions,
+                            license,github_url,doc_url
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7,$8,$9,$10,$11);
+                        ",
+                &[
+                    &id,
+                    &crateinfo.description,
+                    &dcyct,
+                    &indcyct,
+                    &dtct,
+                    &indtct,
+                    &cs,
+                    &vs,
+                    &crateinfo.license,
+                    &crateinfo.github_url,
+                    &crateinfo.doc_url,
+                ],
+            )
+            .await
+            .unwrap();
+        Ok(())
     }
 }

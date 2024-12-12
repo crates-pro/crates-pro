@@ -1,4 +1,4 @@
 pub mod ai;
 pub mod embedding;
-pub mod search;
+pub mod crates_search;
 pub mod search_prepare;

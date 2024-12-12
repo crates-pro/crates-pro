@@ -78,7 +78,7 @@ fn gen_search_sql(table_name: &str, sort_by: SearchSortCriteria) -> String {
     }
 }
 
-fn sort_crates(crate_vec: &mut Vec<RecommendCrate>) {
+fn sort_crates(crate_vec: &mut [RecommendCrate]) {
     crate_vec.sort_by(|a, b| {
         b.rank
             .partial_cmp(&a.rank)
@@ -98,7 +98,7 @@ fn rearrange_crates(crates: &mut Vec<RecommendCrate>, keyword: &str) {
             true
         }
     });
-    sort_crates_vec(&mut matching_crates);
+    sort_crates(&mut matching_crates);
     crates.splice(0..0, matching_crates);
 }
 

@@ -1,5 +1,5 @@
 [package]
-name = "cratespro-search"
+name = "search"
 version = "0.1.0"
 edition = "2021"
 
