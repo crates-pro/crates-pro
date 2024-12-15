@@ -88,6 +88,10 @@ fn sort_crates(crate_vec: &mut [RecommendCrate]) {
     });
 }
 
+fn sort_crates_by_version(crate_vec: &mut [RecommendCrate]) {
+    crate_vec.sort_by(|a, b| b.max_version.cmp(&a.max_version))
+}
+
 fn rearrange_crates(crates: &mut Vec<RecommendCrate>, keyword: &str) {
     let mut matching_crates: Vec<RecommendCrate> = Vec::new();
     crates.retain(|c| {
@@ -99,9 +103,9 @@ fn rearrange_crates(crates: &mut Vec<RecommendCrate>, keyword: &str) {
         }
     });
     sort_crates(&mut matching_crates);
+    sort_crates_by_version(&mut matching_crates);
     crates.splice(0..0, matching_crates);
 }
-
 
 async fn search_crate_without_ai(
     client: &PgClient,
