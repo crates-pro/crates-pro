@@ -98,7 +98,7 @@ fn rearrange_crates(crates: &mut Vec<RecommendCrate>, keyword: &str) {
             true
         }
     });
-    sort_crates_vec(&mut matching_crates);
+    sort_crates(&mut matching_crates);
     crates.splice(0..0, matching_crates);
 }
 
