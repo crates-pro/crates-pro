@@ -15,16 +15,15 @@ use crate::route::ApiHandler;
 
 use actix_multipart::Multipart;
 use actix_web::{
-    
     web::{self},
     App, HttpServer,
 };
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Query {
     query: String,
     pagination: Pagination,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Pagination {
     page: usize,
     per_page: usize,
@@ -52,9 +51,10 @@ pub async fn run_api_server(
                 }),
             )
             .route(
-                "/api/crates/{name}",
+                "/api/crates/{cratename}",
                 web::get().to(
                     |data: web::Data<Arc<ApiHandler>>, name: web::Path<String>| async move {
+                        println!("2");
                         data.get_crate_details(name.into_inner().into()).await
                     },
                 ),
@@ -63,6 +63,7 @@ pub async fn run_api_server(
                 "/api/cvelist",
                 web::get().to(
                     |data: web::Data<Arc<ApiHandler>>| async move {
+                        //println!("get cves");
                         data.get_cves().await
                     },
                 ),
@@ -78,22 +79,26 @@ pub async fn run_api_server(
             )
             .route("/api/search", web::post().to(
                 |data: web::Data<Arc<ApiHandler>>,payload: web::Json<Query>| async move{
+                    println!("3");
                     let query = payload.into_inner();
+                    println!("query {:?}",query);
                     data.query_crates(query).await
             },),)
-            .route("/api/crates/{crateName}/{version}/dependencies", 
-            web::get().to(|data:web::Data<Arc<ApiHandler>>,crate_name:web::Path<String>,version:web::Path<String>|async move{
-              
-                data.get_dependency(crate_name.into_inner().into(),version.into_inner().into()).await
+            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies", 
+            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
+                let (nsfront,nsbehind,cratename, version) = path.into_inner();
+                data.new_get_dependency(cratename,version,nsfront,nsbehind).await
             }))
-            .route("/api/crates/{crateName}/{version}/dependents", 
-            web::get().to(|data:web::Data<Arc<ApiHandler>>,crate_name:web::Path<String>,version:web::Path<String>|async move{
-              
-                data.get_dependent(crate_name.into_inner().into(),version.into_inner().into()).await
+            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependents", 
+            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
+                let (nsfront,nsbehind,cratename, version) = path.into_inner();
+                data.new_get_dependent(cratename,version,nsfront,nsbehind).await
             }))
-            .route("/api/crates/{crateName}/{version}", 
-            web::get().to(|data:web::Data<Arc<ApiHandler>>,crate_name:web::Path<String>,version:web::Path<String>|async move{
-                data.get_crates_front_info(crate_name.into_inner().into(),version.into_inner().into()).await
+            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}", 
+            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
+                println!("1");
+                let (nsfront,nsbehind,cratename, version) = path.into_inner();
+                data.new_get_crates_front_info(cratename,version,nsfront,nsbehind).await
             }))
     })
     .bind("0.0.0.0:6888")?
@@ -101,7 +106,7 @@ pub async fn run_api_server(
     .await
 }
 
-#[derive(Debug, Serialize, Deserialize,Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NameVersion {
     pub name: String,
     pub version: String,

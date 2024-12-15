@@ -1,5 +1,3 @@
-
-
 [workspace]
 members = [
   "crates_pro",
@@ -11,6 +9,7 @@ members = [
   "data_transporter",
   "analysis",
   "mega_tool",
+  "search",
 ]
 
 default-members = ["crates_pro", "mega_tool"]
