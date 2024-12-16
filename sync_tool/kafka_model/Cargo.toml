@@ -1,0 +1,12 @@
+[package]
+name = "kafka_model"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+entity = { path = "../storage/entity" }
+
+serde = { version = "1.0.197" }
+chrono = "0.4.37"
+sea-orm = "0.12.15"

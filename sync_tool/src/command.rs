@@ -18,5 +18,6 @@ pub enum Commands {
     /// Push Local Repo to mega
     Upload,
     Crate,
+    /// Incremental Update. the <FILE> arg is useless.
     Incremental,
 }

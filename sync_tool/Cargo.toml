@@ -1,5 +1,5 @@
 [package]
-name = "mega_tool"
+name = "sync_tool"
 version = "0.0.1-alpha"
 edition = "2021"
 
@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 storage = { path = "storage" }
 entity = { path = "storage/entity" }
+kafka_model = { path = "kafka_model" }
 
 rdkafka = { version = "0.36.2", features = ["cmake-build"] }
 sea-orm = { version = "0.12.15", features = [
@@ -34,5 +35,5 @@ git2 = "0.19.0"
 serde_json = "1.0.120"
 
 [[bin]]
-name = "mega_tool"   # 设置编译后的二进制文件名称
+name = "sync_tool"   # 设置编译后的二进制文件名称
 path = "src/main.rs" # 可选，默认情况下，Cargo 会查找 src/main.rs 文件
