@@ -10,9 +10,11 @@ use std::{
     time::Duration,
 };
 
+use chrono::Utc;
 use entity::{db_enums::RepoSyncStatus, repo_sync_status};
 use flate2::bufread::GzDecoder;
 use git2::{Repository, Signature};
+use kafka_model::message_model;
 use rdkafka::producer::FutureProducer;
 use regex::Regex;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set, Unchanged};
@@ -52,7 +54,7 @@ pub async fn incremental_update() {
         let last_location_u64: u64 = last_location as u64;
 
         //freighter 增量更新
-        Command::new("freighter-registry")
+        Command::new("/home/rust/.cargo/bin/freighter-registry")
             .arg("crates")
             .arg("download")
             .output()
@@ -66,6 +68,7 @@ pub async fn incremental_update() {
         let crates_info = parse_log_file(log_file_path, last_location_u64, &crate_names)
             .expect("Failed to parse log file");
 
+        println!("log_read-done!");
         for crate_info in &crates_info {
             println!("re: {:?}", crate_info);
 
@@ -81,7 +84,11 @@ pub async fn incremental_update() {
             }
 
             if repo_path.exists() {
-                fs::remove_dir_all(repo_path).unwrap();
+                println!("repo_path: {}", repo_path.display());
+                match fs::remove_dir_all(repo_path) {
+                    Ok(()) => (),
+                    Err(e) => println!("Failed to remove directory: {}", e),
+                }
             }
 
             let repo = open_or_make_repo(repo_path);
@@ -100,7 +107,12 @@ pub async fn incremental_update() {
             //提取版本号并提交
             let version = &crate_info.version;
             add_and_commit(&repo, version, repo_path);
-            fs::remove_dir_all(uncompress_path).unwrap();
+
+            match fs::remove_dir_all(uncompress_path) {
+                Ok(()) => (),
+                Err(e) => println!("Failed to remove uncompress_path: {}", e),
+            }
+            //fs::remove_dir_all(uncompress_path).unwrap();
 
             if repo_path.exists() {
                 //push 到mega 进行存储（其中推送到kafka
@@ -186,8 +198,14 @@ pub async fn incremental_update() {
         };
 
         // Create the tag
-        repo.tag_lightweight(version, &repo.find_object(commit_id, None).unwrap(), false)
-            .unwrap();
+        //repo.tag_lightweight(version, &repo.find_object(commit_id, None).unwrap(), false).unwrap();
+        match repo.tag_lightweight(version, &repo.find_object(commit_id, None).unwrap(), false) {
+            Ok(_) => (), // 成功时什么也不做
+            Err(e) => match e.code() {
+                git2::ErrorCode::Exists => println!("Tag '{}' already exists.", version),
+                _ => println!("Failed to create tag: {}", e.message()),
+            },
+        }
     }
 
     fn copy_all_files(src: &Path, dst: &Path) -> io::Result<()> {
@@ -242,20 +260,21 @@ pub async fn incremental_update() {
         }
 
         //let mut url = Url::from_str("http://localhost:8000").unwrap();
-        let mut url = Url::from_str("http://mono.mega.local:80").unwrap();
+        // let mut url = Url::from_str("http://mono.mega.local:80").unwrap();
+        let mut url = Url::from_str("http://172.17.0.1:32001").unwrap();
         let new_path = format!("/third-part/crates/{}", crate_name);
         url.set_path(&new_path);
 
         //println!("The URL is: {}", url);
 
-        Command::new("git")
+        git_command_with_env()
             .arg("remote")
             .arg("remove")
             .arg("nju")
             .output()
             .unwrap();
 
-        Command::new("git")
+        git_command_with_env()
             .arg("remote")
             .arg("add")
             .arg("nju")
@@ -264,15 +283,15 @@ pub async fn incremental_update() {
             .unwrap();
 
         //git push --set-upstream nju master
-        let push_res = Command::new("git")
+        let push_res = git_command_with_env()
             .arg("push")
             .arg("--set-upstream")
             .arg("nju")
-            .arg("main")
+            .arg("master")
             .output()
             .unwrap();
 
-        Command::new("git")
+        git_command_with_env()
             .arg("push")
             .arg("nju")
             .arg("--tags")
@@ -290,11 +309,19 @@ pub async fn incremental_update() {
         }
         record.updated_at = Set(chrono::Utc::now().naive_utc());
         let res = record.save(conn).await.unwrap();
-        let kafka_payload: repo_sync_status::Model = res.try_into().unwrap();
+        let db_model: repo_sync_status::Model = res.try_into().unwrap();
+        let kafka_message_model = message_model::MessageModel::new(
+            db_model,                              // 数据库 Model
+            message_model::MessageKind::Mega,      // 设置 message_kind 为 Mega
+            message_model::SourceOfData::Cratesio, // 设置 source_of_data 为 Cratesio
+            Utc::now(),                            // 当前时间作为时间戳
+            "Extra information".to_string(),       // 设置 extra_field，示例中为一个字符串
+        );
+        println!("=================kafka_message{:?}", kafka_message_model);
         kafka::producer::send_message(
             producer,
-            &env::var("KAFKA_TOPIC").unwrap(),
-            serde_json::to_string(&kafka_payload).unwrap(),
+            &env::var("KAFKA_TOPIC_NEW").unwrap(),
+            serde_json::to_string(&kafka_message_model).unwrap(),
         )
         .await;
         println!("Push res: {}", String::from_utf8_lossy(&push_res.stdout));
@@ -496,5 +523,14 @@ pub async fn incremental_update() {
         let b_parts = parse_version(version_b);
 
         a_parts.cmp(&b_parts)
+    }
+
+    fn git_command_with_env() -> Command {
+        let mut cmd = Command::new("git");
+        cmd.env_remove("http_proxy")
+            .env_remove("https_proxy")
+            .env_remove("HTTP_PROXY")
+            .env_remove("HTTPS_PROXY");
+        cmd
     }
 }

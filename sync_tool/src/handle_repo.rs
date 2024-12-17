@@ -104,7 +104,7 @@ pub async fn add_and_push_to_remote(workspace: PathBuf) {
                     let kafka_payload: repo_sync_status::Model = res.try_into().unwrap();
                     kafka::producer::send_message(
                         &producer,
-                        &env::var("KAFKA_TOPIC").unwrap(),
+                        &env::var("KAFKA_TOPIC_NEW").unwrap(),
                         serde_json::to_string(&kafka_payload).unwrap(),
                     )
                     .await;
