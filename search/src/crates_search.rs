@@ -79,17 +79,24 @@ fn gen_search_sql(table_name: &str, sort_by: SearchSortCriteria) -> String {
 }
 
 fn sort_crates(crate_vec: &mut [RecommendCrate]) {
+    let version_cmp = |a: &RecommendCrate, b: &RecommendCrate| {
+        if a.max_version == b.max_version {
+            std::cmp::Ordering::Equal
+        } else if a.max_version == "null" {
+            std::cmp::Ordering::Greater
+        } else if b.max_version == "null" {
+            std::cmp::Ordering::Less
+        } else {
+            b.max_version.cmp(&a.max_version)
+        }
+    };
     crate_vec.sort_by(|a, b| {
         b.rank
             .partial_cmp(&a.rank)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.name.cmp(&b.name))
-            .then_with(|| b.max_version.cmp(&a.max_version))
+            .then_with(|| version_cmp(a, b))
     });
-}
-
-fn sort_crates_by_version(crate_vec: &mut [RecommendCrate]) {
-    crate_vec.sort_by(|a, b| b.max_version.cmp(&a.max_version))
 }
 
 fn rearrange_crates(crates: &mut Vec<RecommendCrate>, keyword: &str) {
@@ -103,7 +110,6 @@ fn rearrange_crates(crates: &mut Vec<RecommendCrate>, keyword: &str) {
         }
     });
     sort_crates(&mut matching_crates);
-    sort_crates_by_version(&mut matching_crates);
     crates.splice(0..0, matching_crates);
 }
 
