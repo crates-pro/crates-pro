@@ -7,8 +7,10 @@ use std::{
     str::FromStr,
 };
 
+use chrono::Utc;
 use flate2::bufread::GzDecoder;
 use git2::{Repository, Signature};
+use kafka_model::message_model;
 use rdkafka::producer::FutureProducer;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set, Unchanged};
 use tar::Archive;
@@ -52,7 +54,11 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
             }
 
             if repo_path.exists() {
-                fs::remove_dir_all(repo_path).unwrap();
+                println!("repo_path: {}", repo_path.display());
+                match fs::remove_dir_all(repo_path) {
+                    Ok(()) => (),
+                    Err(e) => println!("Failed to remove directory: {}", e),
+                }
             }
 
             let mut crate_versions: Vec<PathBuf> = WalkDir::new(crate_path)
@@ -89,7 +95,11 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
                     .replace(&format!("{}-", crate_name), "")
                     .replace(".crate", "");
                 add_and_commit(&repo, version, repo_path);
-                fs::remove_dir_all(uncompress_path).unwrap();
+                //fs::remove_dir_all(uncompress_path).unwrap();
+                match fs::remove_dir_all(uncompress_path) {
+                    Ok(()) => (),
+                    Err(e) => println!("Failed to remove uncompress_path: {}", e),
+                }
             }
 
             if repo_path.exists() {
@@ -173,8 +183,15 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
         };
 
         // Create the tag
-        repo.tag_lightweight(version, &repo.find_object(commit_id, None).unwrap(), false)
-            .unwrap();
+        // repo.tag_lightweight(version, &repo.find_object(commit_id, None).unwrap(), false)
+        //     .unwrap();
+        match repo.tag_lightweight(version, &repo.find_object(commit_id, None).unwrap(), false) {
+            Ok(_) => (), // 成功时什么也不做
+            Err(e) => match e.code() {
+                git2::ErrorCode::Exists => println!("Tag '{}' already exists.", version),
+                _ => println!("Failed to create tag: {}", e.message()),
+            },
+        }
     }
 
     fn copy_all_files(src: &Path, dst: &Path) -> io::Result<()> {
@@ -228,18 +245,19 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
             exit(1);
         }
 
-        let mut url = Url::from_str("http://localhost:8000").unwrap();
+        // let mut url = Url::from_str("http://mono.mega.local:80").unwrap();
+        let mut url = Url::from_str("http://172.17.0.1:32001").unwrap();
         let new_path = format!("/third-part/crates/{}", crate_name);
         url.set_path(&new_path);
 
-        Command::new("git")
+        git_command_with_env()
             .arg("remote")
             .arg("remove")
             .arg("nju")
             .output()
             .unwrap();
 
-        Command::new("git")
+        git_command_with_env()
             .arg("remote")
             .arg("add")
             .arg("nju")
@@ -247,16 +265,16 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
             .output()
             .unwrap();
 
-        //git push --set-upstream nju main
-        let push_res = Command::new("git")
+        //git push --set-upstream nju master
+        let push_res = git_command_with_env()
             .arg("push")
             .arg("--set-upstream")
             .arg("nju")
-            .arg("main")
+            .arg("master")
             .output()
             .unwrap();
 
-        Command::new("git")
+        git_command_with_env()
             .arg("push")
             .arg("nju")
             .arg("--tags")
@@ -274,11 +292,19 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
         }
         record.updated_at = Set(chrono::Utc::now().naive_utc());
         let res = record.save(conn).await.unwrap();
-        let kafka_payload: repo_sync_status::Model = res.try_into().unwrap();
+        let db_model: repo_sync_status::Model = res.try_into().unwrap();
+        let kafka_message_model = message_model::MessageModel::new(
+            db_model,                              // 数据库 Model
+            message_model::MessageKind::Mega,      // 设置 message_kind 为 Mega
+            message_model::SourceOfData::Cratesio, // 设置 source_of_data 为 Cratesio
+            Utc::now(),                            // 当前时间作为时间戳
+            "Extra information".to_string(),       // 设置 extra_field，示例中为一个字符串
+        );
+        println!("=================kafka_message{:?}", kafka_message_model);
         kafka::producer::send_message(
             producer,
-            &env::var("KAFKA_TOPIC").unwrap(),
-            serde_json::to_string(&kafka_payload).unwrap(),
+            &env::var("KAFKA_TOPIC_NEW").unwrap(),
+            serde_json::to_string(&kafka_message_model).unwrap(),
         )
         .await;
         println!("Push res: {}", String::from_utf8_lossy(&push_res.stdout));
@@ -307,5 +333,14 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
         // Unpack the tar archive to the destination directory
         archive.unpack(dst)?;
         Ok(())
+    }
+
+    fn git_command_with_env() -> Command {
+        let mut cmd = Command::new("git");
+        cmd.env_remove("http_proxy")
+            .env_remove("https_proxy")
+            .env_remove("HTTP_PROXY")
+            .env_remove("HTTPS_PROXY");
+        cmd
     }
 }

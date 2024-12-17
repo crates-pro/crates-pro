@@ -1,6 +1,6 @@
 use clap::Parser;
 
-use mega_tool::{
+use sync_tool::{
     command::{Cli, Commands},
     crate_to_repo::convert_crate_to_repo,
     handle_repo::add_and_push_to_remote,
