@@ -16,6 +16,7 @@ rust_library(
         "//third-party:serde_json",
         "//third-party:serde",
         "//third-party:reqwest",
+        "//third-party:semver",
     ],
     visibility = ["PUBLIC"],
 )
