@@ -11,3 +11,4 @@ serde_json = "1.0"
 tokio-postgres = "0.7"
 dotenv = "0.15"
 pgvector = { version = "0.4", features = ["postgres"] }
+semver = "1.0"
