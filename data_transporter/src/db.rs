@@ -434,10 +434,9 @@ impl DBHandler {
                 }
             } else if oneline_patched.contains("^") {
                 //具体版本
-                if oneline_patched.starts_with('^') {
-                    let trimmed = &oneline_patched[1..];
+                if let Some(trimmed) = oneline_patched.strip_prefix("^") {
                     let res = trimmed.to_string();
-                    if version.clone() == res.clone() {
+                    if version == res {
                         matched = true;
                     }
                 }
@@ -463,9 +462,8 @@ impl DBHandler {
                         //println!("1");
                         matched = true;
                     }
-                } else if oneline_patched.starts_with(">=") {
+                } else if let Some(trimmed) = oneline_patched.strip_prefix(">=") {
                     let mut versions = vec![];
-                    let trimmed = &oneline_patched[2..];
                     let res = trimmed.to_string();
                     versions.push(version.clone());
                     versions.push(res.clone());
@@ -505,9 +503,8 @@ impl DBHandler {
                     if versions[1].clone() == version.clone() && res.clone() != version.clone() {
                         matched = true;
                     }
-                } else if oneline_patched.starts_with("<=") {
+                } else if let Some(trimmed) = oneline_patched.strip_prefix("<=") {
                     let mut versions = vec![];
-                    let trimmed = &oneline_patched[2..];
                     let res = trimmed.to_string();
                     versions.push(version.clone());
                     versions.push(res.clone());
@@ -558,7 +555,7 @@ impl DBHandler {
         }
         let mut getres = vec![];
         for rc in get_direct_rust_sec {
-            if rc.cratename.clone() == cname.to_string() {
+            if rc.cratename.clone() == *cname {
                 let matched = self
                     .match_version(rc.clone().patched, version.to_string())
                     .await
@@ -655,8 +652,8 @@ impl DBHandler {
         }
         let mut getres = vec![];
         for cveinfo in getallcves {
-            if cveinfo.crate_name.clone() == cratename.to_string() {
-                let mut version3 = vec![];
+            let mut version3 = vec![];
+            if cveinfo.crate_name.clone() == *cratename {
                 version3.push(cveinfo.start_version.clone());
                 version3.push(cveinfo.end_version.clone());
                 version3.push(version.to_string());
@@ -671,7 +668,7 @@ impl DBHandler {
                         (Err(_), Err(_)) => Ordering::Equal,
                     }
                 });
-                if version3[1].clone() == version.to_string() {
+                if version3[1].clone() == *version {
                     getres.push(cveinfo.cve_id.clone());
                 }
             }
@@ -703,8 +700,8 @@ impl DBHandler {
             let cratename = parts[0].to_string();
             let crateversion = parts[1].to_string();
             for cveinfo in getallcves.clone() {
-                if cveinfo.crate_name.clone() == cratename.to_string() {
-                    let mut version3 = vec![];
+                let mut version3 = vec![];
+                if cveinfo.crate_name.clone() == *cratename {
                     version3.push(cveinfo.start_version.clone());
                     version3.push(cveinfo.end_version.clone());
                     version3.push(crateversion.to_string());
@@ -719,7 +716,7 @@ impl DBHandler {
                             (Err(_), Err(_)) => Ordering::Equal,
                         }
                     });
-                    if version3[1].clone() == crateversion.to_string() {
+                    if version3[1].clone() == *crateversion {
                         getres.push(cveinfo.cve_id.clone());
                     }
                 }
