@@ -7,17 +7,16 @@ mod transporter;
 use std::sync::Arc;
 
 use model::tugraph_model::UVersion;
+use search::search_prepare;
 use serde::{Deserialize, Serialize};
+use tokio_postgres::NoTls;
 pub use transporter::Transporter;
 
 use crate::data_reader::DataReader; // 确保导入你的 DataReader
 use crate::route::ApiHandler;
 
 use actix_multipart::Multipart;
-use actix_web::{
-    web::{self},
-    App, HttpServer,
-};
+use actix_web::{web, App, HttpResponse, HttpServer};
 #[derive(Deserialize, Debug)]
 pub struct Query {
     query: String,
@@ -38,7 +37,19 @@ pub async fn run_api_server(
     tracing::info!("Start run_api_server");
     let reader = DataReader::new(uri, user, password, db).await.unwrap();
     let api_handler = Arc::new(ApiHandler::new(Box::new(reader)).await);
-
+    let (client, connection) = tokio_postgres::connect(
+        "host=172.17.0.1 port=30432 user=mega password=mega dbname=cratespro",
+        NoTls,
+    )
+    .await
+    .unwrap();
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+    let pre_search = search_prepare::SearchPrepare::new(&client).await;
+    pre_search.prepare_tsv().await.unwrap();
     HttpServer::new(move || {
         let api_handler_clone = Arc::clone(&api_handler);
         tracing::info!("start route");
@@ -79,15 +90,23 @@ pub async fn run_api_server(
             )
             .route("/api/search", web::post().to(
                 |data: web::Data<Arc<ApiHandler>>,payload: web::Json<Query>| async move{
-                    println!("3");
+                    //println!("3");
                     let query = payload.into_inner();
-                    println!("query {:?}",query);
+                    //println!("query {:?}",query);
                     data.query_crates(query).await
             },),)
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies", 
             web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
+                println!("2");
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 data.new_get_dependency(cratename,version,nsfront,nsbehind).await
+            }))
+            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graph", 
+            web::get().to(|_data:web::Data<Arc<ApiHandler>>,_path: web::Path<(String, String,String,String)>|async move{
+                println!("2");
+                //let (nsfront,nsbehind,cratename, version) = path.into_inner();
+                //data.new_get_dependency(cratename,version,nsfront,nsbehind).await
+                HttpResponse::Ok().json(())
             }))
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependents", 
             web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
@@ -99,6 +118,12 @@ pub async fn run_api_server(
                 println!("1");
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 data.new_get_crates_front_info(cratename,version,nsfront,nsbehind).await
+            }))
+            .route("/api/graph/{cratename}/{version}/direct", 
+            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String,String)>|async move{
+                println!("enter get graph");
+                let (cratename, version) = path.into_inner();
+                data.get_direct_dep_for_graph(cratename,version).await
             }))
     })
     .bind("0.0.0.0:6888")?
