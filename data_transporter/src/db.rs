@@ -599,7 +599,7 @@ impl DBHandler {
             let cname = parts[0].to_string();
             let version = parts[1].to_string();
             for rc in get_all_rust_sec.clone() {
-                if rc.cratename.clone() == cname.to_string() {
+                if rc.cratename.clone() == cname {
                     let matched = self
                         .match_version(rc.clone().patched, version.to_string())
                         .await
