@@ -3,6 +3,7 @@ use std::collections::HashSet;
 //use std::collections::HashSet;
 use std::env;
 use std::error::Error;
+use std::time::Instant;
 
 use crate::data_reader::DataReaderTrait;
 use crate::db::DBHandler;
@@ -18,7 +19,6 @@ use search::crates_search::RecommendCrate;
 //use search::crates_search::RecommendCrate;
 use search::crates_search::SearchModule;
 use search::crates_search::SearchSortCriteria;
-use search::search_prepare;
 use serde::Deserialize;
 use serde::Serialize;
 use std::io::Cursor;
@@ -83,7 +83,8 @@ pub struct Crateinfo {
     pub description: String,
     pub dependencies: DependencyCount,
     pub dependents: DependentCount,
-    pub cves: Vec<String>,
+    pub cves: Vec<RustSec>,
+    pub dep_cves: Vec<RustSec>,
     pub license: String,
     pub github_url: String,
     pub doc_url: String,
@@ -99,9 +100,30 @@ pub struct DependentCount {
     pub direct: usize,
     pub indirect: usize,
 }
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash)]
+pub struct RustSec {
+    pub id: String,
+    pub cratename: String,
+    pub patched: String,
+    pub aliases: Vec<String>,
+    pub small_desc: String,
+}
 impl ApiHandler {
     pub async fn new(reader: Box<dyn DataReaderTrait>) -> Self {
         Self { reader }
+    }
+    pub async fn get_direct_dep_for_graph(
+        &self,
+        nname: String,
+        nversion: String,
+    ) -> impl Responder {
+        let name_and_version = nname + "/" + &nversion;
+        let res = self
+            .reader
+            .get_direct_dependency_nodes(&name_and_version)
+            .await
+            .unwrap();
+        HttpResponse::Ok().json(res)
     }
     pub async fn get_max_version(&self, versions: Vec<String>) -> Result<String, Box<dyn Error>> {
         let res = versions
@@ -224,7 +246,7 @@ impl ApiHandler {
                 .await
                 .unwrap();
             let mut indirect_dependency = vec![];
-            for node in all_dependency_nodes {
+            for node in all_dependency_nodes.clone() {
                 let mut dr = false;
                 for node2 in direct_dependency_nodes.clone() {
                     let nv = node2.name.clone() + "/" + &node2.version.clone();
@@ -270,7 +292,14 @@ impl ApiHandler {
             }
             let indirect_dependent_count = indirect_dependent.len();
 
-            let getcves = dbhandler.get_cve_by_cratename(&nname).await.unwrap();
+            let getcves = dbhandler
+                .get_direct_rustsec(&nname, &nversion)
+                .await
+                .unwrap();
+            let get_dependency_cves = dbhandler
+                .get_dependency_rustsec(all_dependency_nodes.clone())
+                .await
+                .unwrap();
             let getlicense = dbhandler
                 .get_license_by_name(&namespace, &nname)
                 .await
@@ -285,13 +314,14 @@ impl ApiHandler {
                 getversions.push(version);
             }
             getversions.sort_by(|a, b| {
-                // 尝试解析字符串为 Version 对象
                 let version_a = Version::parse(a);
                 let version_b = Version::parse(b);
 
                 match (version_a, version_b) {
                     (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
-                    _ => Ordering::Equal,                // 处理解析错误的情况
+                    (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => Ordering::Equal,
                 }
             });
             let dcy_count = DependencyCount {
@@ -312,6 +342,7 @@ impl ApiHandler {
                 license: getlicense[0].clone(),
                 github_url: githuburl,
                 doc_url: docurl,
+                dep_cves: get_dependency_cves,
             };
             dbhandler
                 .insert_crates_info_into_pg(
@@ -357,6 +388,7 @@ impl ApiHandler {
         //let name_and_version = name.clone() + "/" + &version;
         let namespace = nsfront.clone() + "/" + &nsbehind.clone();
         let nameversion = name.clone() + "/" + &version.clone();
+        println!("{} {}", namespace.clone(), nameversion.clone());
         let direct_nodes = self
             .reader
             .new_get_direct_dependency_nodes(&namespace, &nameversion)
@@ -521,14 +553,18 @@ impl ApiHandler {
                 eprintln!("connection error: {}", e);
             }
         });
+        /*let start_time1 = Instant::now();
         let pre_search = search_prepare::SearchPrepare::new(&client).await;
         pre_search.prepare_tsv().await.unwrap();
+        println!("prepare need time:{:?}", start_time1.elapsed());*/
+        let start_time2 = Instant::now();
         let question = name.clone();
         let search_module = SearchModule::new(&client).await;
         let res = search_module
             .search_crate(&question, SearchSortCriteria::Relavance)
             .await
             .unwrap();
+        println!("search need time:{:?}", start_time2.elapsed());
         //
         let mut seen = HashSet::new();
         let uniq_res: Vec<RecommendCrate> = res
@@ -551,6 +587,7 @@ impl ApiHandler {
             let parts: Vec<&str> = getnamespace.split('/').collect();
             let nsf = parts[0].to_string();
             let nsb = parts[1].to_string();
+            //println!("{}", uniq_res[i].rank);
             //let endtime3 = starttime3.elapsed();
             //println!("get_max_version need time:{:?}", endtime3);
             /*if let Some(maxversion) = programs[i].clone().max_version {
@@ -580,7 +617,7 @@ impl ApiHandler {
                 items: getitems,
             },
         };
-        println!("response {:?}", response);
+        //println!("response {:?}", response);
         HttpResponse::Ok().json(response)
     }
     #[allow(dead_code)]
