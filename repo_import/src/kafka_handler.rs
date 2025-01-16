@@ -14,11 +14,11 @@ pub struct CustomContext;
 impl ClientContext for CustomContext {}
 
 impl ConsumerContext for CustomContext {
-    fn pre_rebalance(&self, rebalance: &Rebalance) {
+    fn pre_rebalance(&self, _: &BaseConsumer<CustomContext>, rebalance: &Rebalance) {
         tracing::info!("Pre rebalance {:?}", rebalance);
     }
 
-    fn post_rebalance(&self, rebalance: &Rebalance) {
+    fn post_rebalance(&self, _: &BaseConsumer<CustomContext>, rebalance: &Rebalance) {
         tracing::info!("Post rebalance {:?}", rebalance);
     }
 

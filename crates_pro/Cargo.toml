@@ -26,7 +26,7 @@ dotenvy = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 neo4rs = { workspace = true }
 serde_json = { workspace = true }
-tracing-subscriber = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"]}
 tracing = { workspace = true }
 rdkafka = { workspace = true, features = ["cmake-build"] }
 structopt = { workspace = true }

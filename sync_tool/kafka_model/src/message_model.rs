@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{DeriveActiveEnum, EnumIter};
 use serde::{Deserialize, Serialize};
+use sea_orm::prelude::StringLen;
 
 use entity::repo_sync_status;
 
@@ -45,7 +46,7 @@ impl Deref for MessageModel {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(1))")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
 pub enum MessageKind {
     #[sea_orm(string_value = "mega")]
     Mega,
@@ -54,7 +55,7 @@ pub enum MessageKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(1))")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
 pub enum SourceOfData {
     #[sea_orm(string_value = "cratesio")]
     Cratesio,

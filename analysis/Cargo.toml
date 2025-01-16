@@ -10,5 +10,5 @@ serde = { workspace = true }
 rdkafka = { workspace = true }
 tokio = { workspace = true }
 model = { workspace = true }
-tempfile = "3.3"
-url = "2.2.2"
+tempfile = { workspace = true }
+url = { workspace = true }

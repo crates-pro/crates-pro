@@ -9,6 +9,6 @@ name = "entity"
 path = "src/lib.rs"
 
 [dependencies]
-serde = { version = "1.0.197" }
-chrono = "0.4.37"
-sea-orm = "0.12.15"
+serde = { workspace = true }
+chrono = { workspace = true }
+sea-orm = { workspace = true }
