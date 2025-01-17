@@ -19,6 +19,9 @@ Cargo.lock
 # VS Code
 .vscode/
 
+# Mac
+.DS_Store
+
 output/
 
 lgraph.pid

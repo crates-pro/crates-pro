@@ -10,18 +10,18 @@ serde = { workspace = true }
 tudriver = { path = "../tudriver" }
 model = { path = "../model" }
 tracing = { workspace = true }
-tokio = { version = "1", features = ["full"] }
-tokio-postgres = "0.7"
+tokio = { workspace = true, features = ["full"] }
+tokio-postgres = { workspace = true }
 actix-multipart = "0.7"
 futures-util = "0.3"
 sanitize-filename = "0.5"
 semver = "1.0"
-uuid = { version = "1.8.0", features = [
+uuid = { workspace = true, features = [
     "v4",                # Lets you generate random UUIDs
     "fast-rng",          # Use a faster (but still sufficiently random) RNG
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ] }
-async-trait = "0.1"
+async-trait = { workspace = true }
 zip = "2.2.0"
 repo_import = { path = "../repo_import" }
 search = { path = "../search" }

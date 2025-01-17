@@ -6,13 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-git2 = "0.19.0"
+git2 = { workspace = true }
 toml = "0.8"
-rayon = "1.5"
-tokio = { version = "1.0", features = ["full"] }
+# rayon = "1.5"
+tokio = { workspace = true, features = ["full"] }
 model = { workspace = true }
 cargo_metadata = "0.18"
-uuid = { version = "1.8.0", features = [
+uuid = { workspace = true, features = [
     "v4",                # Lets you generate random UUIDs
     "fast-rng",          # Use a faster (but still sufficiently random) RNG
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
@@ -20,14 +20,14 @@ uuid = { version = "1.8.0", features = [
 csv = "1.1.0"
 serde_json = { workspace = true }
 serde = { workspace = true }
-url = "2.2.2"
+url = { workspace = true }
 dotenvy = { workspace = true }
 log = { workspace = true }
 pretty_env_logger = { workspace = true }
-walkdir = "2.3"
+walkdir = { workspace = true }
 lazy_static = "1.4.0"
 once_cell = "1.8.0"
-tempfile = "3.10.1"
+tempfile = { workspace = true }
 semver = "1.0"
 tracing = { workspace = true }
 rdkafka = { workspace = true, features = ["cmake-build"] }
