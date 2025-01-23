@@ -6,6 +6,7 @@ use sea_orm::{ConnectOptions, Database};
 
 pub async fn db_connection() -> DatabaseConnection {
     let mut opt = ConnectOptions::new(env::var("MEGA_DB_POSTGRESQL_URL").unwrap());
+
     // max_connections is properly for double size of the cpu core
     opt.max_connections(16)
         .min_connections(2)

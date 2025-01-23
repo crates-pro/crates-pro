@@ -9,6 +9,7 @@ pub mod crate_to_repo;
 pub mod handle_repo;
 pub mod incremental_update;
 pub mod kafka;
+pub mod sync_crate_to_repo;
 pub mod util;
 
 pub async fn get_record(
@@ -32,6 +33,7 @@ pub async fn get_record(
             err_message: Set(None),
             created_at: Set(chrono::Utc::now().naive_utc()),
             updated_at: Set(chrono::Utc::now().naive_utc()),
+            version: Set("0.0.0".to_string()),
         }
     } else {
         let res = model.unwrap();

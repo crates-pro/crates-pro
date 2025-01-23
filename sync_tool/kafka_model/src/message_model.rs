@@ -1,11 +1,10 @@
 use chrono::{DateTime, Utc};
+use sea_orm::prelude::StringLen;
 use sea_orm::{DeriveActiveEnum, EnumIter};
 use serde::{Deserialize, Serialize};
-use sea_orm::prelude::StringLen;
 
 use entity::repo_sync_status;
 
-// 包含数据库 Model 的结构体
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageModel {
     pub db_model: repo_sync_status::Model, // 包装数据库 Model

@@ -5,6 +5,7 @@ use sync_tool::{
     crate_to_repo::convert_crate_to_repo,
     handle_repo::add_and_push_to_remote,
     incremental_update::incremental_update,
+    sync_crate_to_repo,
 };
 
 #[tokio::main]
@@ -21,6 +22,9 @@ async fn main() {
         }
         Commands::Incremental => {
             incremental_update().await;
+        }
+        Commands::Sync => {
+            sync_crate_to_repo::convert_crate_to_repo(args.workspace).await;
         }
     }
 }

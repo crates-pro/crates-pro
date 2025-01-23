@@ -1,3 +1,5 @@
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::time::Duration;
 
 use rdkafka::config::ClientConfig;
@@ -12,7 +14,11 @@ pub fn new_producer(brokers: &str) -> FutureProducer {
         .expect("Producer creation error")
 }
 
-pub async fn send_message(producer: &FutureProducer, topic_name: &str, kafka_payload: String) {
+pub async fn send_message(
+    producer: &FutureProducer,
+    topic_name: &str,
+    kafka_payload: String,
+) -> tokio::task::JoinHandle<()> {
     let producer = producer.clone();
     let topic_name = topic_name.to_owned();
     let kafka_payload = kafka_payload.to_owned();
@@ -28,8 +34,26 @@ pub async fn send_message(producer: &FutureProducer, topic_name: &str, kafka_pay
             Duration::from_secs(0),
         );
         match produce_future.await {
-            Ok(delivery) => tracing::info!("Sent: {:?}", delivery),
-            Err((e, _)) => tracing::error!("Error: {:?}", e),
+            Ok(delivery) => {
+                tracing::info!("Sent: {:?}", delivery)
+            }
+            Err((e, _)) => {
+                tracing::error!("Error: {:?}\n Error kafka_message: {:?}", e, kafka_payload);
+                let log_file_path = "kafka_error.log";
+
+                let mut log_file = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(log_file_path)
+                    .expect("Failed to open log file");
+
+                writeln!(
+                    log_file,
+                    "Failed to send Kafka message: {}\nkafka_message {:?}\n",
+                    e, kafka_payload
+                )
+                .expect("Failed to write to kafka_error log file");
+            }
         }
-    });
+    })
 }
