@@ -52,8 +52,9 @@ impl CoreController {
         let state_clone1: Arc<tokio::sync::Mutex<SharedState>> = Arc::clone(&shared_state);
         let import_task = tokio::spawn(async move {
             if import {
-                let test = env::var("Test_OR_NOT").unwrap().eq("1");
-                if !test {
+                let should_reset_kafka_offset =
+                    env::var("SHOULD_RESET_KAFKA_OFFSET").unwrap().eq("1");
+                if should_reset_kafka_offset {
                     repo_import::reset_kafka_offset()
                         .await
                         .unwrap_or_else(|x| panic!("{}", x));
@@ -81,6 +82,7 @@ impl CoreController {
                                 .to_depends_on_edges()
                                 .await),
                         );
+                        //let _ = import_driver.context.update_max_version().await.unwrap();
                         import_driver.context.write_tugraph_import_files();
                         count = 0;
                     }
@@ -128,18 +130,18 @@ impl CoreController {
                     }
 
                     // process here
-                    /*
+
                     {
                         let mut transporter = Transporter::new(
-                            "bolt://172.17.0.1:7687",
-                            "admin",
-                            "73@TuGraph",
-                            "cratespro",
+                            &tugraph_bolt_url,
+                            &tugraph_user_name,
+                            &tugraph_user_password,
+                            &tugraph_cratespro_db,
                         )
                         .await;
 
                         transporter.transport_data().await.unwrap();
-                    }*/
+                    }
 
                     {
                         let mut state = state_clone3.lock().await;
@@ -147,15 +149,24 @@ impl CoreController {
                     }
 
                     // after one hour
-                    tokio::time::sleep(Duration::from_secs(30 * 60)).await;
+                    tokio::time::sleep(Duration::from_secs(72000)).await;
                 }*/
             }
         });
 
         if package {
-            run_api_server("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "cratespro")
-                .await
-                .unwrap();
+            let tugraph_bolt_url = env::var("TUGRAPH_BOLT_URL").unwrap();
+            let tugraph_user_name = env::var("TUGRAPH_USER_NAME").unwrap();
+            let tugraph_user_password = env::var("TUGRAPH_USER_PASSWORD").unwrap();
+            let tugraph_cratespro_db = env::var("TUGRAPH_CRATESPRO_DB").unwrap();
+            run_api_server(
+                &tugraph_bolt_url,
+                &tugraph_user_name,
+                &tugraph_user_password,
+                &tugraph_cratespro_db,
+            )
+            .await
+            .unwrap();
         }
 
         import_task.await.unwrap();

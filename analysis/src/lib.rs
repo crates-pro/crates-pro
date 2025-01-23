@@ -30,13 +30,13 @@ pub async fn analyse_once(output_path: &str) -> Result<(), Box<dyn Error>> {
     let tools = config.tools;
 
     let kafka_broker = env::var("KAFKA_BROKER")?;
-    let kafka_group_id = env::var("KAFKA_GROUP_ID")?;
-    let kafka_topic = env::var("KAFKA_ANALYSIS_TOPIC")?;
+    let consumer_group_id = env::var("KAFKA_CONSUMER_GROUP_ID")?;
+    let analysis_topic = env::var("KAFKA_ANALYSIS_TOPIC")?;
 
-    let kafka_reader = KafkaReader::new(&kafka_broker, &kafka_group_id);
+    let kafka_reader = KafkaReader::new(&kafka_broker, &consumer_group_id);
 
     let message = kafka_reader
-        .read_single_message(&kafka_topic)
+        .read_single_message(&analysis_topic)
         .ok_or("No message received")?;
     tracing::info!("Analysis receive {:?}", message);
 

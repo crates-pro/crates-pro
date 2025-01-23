@@ -8,11 +8,15 @@ mod tests {
     /// This is the test to test whether the Tugraph is setup.
     #[tokio::test]
     async fn test_tugraph_setup() {
+        let tugraph_bolt_url = env::var("TUGRAPH_BOLT_URL").unwrap();
+        let tugraph_user_name = env::var("TUGRAPH_USER_NAME").unwrap();
+        let tugraph_user_password = env::var("TUGRAPH_USER_PASSWORD").unwrap();
+
         // build bolt config
         let default_graph_config = ConfigBuilder::default()
-            .uri("bolt://172.17.0.1:7687")
-            .user("admin")
-            .password("73@TuGraph")
+            .uri(&tugraph_bolt_url)
+            .user(&tugraph_user_name)
+            .password(&tugraph_user_password)
             .db("default")
             .build()
             .unwrap();
@@ -27,9 +31,9 @@ mod tests {
             .await;
 
         let config = ConfigBuilder::default()
-            .uri("bolt://172.17.0.1:7687")
-            .user("admin")
-            .password("73@TuGraph")
+            .uri(&tugraph_bolt_url)
+            .user(&tugraph_user_name)
+            .password(&tugraph_user_password)
             .db("graph_for_test")
             .build()
             .unwrap();
