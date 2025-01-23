@@ -4,6 +4,7 @@ mod db;
 mod route;
 mod transporter;
 
+use std::env;
 use std::sync::Arc;
 
 use model::tugraph_model::UVersion;
@@ -13,6 +14,7 @@ use tokio_postgres::NoTls;
 pub use transporter::Transporter;
 
 use crate::data_reader::DataReader; // 确保导入你的 DataReader
+use crate::db::db_connection_config_from_env;
 use crate::route::ApiHandler;
 
 use actix_multipart::Multipart;
@@ -37,12 +39,10 @@ pub async fn run_api_server(
     tracing::info!("Start run_api_server");
     let reader = DataReader::new(uri, user, password, db).await.unwrap();
     let api_handler = Arc::new(ApiHandler::new(Box::new(reader)).await);
-    let (client, connection) = tokio_postgres::connect(
-        "host=172.17.0.1 port=30432 user=mega password=mega dbname=cratespro",
-        NoTls,
-    )
-    .await
-    .unwrap();
+    let db_connection_config = db_connection_config_from_env();
+    let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+        .await
+        .unwrap();
     tokio::spawn(async move {
         if let Err(e) = connection.await {
             eprintln!("connection error: {}", e);
@@ -99,6 +99,12 @@ pub async fn run_api_server(
             web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
                 println!("2");
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
+                data.dependency_cache(cratename,version,nsfront,nsbehind).await
+            }))
+            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencycache", 
+            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
+                println!("2");
+                let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 data.new_get_dependency(cratename,version,nsfront,nsbehind).await
             }))
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graph", 
@@ -109,6 +115,11 @@ pub async fn run_api_server(
                 HttpResponse::Ok().json(())
             }))
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependents", 
+            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
+                let (nsfront,nsbehind,cratename, version) = path.into_inner();
+                data.dependent_cache(cratename,version,nsfront,nsbehind).await
+            }))
+            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependentcache", 
             web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 data.new_get_dependent(cratename,version,nsfront,nsbehind).await
@@ -124,6 +135,18 @@ pub async fn run_api_server(
                 println!("enter get graph");
                 let (cratename, version) = path.into_inner();
                 data.get_direct_dep_for_graph(cratename,version).await
+            }))
+            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/versions", 
+            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
+                println!("1");
+                let (nsfront,nsbehind,cratename, version) = path.into_inner();
+                data.get_version_page(nsfront,nsbehind,cratename,version).await
+            }))
+            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graphpage", 
+            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
+                println!("get graph page");
+                let (nsfront,nsbehind,cratename, version) = path.into_inner();
+                data.get_graph(nsfront,nsbehind,cratename,version).await
             }))
     })
     .bind("0.0.0.0:6888")?

@@ -4,14 +4,19 @@ use model::tugraph_model::{
 use serde_json::Value;
 use std::{
     collections::{HashSet, VecDeque},
+    env,
     error::Error,
 };
+use tokio_postgres::NoTls;
 use tudriver::tugraph_client::TuGraphClient;
 
 use async_trait::async_trait;
 
-use crate::NameVersion;
-
+use crate::{
+    db::{db_connection_config_from_env, DBHandler},
+    route::Deptree,
+    NameVersion,
+};
 #[async_trait]
 pub trait DataReaderTrait: Send + Sync {
     async fn get_all_programs_id(&self) -> Vec<String>;
@@ -93,6 +98,11 @@ pub trait DataReaderTrait: Send + Sync {
         name: String,
     ) -> Result<String, Box<dyn Error>>;
     async fn get_doc_url(&self, namespace: String, name: String) -> Result<String, Box<dyn Error>>;
+    async fn build_graph(
+        &self,
+        rootnode: &mut Deptree,
+        visited: &mut HashSet<String>,
+    ) -> Result<(), Box<dyn Error>>;
 }
 
 #[derive(Clone)]
@@ -100,10 +110,6 @@ pub struct DataReader {
     pub client: TuGraphClient,
 }
 impl DataReader {
-    /// let client_ =
-    /// TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "default")
-    /// .await
-    /// .unwrap();
     pub async fn new(
         uri: &str,
         user: &str,
@@ -117,6 +123,53 @@ impl DataReader {
 
 #[async_trait]
 impl DataReaderTrait for DataReader {
+    async fn build_graph(
+        &self,
+        rootnode: &mut Deptree,
+        visited: &mut HashSet<String>,
+    ) -> Result<(), Box<dyn Error>> {
+        let name_and_version = &rootnode.name_and_version;
+        let res = self
+            .get_direct_dependency_nodes(&name_and_version)
+            .await
+            .unwrap();
+        println!("direct dep count:{}", res.len());
+        let db_connection_config = db_connection_config_from_env();
+        #[allow(unused_variables)]
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+            .await
+            .unwrap();
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+        //println!("enter build graph");
+        let dbhandler = DBHandler { client };
+        //let rustcve = dbhandler.get_direct_rustsec(&name, &version).await.unwrap();
+        //println!("direct cve count:{}", rustcve.len());
+        /*let mut root = Deptree {
+            name_and_version,
+            cve_count: rustcve.len(),
+            direct_dependency: Vec::new(),
+        };*/
+        for node in res {
+            let name = node.name.clone();
+            let version = node.version.clone();
+            let dep_nv = name.clone() + "/" + &version;
+            let rustcve = dbhandler.get_direct_rustsec(&name, &version).await.unwrap();
+            let mut dn = Deptree {
+                name_and_version: dep_nv.clone(),
+                cve_count: rustcve.len(),
+                direct_dependency: Vec::new(),
+            };
+            if visited.insert(dep_nv.clone()) {
+                let _ = self.build_graph(&mut dn, visited).await.unwrap();
+                rootnode.direct_dependency.push(dn);
+            }
+        }
+        Ok(())
+    }
     async fn get_github_url(
         &self,
         namespace: String,
@@ -143,6 +196,7 @@ RETURN n.github_url
                 nodes.push(url.to_string());
             }
         }
+        nodes.push("None".to_string());
         Ok(nodes[0].clone())
     }
     async fn get_doc_url(&self, namespace: String, name: String) -> Result<String, Box<dyn Error>> {
@@ -166,6 +220,7 @@ RETURN n.doc_url
                 nodes.push(url.to_string());
             }
         }
+        nodes.push("None".to_string());
         Ok(nodes[0].clone())
     }
     async fn get_all_dependencies(
