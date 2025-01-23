@@ -8,14 +8,15 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     deps = [
+        "//project/crates-pro:model",
+        "//third-party:rdkafka",
         "//third-party:serde",
         "//third-party:serde_json",
-        "//third-party:tracing",
-        "//third-party:rdkafka",
-        "//third-party:tokio",
-        "//third-party:url",
         "//third-party:tempfile",
-        "//project/crates-pro:model",
+        "//third-party:tokio",
+        "//third-party:tracing",
+        "//third-party:url",
+        
     ],
     visibility = ["PUBLIC"],
 )

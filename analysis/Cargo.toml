@@ -4,11 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tracing = { workspace = true }
-serde_json = { workspace = true }
-serde = { workspace = true }
-rdkafka = { workspace = true }
-tokio = { workspace = true }
 model = { workspace = true }
+
+# third-party
+rdkafka = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 tempfile = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
 url = { workspace = true }

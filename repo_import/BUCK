@@ -13,7 +13,6 @@ rust_library(
     deps = [
         "//project/crates-pro:model",
         "//third-party:cargo_metadata",
-        "//third-party:chrono",
         "//third-party:csv",
         "//third-party:dotenvy",
         "//third-party:futures",
@@ -24,7 +23,6 @@ rust_library(
         "//third-party:pretty_env_logger",
         "//third-party:rayon",
         "//third-party:rdkafka",
-        "//third-party:sea-orm",
         "//third-party:semver",
         "//third-party:serde",
         "//third-party:serde_json",
@@ -38,7 +36,6 @@ rust_library(
         "//third-party:url",
         "//third-party:uuid",
         "//third-party:walkdir",
-        "//third-party:zip"
     ],
     visibility = ["PUBLIC"],
 )

@@ -10,6 +10,7 @@ rust_library(
     edition = "2021",
     deps = [
         "//third-party:chrono",
+        "//third-party:sea-orm",
         "//third-party:serde",
         "//third-party:serde_json",
     ],

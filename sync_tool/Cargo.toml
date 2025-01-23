@@ -6,32 +6,36 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-storage = { path = "storage" }
 entity = { path = "storage/entity" }
 kafka_model = { path = "kafka_model" }
+storage = { path = "storage" }
 
+# third-party (第三方依赖, 不写具体版本号, 具体版本只在根目录 Cargo.toml 中出现)
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+csv = { workspace = true }
+dotenvy = { workspace = true }
+flate2 = { workspace = true }
+git2 = { workspace = true }
 rdkafka = { workspace = true, features = ["cmake-build"] }
+regex = { workspace = true }
 sea-orm = { workspace = true, features = [
     "sqlx-postgres",
     "runtime-tokio-rustls",
     "macros",
 ] }
-anyhow = { workspace = true }
+semver = { workspace = true }
 serde = { workspace = true }
-dotenvy = { workspace = true }
+serde_json = { workspace = true }
+tar = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-clap = { workspace = true, features = ["derive"] }
-async-trait = { workspace = true }
-chrono = { workspace = true }
-flate2 = { workspace = true }
-serde_json = { workspace = true }
-git2 = { workspace = true }
 url = { workspace = true }
 walkdir = { workspace = true }
-regex = "1.11"
-tar = "0.4.41"
 
 [[bin]]
 name = "sync_tool"   # 设置编译后的二进制文件名称

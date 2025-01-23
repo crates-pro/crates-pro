@@ -20,7 +20,6 @@ pkg_deps = [
     "//third-party:neo4rs",
     "//third-party:rdkafka",
     "//third-party:serde_json",
-    "//third-party:serial_test",
     "//third-party:structopt",
     "//third-party:tokio",
     "//third-party:tracing",
