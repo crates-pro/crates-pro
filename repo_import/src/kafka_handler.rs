@@ -5,6 +5,7 @@ use rdkafka::message::{BorrowedMessage, Headers};
 use rdkafka::producer::{BaseProducer, BaseRecord, ProducerContext};
 use rdkafka::util::Timeout;
 use rdkafka::{ClientContext, Message, TopicPartitionList};
+use std::env;
 use std::process::Command;
 use std::time::Duration;
 
@@ -83,7 +84,7 @@ impl KafkaHandler {
 
             match consumer.poll(Duration::from_secs(0)) {
                 None => {
-                    tracing::info!("No message received");
+                    //tracing::info!("No message received");
                     Err(KafkaError::NoMessageReceived)
                 }
                 Some(m) => {
@@ -124,18 +125,21 @@ impl KafkaHandler {
 /// reset the mq
 pub async fn reset_kafka_offset() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Start to reset import kafka");
+    let kafka_broker = env::var("KAFKA_BROKER").unwrap();
+    let consumer_group_id = env::var("KAFKA_CONSUMER_GROUP_ID").unwrap();
+    let import_topic = env::var("KAFKA_IMPORT_TOPIC").unwrap();
     let output = Command::new("/opt/kafka/bin/kafka-consumer-groups.sh")
         .args([
             "--bootstrap-server",
-            "210.28.134.203:30092",
+            &kafka_broker,
             "--group",
-            "default_group",
+            &consumer_group_id,
             "--reset-offsets",
             "--to-offset",
             "0",
             "--execute",
             "--topic",
-            "REPO_SYNC_STATUS.dev.0902",
+            &import_topic,
         ])
         .output()
         .expect("Failed to execute command");

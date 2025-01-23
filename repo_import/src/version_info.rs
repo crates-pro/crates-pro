@@ -32,7 +32,7 @@ impl ImportContext {
     ) -> Vec<Dependencies> {
         let mut crate_version_map: HashMap<(String, String), Dependencies> = HashMap::default();
 
-        let versions = get_all_git_tags_with_time_sorted(repo_path).await;
+        let versions = get_all_git_tags_with_time_sorted(repo_path).await; //tag id time
 
         // parse each version of a repository with an order of time, walk all the packages of it
         for (tag_name, tree, _) in versions.iter() {

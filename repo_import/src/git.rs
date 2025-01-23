@@ -1,5 +1,5 @@
 use crate::{utils::extract_namespace, utils::insert_namespace_by_repo_path, ImportContext};
-use git2::{build::CheckoutBuilder, ObjectType, Oid, Repository};
+use git2::{ObjectType, Oid, Repository};
 use std::path::PathBuf;
 use std::time::Instant;
 use url::Url;
@@ -15,6 +15,7 @@ impl ImportContext {
         git_url_suffix: &str,
     ) -> Result<PathBuf, git2::Error> {
         // mega_url = base + path
+        //tracing::info!("enter clone_a_repo_by_url");
         let git_url = {
             let git_url_base = Url::parse(git_url_base)
                 .unwrap_or_else(|_| panic!("Failed to parse mega url base: {}", &git_url_base));
@@ -28,30 +29,28 @@ impl ImportContext {
 
         // The path the repo will be cloned into
         let path = PathBuf::from(clone_dir).join(namespace.clone());
-
+        //tracing::info!("path:{:?}", path);
         if !self.dont_clone {
+            //tracing::info!("start clone");
             clone(&path, git_url.as_ref()).await?;
+            //tracing::info!("finish clone");
         }
         // finish cloning, store namespace ...
-        let insert_time = Instant::now();
+        //tracing::info!("start insert");
         insert_namespace_by_repo_path(path.to_str().unwrap().to_string(), namespace.clone());
-        let insert_need_time = insert_time.elapsed();
+        //tracing::info!("finish insert");
         tracing::trace!("Finish clone all the repos\n");
-        tracing::info!(
-            "insert_namespace_by_repo_path need time: {:?}",
-            insert_need_time
-        );
         Ok(path)
     }
 }
 
 async fn clone(path: &PathBuf, url: &str) -> Result<(), git2::Error> {
     if !path.is_dir() {
-        tracing::debug!("Start cloning repo into {:?} from URL {}", path, url);
+        //tracing::info!("Start cloning repo into {:?} from URL {}", path, url);
         Repository::clone(url, path)?;
-        tracing::debug!("Finish cloning repo into {:?}", path);
+        //tracing::info!("Finish cloning repo into {:?}", path);
     } else {
-        tracing::debug!("Directory {:?} is not empty, skipping Clone", path);
+        tracing::info!("Directory {:?} is not empty, skipping Clone", path);
     }
     Ok(())
 }
@@ -60,7 +59,7 @@ async fn clone(path: &PathBuf, url: &str) -> Result<(), git2::Error> {
 
 /// If it migrate from a different system,
 /// the git record will change, and this is the reset function.
-pub(crate) async fn hard_reset_to_head(repo_path: &PathBuf) -> Result<(), git2::Error> {
+/*pub(crate) async fn hard_reset_to_head(repo_path: &PathBuf) -> Result<(), git2::Error> {
     let repo = Repository::open(repo_path).unwrap();
     let head = match repo.head() {
         Ok(head) => head,
@@ -90,7 +89,7 @@ pub(crate) async fn hard_reset_to_head(repo_path: &PathBuf) -> Result<(), git2::
     );
 
     Ok(())
-}
+}*/
 
 /// return value: (tag_name, tree_id, commit_time)
 pub(crate) async fn get_all_git_tags_with_time_sorted(
