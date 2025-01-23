@@ -21,11 +21,3 @@ Cargo.lock
 
 # Mac
 .DS_Store
-
-output/
-
-lgraph.pid
-
-tugraph_import_files_pg/
-tugraph_import_files_mq/
-
