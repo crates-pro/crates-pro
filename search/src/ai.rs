@@ -67,7 +67,7 @@ impl<'a> AIChat<'a> {
     pub fn new(client: &'a PgClient) -> Self {
         let mut ret = AIChat {
             context: ChatContext::new(),
-            client,
+            client: client,
         };
         ret.context.add_message(
             "system",

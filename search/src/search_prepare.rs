@@ -8,47 +8,19 @@ pub struct SearchPrepare<'a> {
     table_name: String,
 }
 impl<'a> SearchPrepare<'a> {
-    pub async fn new(pg_client: &'a PgClient) -> Self {
+    pub async fn new(pgclient: &'a PgClient) -> Self {
         let table_name = env::var("TABLE_NAME").unwrap_or_else(|_| "crates".to_string());
         SearchPrepare {
-            pg_client,
+            pg_client: pgclient,
             table_name,
         }
     }
     //检查crates表是否存在
 
-    async fn check_tsv_exists(&self) -> Result<bool, Box<dyn std::error::Error>> {
-        let query = format!(
-            "SELECT EXISTS (
-                SELECT FROM information_schema.columns 
-                WHERE table_name = '{}' AND column_name = 'tsv'
-            )",
-            self.table_name
-        );
-        let rows = self.pg_client.query(&query, &[]).await?;
-        Ok(rows[0].get(0))
-    }
-
-    async fn check_embedding_exists(&self) -> Result<bool, Box<dyn std::error::Error>> {
-        let query = format!(
-            "SELECT EXISTS (
-                SELECT FROM information_schema.columns 
-                WHERE table_name = '{}' AND column_name = 'embedding'
-            )",
-            self.table_name
-        );
-        let rows = self.pg_client.query(&query, &[]).await?;
-        Ok(rows[0].get(0))
-    }
-
     pub async fn prepare_tsv(&self) -> Result<(), Box<dyn std::error::Error>> {
         let table_exists = self.crates_table_exists().await?;
         if !table_exists {
             return Err("crates table not exists".into());
-        }
-        let tsv_exists = self.check_tsv_exists().await?;
-        if tsv_exists {
-            return Ok(());
         }
         self.add_tsv_column().await?;
         self.set_tsv_column().await?;
@@ -60,10 +32,6 @@ impl<'a> SearchPrepare<'a> {
         let table_exists = self.crates_table_exists().await?;
         if !table_exists {
             return Err("crates table not exists".into());
-        }
-        let embedding_exists = self.check_embedding_exists().await?;
-        if embedding_exists {
-            return Ok(());
         }
         self.add_pgvector_extension().await?;
         self.add_embedding_column().await?;
@@ -145,12 +113,40 @@ impl<'a> SearchPrepare<'a> {
             return false;
         }
 
-        let tsv_column_exists = self.check_tsv_exists().await.unwrap_or(false);
+        let tsv_column_exists = self
+            .pg_client
+            .query(
+                &format!(
+                    "SELECT EXISTS (
+                        SELECT FROM information_schema.columns 
+                        WHERE table_name = '{}' AND column_name = 'tsv'
+                    )",
+                    self.table_name
+                ),
+                &[],
+            )
+            .await
+            .map(|rows| rows[0].get(0))
+            .unwrap_or(false);
         if !tsv_column_exists {
             return false;
         }
 
-        let embedding_column_exists = self.check_embedding_exists().await.unwrap_or(false);
+        let embedding_column_exists = self
+            .pg_client
+            .query(
+                &format!(
+                    "SELECT EXISTS (
+                        SELECT FROM information_schema.columns 
+                        WHERE table_name = '{}' AND column_name = 'embedding'
+                    )",
+                    self.table_name
+                ),
+                &[],
+            )
+            .await
+            .map(|rows| rows[0].get(0))
+            .unwrap_or(false);
         if !embedding_column_exists {
             return false;
         }
