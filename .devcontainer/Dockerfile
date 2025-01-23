@@ -1,29 +1,45 @@
-# Use the TuGraph compile environment as the base image
-FROM tugraph/tugraph-compile-ubuntu18.04:latest
+# Use the TuGraph compile environment as the base image, specifically 'tugraph/tugraph-compile-centos8', to avoid
+# compatibility issues. It has a newer version of GLIBC (2.28) than 'tugraph/tugraph-compile-ubuntu18.04' (2.27).
+FROM tugraph/tugraph-compile-centos8:1.3.4
 
-# Install necessary dependencies
-RUN apt-get update && apt-get install -y curl build-essential clang git cmake net-tools
+# Install dependencies
+RUN dnf update -y \
+    && dnf group install -y "Development Tools" \
+    && dnf install -y glibc-langpack-en sudo tzdata \
+    && dnf install -y clang cmake curl git net-tools
 
-# Install Rust
+# Install Docker
+ARG DOCKER_GID
+RUN groupadd -g $DOCKER_GID docker
+RUN dnf config-manager --add-repo=https://download.docker.com/linux/centos/docker-ce.repo \
+    && dnf install -y docker-ce docker-ce-cli containerd.io
+
+# Install kubectl
+RUN curl -LO "https://dl.k8s.io/release/v1.28.12/bin/linux/amd64/kubectl" \
+    && chmod +x kubectl \
+    && mv kubectl /usr/local/bin/
+
+# Create and switch to user
+ARG USERNAME
+ARG USER_UID
+RUN useradd -m -s /bin/bash -u $USER_UID $USERNAME \
+    && mkdir -p /etc/sudoers.d \
+    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+    && chmod 0440 /etc/sudoers.d/$USERNAME \
+    && usermod -aG docker $USERNAME
+USER $USERNAME
+
+# Install Rust, set environment variable
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/home/$USERNAME/.cargo/bin:${PATH}"
 
-RUN rustup update stable
+# Create and set permissions for workspace directory
+USER root
+RUN mkdir -p /workspace && chown $USERNAME:$USERNAME /workspace
+USER $USERNAME
 
-# Set environment variable to include cargo bin
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Expose the port used by TuGraph services, adjust as necessary
-EXPOSE 7070
-
-# # Clone TuGraph-db source code, ensure your Docker environment has access to GitHub
-# RUN git clone --recurse-submodules https://github.com/TuGraph-family/tugraph-db.git
-
-# # Build TuGraph-db dependencies
-# RUN cd tugraph-db && bash deps/build_deps.sh -j8
-
-# # Build lgraph_server
-# RUN cmake -S ./tugraph-db -B build && cmake --build build --target lgraph_server -j 4
-
-# Create a workspace directory within the container for code development
 WORKDIR /workspace
 
+ENV TZ=Asia/Shanghai
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
