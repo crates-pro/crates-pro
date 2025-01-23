@@ -61,9 +61,9 @@ impl TuGraphClient {
 
     pub async fn exec_query(&self, q: &str) -> Result<Vec<String>, Box<dyn Error>> {
         let mut labels = vec![];
-        tracing::info!("start query");
+        //tracing::info!("start query");
         let mut result = self.graph.execute(query(q)).await?;
-        tracing::info!("end query");
+        //tracing::info!("end query");
         while let Some(row) = result.next().await? {
             let value: Value = row.to().unwrap(); // 打印出 row 的内容以调试
                                                   //println!("{:#?}", value);
