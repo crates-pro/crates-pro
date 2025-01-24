@@ -4,7 +4,6 @@ mod db;
 mod route;
 mod transporter;
 
-use std::env;
 use std::sync::Arc;
 
 use model::tugraph_model::UVersion;

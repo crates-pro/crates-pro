@@ -54,7 +54,7 @@ impl ImportContext {
     }
 
     /// for a given commit(version), walk all the package
-    async fn parse_a_repo_of_a_version<'repo>(
+    async fn parse_a_repo_of_a_version(
         &self,
         repo_path: &PathBuf,
         git_url: &str,

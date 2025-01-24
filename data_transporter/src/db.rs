@@ -4,7 +4,7 @@ use crate::route::{
     Crateinfo, DependencyCount, DependencyCrateInfo, DependencyInfo, DependentCount, DependentData,
     DependentInfo, RustSec, Versionpage,
 };
-use model::tugraph_model::{Program, UProgram, UVersion};
+use model::tugraph_model::{Program, UProgram};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio_postgres::{Error, NoTls};
@@ -164,7 +164,7 @@ impl DBHandler {
         &self,
         program: Program,
         uprogram: UProgram,
-        versions: Vec<crate::VersionInfo>,
+        _versions: Vec<crate::VersionInfo>,
     ) -> Result<(), Error> {
         let (program_type, downloads, cratesio) = match &uprogram {
             UProgram::Library(lib) => ("Library", Some(lib.downloads), lib.cratesio.clone()),

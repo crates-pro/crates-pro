@@ -18,6 +18,7 @@ use crate::util;
 pub async fn add_and_push_to_remote(workspace: PathBuf) {
     let conn = util::db_connection().await;
     let producer = kafka::get_producer();
+    let re = Regex::new(r"https://github\.com/[^\s]+").unwrap();
     for entry in WalkDir::new(workspace)
         .max_depth(2)
         .into_iter()
@@ -52,7 +53,6 @@ pub async fn add_and_push_to_remote(workspace: PathBuf) {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 // Create a regular expression pattern to match URLs
-                let re = Regex::new(r"https://github\.com/[^\s]+").unwrap();
 
                 let mut capture = re.captures_iter(&stdout);
                 if let Some(capture) = capture.next() {

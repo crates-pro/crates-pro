@@ -307,7 +307,7 @@ impl ImportContext {
     /// It first clone the repositories locally from mega
     pub async fn compare_versions(a: &str, b: &str) -> Result<std::cmp::Ordering, Box<dyn Error>> {
         let parse_version = |version: &str| {
-            let mut parts = version.splitn(2, |c| c == '+' || c == '-'); // 分割主版本和附加段
+            let mut parts = version.splitn(2, ['+', '-']); // 分割主版本和附加段
             let version_part = parts.next().unwrap_or("");
             let build_metadata = parts.next(); // 可能的构建元数据或预发行信息
 
@@ -402,6 +402,7 @@ impl ImportContext {
                 .get(i)
                 .and_then(|s| s.parse::<u32>().ok())
                 .unwrap_or(0);
+            #[allow(clippy::comparison_chain)]
             if num1 > num2 {
                 return v1.to_string();
             } else if num1 < num2 {

@@ -1,7 +1,6 @@
 use crate::{utils::extract_namespace, utils::insert_namespace_by_repo_path, ImportContext};
 use git2::{ObjectType, Oid, Repository};
 use std::path::PathBuf;
-use std::time::Instant;
 use url::Url;
 
 impl ImportContext {
@@ -55,10 +54,9 @@ async fn clone(path: &PathBuf, url: &str) -> Result<(), git2::Error> {
     Ok(())
 }
 
-/// Deprecated.
-
-/// If it migrate from a different system,
-/// the git record will change, and this is the reset function.
+// /// Deprecated.
+// /// If it migrate from a different system,
+// /// the git record will change, and this is the reset function.
 /*pub(crate) async fn hard_reset_to_head(repo_path: &PathBuf) -> Result<(), git2::Error> {
     let repo = Repository::open(repo_path).unwrap();
     let head = match repo.head() {

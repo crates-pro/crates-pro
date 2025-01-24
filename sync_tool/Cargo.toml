@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 entity = { path = "storage/entity" }
 kafka_model = { path = "kafka_model" }
-storage = { path = "storage" }
 
 # third-party (第三方依赖, 不写具体版本号, 具体版本只在根目录 Cargo.toml 中出现)
 anyhow = { workspace = true }

@@ -32,9 +32,9 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
     let producer = kafka::get_producer();
 
     let log_file_path = "sync_fuben_1w_test";
-    let start_entry = "rustfolio"; // 替换为实际的crate_entry名称
+    // let start_entry = "rustfolio"; // 替换为实际的crate_entry名称
     let end_entry = "rustfolio"; // 替换为实际的crate_entry名称
-    let mut start_processing = false;
+                                 // let mut start_processing = false;
 
     let mut log_file = OpenOptions::new()
         .create(true)
@@ -96,7 +96,7 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
 
             let start = Instant::now();
             for crate_v in crate_versions {
-                process_cratefile_to_repo(&crate_v, &crate_entry, &repo_path, crate_name);
+                process_cratefile_to_repo(&crate_v, &crate_entry, repo_path, crate_name);
             }
             let duration = start.elapsed();
             println!("total version operation : {:?}", duration.as_millis());
@@ -178,11 +178,11 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
     ) {
         let repo = open_or_make_repo(repo_path);
 
-        decompress_crate_file(&crate_v, crate_entry.path()).unwrap_or_else(|e| {
+        decompress_crate_file(crate_v, crate_entry.path()).unwrap_or_else(|e| {
             eprintln!("{}", e);
         });
 
-        let uncompress_path = remove_extension(&crate_v);
+        let uncompress_path = remove_extension(crate_v);
 
         if fs::read_dir(&uncompress_path).is_err() {
             return;
@@ -317,15 +317,13 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
                         ),
                     }
                 }
-            } else {
-                if let Err(e) = fs::copy(&path, &dest_path) {
-                    println!(
-                        "Failed to copy file from {} to {}: {}",
-                        path.display(),
-                        dest_path.display(),
-                        e
-                    );
-                }
+            } else if let Err(e) = fs::copy(&path, &dest_path) {
+                println!(
+                    "Failed to copy file from {} to {}: {}",
+                    path.display(),
+                    dest_path.display(),
+                    e
+                );
             }
         }
         Ok(())

@@ -171,13 +171,13 @@ pub async fn incremental_update() {
         let repo = open_or_make_repo(repo_path);
 
         let start = Instant::now();
-        decompress_crate_file(&crate_v, crate_path).unwrap_or_else(|e| {
+        decompress_crate_file(crate_v, crate_path).unwrap_or_else(|e| {
             eprintln!("{}", e);
         });
         let duration = start.elapsed();
         tracing::info!("decompress_crate_file: {:?}", duration.as_millis());
 
-        let uncompress_path = remove_extension(&crate_v);
+        let uncompress_path = remove_extension(crate_v);
 
         if fs::read_dir(&uncompress_path).is_err() {
             return;

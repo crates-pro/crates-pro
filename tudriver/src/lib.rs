@@ -4,6 +4,7 @@ pub mod tugraph_client;
 mod tests {
 
     use neo4rs::*;
+    use std::env;
 
     /// This is the test to test whether the Tugraph is setup.
     #[tokio::test]

@@ -145,7 +145,7 @@ impl ApiHandler {
             .get_version_from_pg(nsfront.clone(), nsbehind.clone(), nname.clone())
             .await
             .unwrap();
-        if res.len() == 0 {
+        if res.is_empty() {
             let namespace = nsfront.clone() + "/" + &nsbehind;
             let all_versions = self
                 .reader
@@ -236,7 +236,7 @@ impl ApiHandler {
             )
             .await
             .unwrap();
-        if res.len() == 0 {
+        if res.is_empty() {
             println!("first time");
             let nav = nname.clone() + "/" + &nversion;
             let rustcve = dbhandler
@@ -250,13 +250,12 @@ impl ApiHandler {
             };
             let mut visited = HashSet::new();
             visited.insert(nav.clone());
-            let _ = self
-                .reader
+            self.reader
                 .build_graph(&mut res, &mut visited)
                 .await
                 .unwrap();
             let graph = serde_json::to_string(&res).unwrap();
-            let _ = dbhandler
+            dbhandler
                 .insert_graph_into_pg(
                     nsfront.clone(),
                     nsbehind.clone(),
@@ -641,7 +640,7 @@ impl ApiHandler {
             )
             .await
             .unwrap();
-        if res.len() == 0 {
+        if res.is_empty() {
             let namespace = nsfront.clone() + "/" + &nsbehind.clone();
             let nameversion = name.clone() + "/" + &version.clone();
             println!("{} {}", namespace.clone(), nameversion.clone());
@@ -710,7 +709,7 @@ impl ApiHandler {
                 indirect_count: indirect_dependency_count,
                 data: deps,
             };
-            let _ = dbhandler
+            dbhandler
                 .insert_dependency_into_pg(
                     nsfront.clone(),
                     nsbehind.clone(),
@@ -741,11 +740,11 @@ impl ApiHandler {
             .await
             .unwrap();
         let getdirect_count = direct_nodes.len();
-        let all_dependent_nodes = self
-            .reader
-            .new_get_all_dependents(namespace.clone(), nameversion.clone())
-            .await
-            .unwrap();
+        // let all_dependent_nodes = self
+        //     .reader
+        //     .new_get_all_dependents(namespace.clone(), nameversion.clone())
+        //     .await
+        //     .unwrap();
         /*let mut indirect_dependent = vec![];
         for node in all_dependent_nodes {
             let mut dr = false;
@@ -775,7 +774,7 @@ impl ApiHandler {
                 break;
             }
         }
-        let mut count2 = 0;
+        // let mut count2 = 0;
         /*for item in indirect_dependent {
             let parts: Vec<&str> = item.split('/').collect();
             let dep = DependentData {
@@ -826,7 +825,7 @@ impl ApiHandler {
             )
             .await
             .unwrap();
-        if res.len() == 0 {
+        if res.is_empty() {
             let direct_nodes = self
                 .reader
                 .new_get_direct_dependent_nodes(&namespace, &nameversion)
@@ -887,7 +886,7 @@ impl ApiHandler {
                 indirect_count: indirect_dependent_count,
                 data: deps,
             };
-            let _ = dbhandler
+            dbhandler
                 .insert_dependent_into_pg(
                     nsfront.clone(),
                     nsbehind.clone(),

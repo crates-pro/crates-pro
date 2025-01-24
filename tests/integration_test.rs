@@ -3,6 +3,7 @@ mod integration_tests {
 
     use serial_test::serial;
     use tudriver::tugraph_client::TuGraphClient; // Assuming this is the client module/library you are testing
+    use std::env;
 
     #[tokio::test]
     #[serial]

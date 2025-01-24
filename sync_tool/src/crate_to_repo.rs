@@ -173,7 +173,7 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
                     let repo = open_or_make_repo(&repo_path);
 
                     let start = Instant::now();
-                    decompress_crate_file(&crate_v, &*crate_path_clone).unwrap_or_else(|e| {
+                    decompress_crate_file(&crate_v, &crate_path_clone).unwrap_or_else(|e| {
                         eprintln!("{}", e);
                     });
                     let duration = start.elapsed();

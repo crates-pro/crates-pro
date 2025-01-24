@@ -4,7 +4,6 @@ use model::tugraph_model::{
 use serde_json::Value;
 use std::{
     collections::{HashSet, VecDeque},
-    env,
     error::Error,
 };
 use tokio_postgres::NoTls;
@@ -130,7 +129,7 @@ impl DataReaderTrait for DataReader {
     ) -> Result<(), Box<dyn Error>> {
         let name_and_version = &rootnode.name_and_version;
         let res = self
-            .get_direct_dependency_nodes(&name_and_version)
+            .get_direct_dependency_nodes(name_and_version)
             .await
             .unwrap();
         println!("direct dep count:{}", res.len());

@@ -138,9 +138,9 @@ async fn is_crate_lib(crate_path: &str) -> Result<bool, String> {
 
     // 优先检查 Cargo.toml 中的 '[lib]' 和 '[[bin]]'
     let has_lib_in_toml = cargo_toml.get("lib").is_some();
-    let has_bin_in_toml = cargo_toml.get("bin").map_or(false, |bins| {
-        bins.as_array().map_or(false, |b| !b.is_empty())
-    });
+    let has_bin_in_toml = cargo_toml
+        .get("bin")
+        .is_some_and(|bins| bins.as_array().is_some_and(|b| !b.is_empty()));
 
     if has_lib_in_toml || has_bin_in_toml {
         return Ok(has_lib_in_toml && !has_bin_in_toml);
