@@ -6,6 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# third-party (第三方依赖, 不写具体版本号, 具体版本只在根目录 Cargo.toml 中出现)
 chrono = { workspace = true }
-serde = { workspace = true , features = ["derive"] }
+sea-orm = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

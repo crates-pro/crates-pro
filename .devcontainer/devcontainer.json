@@ -1,31 +1,33 @@
 {
-    "name": "TuGraph Development",
-    // Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+    "name": "Crates Pro Development",
     "build": {
-        "dockerfile": "Dockerfile",
+        "dockerfile": "./Dockerfile",
         "args": {
-            "USERNAME": "${localEnv:USER}",
-            "USER_UID": "${localEnv:UID}"
+            "USERNAME": "rust", // Used for creating "/home/$USERNAME" directory within container
+            "USER_UID": "1000",
+            "DOCKER_GID": "991" // Retrieved by running `stat -c '%g' /var/run/docker.sock` on host machine
         }
     },
-    "forwardPorts": [
-        7070,
-        7687,
-        3000
+    "workspaceFolder": "/workspace",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+    "mounts": [
+        // Add mounts for Docker and kubectl
+        "source=/home/rust/.docker/config.json,target=/tmp/docker-config.json,readonly,type=bind",
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
+        "source=${localEnv:HOME}/.kube,target=/home/${localEnv:USER}/.kube,type=bind"
     ],
-    "workspaceFolder": "/workspace/",
-    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/,type=bind",
-    // enable debuggers like C++ to work in the container
     "runArgs": [
+        // enable debuggers like C++ to work in the container
         "--cap-add=SYS_PTRACE",
         "--security-opt",
         "seccomp=unconfined"
     ],
+    "remoteUser": "rust",
     // Configure tool-specific properties.
     "customizations": {
         "vscode": {
             "extensions": [
-                "rust-lang.rust-analyzer@0.3.1850", // The version should be below 0.3.1850, or it won't work
+                "rust-lang.rust-analyzer@prerelease", // Use the latest pre-release rust-analyzer
                 "tamasfe.even-better-toml",
                 "llvm-vs-code-extensions.vscode-clangd",
                 "twxs.cmake",
@@ -34,5 +36,7 @@
                 "natqe.reload"
             ]
         }
-    }
+    },
+    // Copy host docker config to dev container
+    "postCreateCommand": "cp /tmp/docker-config.json ~/.docker/config.json"
 }

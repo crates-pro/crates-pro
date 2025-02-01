@@ -3,25 +3,31 @@ mod integration_tests {
 
     use serial_test::serial;
     use tudriver::tugraph_client::TuGraphClient; // Assuming this is the client module/library you are testing
+    use std::env;
 
     #[tokio::test]
     #[serial]
     async fn test_tugraph_setup() {
         // Instantiate the TuGraphClient for testing
 
-        let origin_client = TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "")
+        let tugraph_bolt_url = env::var("TUGRAPH_BOLT_URL").unwrap();
+        let tugraph_user_name = env::var("TUGRAPH_USER_NAME").unwrap();
+        let tugraph_user_password = env::var("TUGRAPH_USER_PASSWORD").unwrap();
+        let tugraph_cratespro_db = env::var("TUGRAPH_CRATESPRO_DB").unwrap();
+
+        let origin_client = TuGraphClient::new(&tugraph_bolt_url, &tugraph_user_name, &tugraph_user_password, "")
             .await
             .unwrap();
 
         let origin_graphs = origin_client.list_graphs().await.unwrap();
 
         // check whether 'cratespro' exists
-        if !origin_graphs.contains(&String::from("cratespro")) {
-            origin_client.create_subgraph("cratespro").await.unwrap();
+        if !origin_graphs.contains(&tugraph_cratespro_db) {
+            origin_client.create_subgraph(&tugraph_cratespro_db).await.unwrap();
         }
 
         let client =
-            TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "cratespro")
+            TuGraphClient::new(&tugraph_bolt_url, &tugraph_user_name, &tugraph_user_password, &tugraph_cratespro_db)
                 .await
                 .unwrap();
 
@@ -64,21 +70,26 @@ mod integration_tests {
     async fn test_plugin1() {
         // Instantiate the TuGraphClient for testing
 
-        let origin_client = TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "")
+        let tugraph_bolt_url = env::var("TUGRAPH_BOLT_URL").unwrap();
+        let tugraph_user_name = env::var("TUGRAPH_USER_NAME").unwrap();
+        let tugraph_user_password = env::var("TUGRAPH_USER_PASSWORD").unwrap();
+        let tugraph_cratespro_db = env::var("TUGRAPH_CRATESPRO_DB").unwrap();
+
+        let origin_client = TuGraphClient::new(&tugraph_bolt_url, &tugraph_user_name, &tugraph_user_password, "")
             .await
             .unwrap();
 
         let origin_graphs = origin_client.list_graphs().await.unwrap();
         println!("origin database contains graphs: {:?}", origin_graphs);
 
-        // check whether 'cratespro' exists
-        if !origin_graphs.contains(&String::from("cratespro")) {
-            println!("create graph: cratespro");
-            origin_client.create_subgraph("cratespro").await.unwrap();
+        // check whether "${TUGRAPH_CRATESPRO_DB}" exists
+        if !origin_graphs.contains(&tugraph_cratespro_db) {
+            println!("create graph: {}", tugraph_cratespro_db);
+            origin_client.create_subgraph(&tugraph_cratespro_db).await.unwrap();
         }
 
         let client =
-            TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "cratespro")
+            TuGraphClient::new(&tugraph_bolt_url, &tugraph_user_name, &tugraph_user_password, &tugraph_cratespro_db)
                 .await
                 .unwrap();
 
@@ -134,21 +145,26 @@ mod integration_tests {
     async fn test_plugin2() {
         // Instantiate the TuGraphClient for testing
 
-        let origin_client = TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "")
+        let tugraph_bolt_url = env::var("TUGRAPH_BOLT_URL").unwrap();
+        let tugraph_user_name = env::var("TUGRAPH_USER_NAME").unwrap();
+        let tugraph_user_password = env::var("TUGRAPH_USER_PASSWORD").unwrap();
+        let tugraph_cratespro_db = env::var("TUGRAPH_CRATESPRO_DB").unwrap();
+
+        let origin_client = TuGraphClient::new(&tugraph_bolt_url, &tugraph_user_name, &tugraph_user_password, "")
             .await
             .unwrap();
 
         let origin_graphs = origin_client.list_graphs().await.unwrap();
         println!("origin database contains graphs: {:?}", origin_graphs);
 
-        // check whether 'cratespro' exists
-        if !origin_graphs.contains(&String::from("cratespro")) {
-            println!("create graph: cratespro");
-            origin_client.create_subgraph("cratespro").await.unwrap();
+        // check whether "${TUGRAPH_CRATESPRO_DB}" exists
+        if !origin_graphs.contains(&tugraph_cratespro_db) {
+            println!("create graph: {}", tugraph_cratespro_db);
+            origin_client.create_subgraph(&tugraph_cratespro_db).await.unwrap();
         }
 
         let client =
-            TuGraphClient::new("bolt://172.17.0.1:7687", "admin", "73@TuGraph", "cratespro")
+            TuGraphClient::new(&tugraph_bolt_url, &tugraph_user_name, &tugraph_user_password, &tugraph_cratespro_db)
                 .await
                 .unwrap();
 

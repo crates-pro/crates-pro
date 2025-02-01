@@ -20,6 +20,7 @@ impl Transporter {
         tracing::info!("Start to pack the data");
         let ids = self.reader.get_all_programs_id().await;
         for id in ids {
+            tracing::info!("id:{}", id);
             let program: model::tugraph_model::Program =
                 self.reader.get_program(&id).await.unwrap();
             let (uprogram, islib): (model::tugraph_model::UProgram, bool) =
@@ -29,7 +30,7 @@ impl Transporter {
 
             self.packer.pack_into_db(program, uprogram, versions).await;
         }
-
+        tracing::info!("finish to pack the data");
         Ok(())
     }
 }

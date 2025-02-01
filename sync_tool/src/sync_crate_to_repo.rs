@@ -1,8 +1,8 @@
 use std::{
-    collections::HashSet,
+    //collections::HashSet,
     env,
-    fs::{self, File},
-    io::{self, BufRead, BufReader},
+    fs::{self, File, OpenOptions},
+    io::{self, BufReader, Write},
     path::{Path, PathBuf},
     process::{exit, Command},
     str::FromStr,
@@ -10,7 +10,6 @@ use std::{
 };
 
 use chrono::Utc;
-use entity::{db_enums::RepoSyncStatus, repo_sync_status};
 use flate2::bufread::GzDecoder;
 use git2::{Repository, Signature};
 use kafka_model::message_model;
@@ -19,39 +18,72 @@ use sea_orm::{ActiveModelTrait, DatabaseConnection, Set, Unchanged};
 use semver::Version;
 use tar::Archive;
 use url::Url;
-use walkdir::WalkDir;
+use walkdir::{DirEntry, WalkDir};
+
+use entity::{db_enums::RepoSyncStatus, repo_sync_status};
 
 use crate::{
     kafka::{self},
     util,
 };
 
-pub async fn incremental_update() {
+pub async fn convert_crate_to_repo(workspace: PathBuf) {
     let conn = util::db_connection().await;
     let producer = kafka::get_producer();
 
-    // 从日志中读出增量信息
-    let download_txt_dir = Path::new("/home/rust/freighter/log/");
-    let crate_names: HashSet<String> =
-        read_latest_crate_list(download_txt_dir).expect("Failed to get download.txt crates name");
+    let log_file_path = "sync_fuben_1w_test";
+    // let start_entry = "rustfolio"; // 替换为实际的crate_entry名称
+    let end_entry = "rustfolio"; // 替换为实际的crate_entry名称
+                                 // let mut start_processing = false;
 
-    println!("log_read-done!");
-    let work_dir = PathBuf::from("/mnt/crates/freighter/crates");
+    let mut log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_file_path)
+        .unwrap();
 
-    for crate_name in crate_names {
-        let crate_entry = work_dir.join(&crate_name);
-        if crate_entry.exists() && crate_entry.is_dir() {
-            // 访问对应的目录
-            println!("Accessing directory: {:?}", crate_entry);
-            // 在这里添加你需要对目录进行的操作
-            println!("re: {:?}", crate_entry);
-            let crate_path = crate_entry.as_path();
-            let crate_name = crate_name.as_str();
+    for crate_entry in WalkDir::new(workspace)
+        .min_depth(1)
+        .max_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if crate_entry.path().is_dir() {
+            tracing::info!("re: {:?}", crate_entry);
+            writeln!(log_file, "re: {:?}", crate_entry.file_name()).unwrap();
+
+            let crate_path = crate_entry.path();
+            let crate_name = crate_path.file_name().unwrap().to_str().unwrap();
+            // if crate_name == start_entry {
+            //     start_processing = true;
+            // }
+            // if !start_processing {
+            //     continue;
+            // }
+
+            if crate_name == end_entry {
+                break;
+            }
             let repo_path = &crate_path.join(crate_name);
 
-            let record: repo_sync_status::ActiveModel = crate::get_record(&conn, crate_name).await;
+            let record = crate::get_record(&conn, crate_name).await;
+            if record.status == Unchanged(RepoSyncStatus::Succeed) {
+                tracing::info!("skipping:{:?}", record.crate_name);
+                writeln!(log_file, "skipping: {:?}", record.crate_name).unwrap();
+                continue;
+            }
 
-            let crate_versions: Vec<PathBuf> = get_sorted_crate_versions(crate_path, crate_name);
+            if repo_path.exists() {
+                println!("repo_path: {}", repo_path.display());
+                writeln!(log_file, "repo_path: {}", repo_path.display()).unwrap();
+                match fs::remove_dir_all(repo_path) {
+                    Ok(()) => (),
+                    Err(e) => println!("Failed to remove directory: {}", e),
+                }
+            }
+
+            let crate_versions = get_sorted_crate_versions(crate_path, crate_name);
+
             let latest_version = crate_versions
                 .last()
                 .unwrap()
@@ -62,29 +94,25 @@ pub async fn incremental_update() {
                 .replace(&format!("{}-", crate_name), "")
                 .replace(".crate", "");
 
-            let semver_latest_version =
-                Version::parse(&latest_version).expect("Failed to parse latest version");
-            if record.status == Unchanged(RepoSyncStatus::Succeed) {
-                if let Ok(record_version) = Version::parse(record.version.as_ref()) {
-                    if record_version >= semver_latest_version {
-                        tracing::info!("skipping:{:?}", record.crate_name);
-                        continue;
-                    }
-                } else {
-                    tracing::error!("Failed to parse version for record: {:?}", record);
-                }
-            }
-
             let start = Instant::now();
             for crate_v in crate_versions {
-                process_cratefile_to_repo(&crate_v, crate_path, repo_path, crate_name, &record);
+                process_cratefile_to_repo(&crate_v, &crate_entry, repo_path, crate_name);
             }
             let duration = start.elapsed();
             println!("total version operation : {:?}", duration.as_millis());
+            if duration.as_millis() > 1000 {
+                writeln!(
+                    log_file,
+                    "total version operation: {:?} crate: {:?}",
+                    duration.as_millis(),
+                    crate_name
+                )
+                .unwrap();
+            }
 
             let start = Instant::now();
             if repo_path.exists() {
-                push_to_remote(
+                push_to_remote_and_send_to_kafka(
                     &conn,
                     crate_name,
                     repo_path,
@@ -94,15 +122,22 @@ pub async fn incremental_update() {
                 )
                 .await;
             } else {
-                eprintln!("empty crates directory:{:?}", crate_entry.display());
+                eprintln!("empty crates directory:{:?}", crate_entry.path())
             }
             let duration = start.elapsed();
             println!(
-                "repo_path.exists and push to remote: {:?}",
+                "repo_path.exists and push to remote:  {:?}",
                 duration.as_millis()
             );
-        } else {
-            println!("Directory does not exist: {:?}", crate_entry);
+            if duration.as_millis() > 1500 {
+                writeln!(
+                    log_file,
+                    "repo_path.exists and push to remote: {:?} crate: {:?}",
+                    duration.as_millis(),
+                    crate_name
+                )
+                .unwrap();
+            }
         }
     }
 
@@ -137,45 +172,15 @@ pub async fn incremental_update() {
 
     fn process_cratefile_to_repo(
         crate_v: &Path,
-        crate_path: &Path,
+        crate_entry: &DirEntry,
         repo_path: &Path,
         crate_name: &str,
-        record: &repo_sync_status::ActiveModel,
     ) {
-        let version = &crate_v
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .replace(&format!("{}-", crate_name), "")
-            .replace(".crate", "");
-        if let (Ok(record_version), Ok(semver_version)) = (
-            Version::parse(record.version.as_ref()),
-            Version::parse(version),
-        ) {
-            if semver_version == Version::new(0, 0, 0) {
-                if record_version != semver_version {
-                    return;
-                }
-            } else if record_version >= semver_version {
-                return;
-            }
-        } else {
-            tracing::error!(
-                "Failed to parse version for comparison: record_version = {:?}, version = {:?}",
-                record.version,
-                version
-            );
-        }
-
         let repo = open_or_make_repo(repo_path);
 
-        let start = Instant::now();
-        decompress_crate_file(crate_v, crate_path).unwrap_or_else(|e| {
+        decompress_crate_file(crate_v, crate_entry.path()).unwrap_or_else(|e| {
             eprintln!("{}", e);
         });
-        let duration = start.elapsed();
-        tracing::info!("decompress_crate_file: {:?}", duration.as_millis());
 
         let uncompress_path = remove_extension(crate_v);
 
@@ -184,21 +189,25 @@ pub async fn incremental_update() {
         }
 
         if let Err(e) = empty_folder(repo.workdir().unwrap()) {
-            tracing::error!("Failed to empty folder: {}", e);
+            println!("Failed to empty folder: {}", e);
         }
 
         if let Err(e) = copy_all_files(&uncompress_path, repo.workdir().unwrap()) {
-            tracing::error!("Failed to copy all files: {}", e);
+            println!("Failed to copy all files: {}", e);
         }
 
-        let start = Instant::now();
-        add_and_commit(&repo, version, repo_path);
-        let duration = start.elapsed();
-        tracing::info!("add_and_commit: {:?}", duration.as_millis());
+        let version = &crate_v
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .replace(&format!("{}-", crate_name), "")
+            .replace(".crate", "");
 
+        add_and_commit(&repo, version, repo_path);
         match fs::remove_dir_all(uncompress_path) {
             Ok(()) => (),
-            Err(e) => tracing::error!("Failed to remove uncompress_path: {}", e),
+            Err(e) => println!("Failed to remove uncompress_path: {}", e),
         }
     }
 
@@ -300,26 +309,21 @@ pub async fn incremental_update() {
 
             if path.is_dir() {
                 if !path.ends_with(".git") {
-                    //copy_all_files(&path, &dest_path).unwrap();
-                    if let Err(e) = copy_all_files(&path, &dest_path) {
-                        println!(
-                            "Failed to copy file from {} to {}: {}",
-                            path.display(),
-                            dest_path.display(),
-                            e
-                        );
+                    match copy_all_files(&path, &dest_path) {
+                        Ok(_) => (),
+                        Err(e) => eprintln!(
+                            "Failed to copy files from {:?} to {:?}: {}",
+                            path, dest_path, e
+                        ),
                     }
                 }
-            } else {
-                //fs::copy(&path, &dest_path).unwrap();
-                if let Err(e) = fs::copy(&path, &dest_path) {
-                    println!(
-                        "Failed to copy file from {} to {}: {}",
-                        path.display(),
-                        dest_path.display(),
-                        e
-                    );
-                }
+            } else if let Err(e) = fs::copy(&path, &dest_path) {
+                println!(
+                    "Failed to copy file from {} to {}: {}",
+                    path.display(),
+                    dest_path.display(),
+                    e
+                );
             }
         }
         Ok(())
@@ -339,7 +343,7 @@ pub async fn incremental_update() {
         Ok(())
     }
 
-    async fn push_to_remote(
+    async fn push_to_remote_and_send_to_kafka(
         conn: &DatabaseConnection,
         crate_name: &str,
         repo_path: &Path,
@@ -352,6 +356,7 @@ pub async fn incremental_update() {
             exit(1);
         }
 
+        // let mut url = Url::from_str("http://mono.mega.local:80").unwrap();
         let mut url = Url::from_str("http://172.17.0.1:32101").unwrap();
         let new_path = format!("/third-part/crates/{}", crate_name);
         url.set_path(&new_path);
@@ -378,10 +383,10 @@ pub async fn incremental_update() {
             Utc::now(),                            // 当前时间作为时间戳
             "Extra information".to_string(),       // 设置 extra_field，示例中为一个字符串
         );
-        println!("kafka_message {:?}", kafka_message_model);
+        println!("kafka_message{:?}", kafka_message_model);
         let handle = kafka::producer::send_message(
             producer,
-            &env::var("KAFKA_TOPIC_NEW").unwrap(),
+            &env::var("KAFKA_TOPIC_TEST").unwrap(),
             serde_json::to_string(&kafka_message_model).unwrap(),
         )
         .await;
@@ -468,60 +473,5 @@ pub async fn incremental_update() {
         // Unpack the tar archive to the destination directory
         archive.unpack(dst)?;
         Ok(())
-    }
-
-    /// 从目录中读取最新的 `download_*.txt` 文件，解析出 crate 名集合
-    fn read_latest_crate_list(dir: &Path) -> io::Result<HashSet<String>> {
-        let mut latest_file: Option<PathBuf> = None;
-        let mut latest_timestamp: Option<i64> = None;
-
-        // 遍历目录下的文件
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-
-            //println!("open txt {:?}", path);
-            // 检查文件是否符合 `download_*.txt` 命名格式
-            if let Some(file_name) = path.file_name().and_then(|name| name.to_str()) {
-                if file_name.starts_with("download_") && file_name.ends_with(".txt") {
-                    // 提取时间戳部分
-                    let timestamp_str = file_name
-                        .trim_start_matches("download_")
-                        .trim_end_matches(".txt");
-
-                    let parts: Vec<&str> = timestamp_str.split('_').collect();
-                    let date_part = parts[0].replace('-', "");
-                    let time_part = parts[1].replace('-', "");
-
-                    // 拼接日期和时间部分
-                    let formatted_str = format!("{}{}", date_part, time_part);
-                    // 尝试将时间戳转换为数字
-                    if let Ok(timestamp) = formatted_str.parse::<i64>() {
-                        if latest_timestamp.is_none() || timestamp > latest_timestamp.unwrap() {
-                            latest_timestamp = Some(timestamp);
-                            latest_file = Some(path);
-                        }
-                    }
-                }
-            }
-        }
-
-        println!("open txt {:?}", latest_file);
-        // 如果找到最新文件，读取文件内容
-        if let Some(latest_file_path) = latest_file {
-            let file = fs::File::open(latest_file_path)?;
-            let reader = BufReader::new(file);
-            let mut crate_names = HashSet::new();
-
-            for line in reader.lines() {
-                let line = line?;
-                crate_names.insert(line);
-            }
-
-            Ok(crate_names)
-        } else {
-            // 如果未找到符合条件的文件，则返回空集合
-            Ok(HashSet::new())
-        }
     }
 }

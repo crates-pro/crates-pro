@@ -2,21 +2,20 @@ rust_library(
     name = "search",
     srcs = [
         "src/ai.rs",
-        "src/lib.rs",
         "src/crates_search.rs",
         "src/embedding.rs",
+        "src/lib.rs",
         "src/search_prepare.rs"
     ],
     crate_root = "src/lib.rs",
     edition = "2021",
     deps = [
-        "//third-party:tokio-postgres",
-        "//third-party:dotenv",
         "//third-party:pgvector",
-        "//third-party:serde_json",
-        "//third-party:serde",
         "//third-party:reqwest",
+        "//third-party:serde",
         "//third-party:semver",
+        "//third-party:serde_json",
+        "//third-party:tokio-postgres",
     ],
     visibility = ["PUBLIC"],
 )

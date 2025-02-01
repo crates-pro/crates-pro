@@ -17,7 +17,10 @@ pub struct Cli {
 pub enum Commands {
     /// Push Local Repo to mega
     Upload,
+    /// Async Crate to Repo
     Crate,
     /// Incremental Update. the <FILE> arg is useless.
     Incremental,
+    /// Sync Crate to Repo
+    Sync,
 }

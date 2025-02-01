@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-
 entity = { path = "../storage/entity" }
 
-serde = { workspace = true }
+# third-party
 chrono = { workspace = true }
 sea-orm = { workspace = true }
+serde = { workspace = true }

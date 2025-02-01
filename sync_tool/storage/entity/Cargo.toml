@@ -9,6 +9,6 @@ name = "entity"
 path = "src/lib.rs"
 
 [dependencies]
-serde = { workspace = true }
 chrono = { workspace = true }
 sea-orm = { workspace = true }
+serde = { workspace = true }

@@ -1,7 +1,10 @@
-use std::{cmp::Ordering, collections::HashSet};
+use std::{cmp::Ordering, collections::HashSet, env};
 
-use crate::route::{Crateinfo, DependencyCount, DependentCount, RustSec};
-use model::tugraph_model::{Program, UProgram, UVersion};
+use crate::route::{
+    Crateinfo, DependencyCount, DependencyCrateInfo, DependencyInfo, DependentCount, DependentData,
+    DependentInfo, RustSec, Versionpage,
+};
+use model::tugraph_model::{Program, UProgram};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio_postgres::{Error, NoTls};
@@ -21,13 +24,22 @@ pub struct CveInfo {
 pub struct Allcve {
     cves: Vec<CveInfo>,
 }
+
+pub fn db_connection_config_from_env() -> String {
+    format!(
+        "host={} port={} user={} password={} dbname={}",
+        env::var("POSTGRES_HOST_IP").unwrap(),
+        env::var("POSTGRES_HOST_PORT").unwrap(),
+        env::var("POSTGRES_USER_NAME").unwrap(),
+        env::var("POSTGRES_USER_PASSWORD").unwrap(),
+        env::var("POSTGRES_CRATESPRO_DB").unwrap()
+    )
+}
+
 impl DBHandler {
     pub async fn connect() -> Result<Self, Error> {
-        let (client, connection) = tokio_postgres::connect(
-            "host=172.17.0.1 port=30432 user=mega password=mega dbname=postgres",
-            NoTls,
-        )
-        .await?;
+        let db_connection_config = db_connection_config_from_env();
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls).await?;
 
         // Spawn the connection on a separate task
         tokio::spawn(async move {
@@ -50,11 +62,7 @@ impl DBHandler {
             })?;
 
         // 重新连接到 cratespro 数据库
-        let (client, connection) = tokio_postgres::connect(
-            "host=172.17.0.1 port=30432 user=mega password=mega dbname=cratespro",
-            NoTls,
-        )
-        .await?;
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls).await?;
 
         // Spawn the connection on a separate task
         tokio::spawn(async move {
@@ -156,7 +164,7 @@ impl DBHandler {
         &self,
         program: Program,
         uprogram: UProgram,
-        versions: Vec<crate::VersionInfo>,
+        _versions: Vec<crate::VersionInfo>,
     ) -> Result<(), Error> {
         let (program_type, downloads, cratesio) = match &uprogram {
             UProgram::Library(lib) => ("Library", Some(lib.downloads), lib.cratesio.clone()),
@@ -196,7 +204,7 @@ impl DBHandler {
         tracing::info!("finish to insert program.");
 
         // 插入 UVersion 数据
-        for version in versions {
+        /*for version in versions {
             let name_and_version = version.version_base.get_name_and_version();
 
             match version.version_base {
@@ -205,7 +213,7 @@ impl DBHandler {
                         .execute(
                             "
                         INSERT INTO program_versions (
-                            name_and_version, id, name, version, 
+                            name_and_version, id, name, version,
                             documentation, version_type, created_at
                         ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
                         ",
@@ -226,7 +234,7 @@ impl DBHandler {
                         .execute(
                             "
                         INSERT INTO program_versions (
-                            name_and_version, id, name, version, 
+                            name_and_version, id, name, version,
                             documentation, version_type, created_at
                         ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
                         ",
@@ -257,8 +265,8 @@ impl DBHandler {
                     )
                     .await?;
             }
-        }
-        tracing::info!("Finish to insert all versions.");
+        }*/
+        //tracing::info!("Finish to insert all versions.");
 
         Ok(())
     }
@@ -747,6 +755,7 @@ impl DBHandler {
             let new_license: String = row.get(0);
             licenses.push(new_license);
         }
+        licenses.push("None".to_string());
         Ok(licenses)
     }
     pub async fn query_crates_info_from_pg(
@@ -931,6 +940,257 @@ impl DBHandler {
                     &crateinfo.license,
                     &crateinfo.github_url,
                     &crateinfo.doc_url,
+                ],
+            )
+            .await
+            .unwrap();
+        Ok(())
+    }
+    pub async fn get_graph_from_pg(
+        &self,
+        nsfront: String,
+        nsbehind: String,
+        name: String,
+        version: String,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        let id = nsfront + "/" + &nsbehind + "/" + &name + "/" + &version;
+        let rows = self
+            .client
+            .query("SELECT * FROM graph_info WHERE id = $1;", &[&id])
+            .await
+            .unwrap();
+        let mut res = vec![];
+        for row in rows {
+            let graph: String = row.get("graph");
+            res.push(graph);
+        }
+        Ok(res)
+    }
+    pub async fn insert_graph_into_pg(
+        &self,
+        nsfront: String,
+        nsbehind: String,
+        name: String,
+        version: String,
+        graph: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let id = nsfront + "/" + &nsbehind + "/" + &name + "/" + &version;
+        self.client
+            .execute(
+                "
+                        INSERT INTO graph_info (
+                            id,graph
+                        ) VALUES ($1, $2);
+                        ",
+                &[&id, &graph],
+            )
+            .await
+            .unwrap();
+        Ok(())
+    }
+    pub async fn get_version_from_pg(
+        &self,
+        nsfront: String,
+        nsbehind: String,
+        name: String,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        let id = nsfront + "/" + &nsbehind + "/" + &name;
+        let rows = self
+            .client
+            .query("SELECT * FROM version_info WHERE id = $1;", &[&id])
+            .await
+            .unwrap();
+        let mut res = vec![];
+        for row in rows {
+            let newversion: String = row.get("versions");
+            res.push(newversion);
+        }
+        Ok(res)
+    }
+    pub async fn insert_version_into_pg(
+        &self,
+        nsbehind: String,
+        nsfront: String,
+        name: String,
+        versionpg: Vec<Versionpage>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let id = nsfront + "/" + &nsbehind + "/" + &name;
+        let mut every_version = vec![];
+        for vp in versionpg {
+            let dts_count = vp.dependents.to_string();
+            let one_version = vp.version.clone() + "|" + &dts_count;
+            every_version.push(one_version);
+        }
+        let versions = every_version.join("/");
+        self.client
+            .execute(
+                "
+                        INSERT INTO version_info (
+                            id,versions
+                        ) VALUES ($1, $2);
+                        ",
+                &[&id, &versions],
+            )
+            .await
+            .unwrap();
+        Ok(())
+    }
+    pub async fn get_dependency_from_pg(
+        &self,
+        nsfront: String,
+        nsbehind: String,
+        name: String,
+        version: String,
+    ) -> Result<Vec<DependencyInfo>, Box<dyn std::error::Error>> {
+        let id = nsfront.clone() + "/" + &nsbehind + "/" + &name + "/" + &version;
+        let rows = self
+            .client
+            .query("SELECT * FROM dependency_cache WHERE id = $1;", &[&id])
+            .await
+            .unwrap();
+        let mut res = vec![];
+        for row in rows {
+            let all_dependency: String = row.get("dependency");
+            let direct: i32 = row.get("direct_count");
+            let indirect: i32 = row.get("indirect_count");
+            let mut deps = vec![];
+            let parts1: Vec<&str> = all_dependency.split("|").collect();
+            for part in parts1 {
+                let one_dep = part.to_string();
+                let parts2: Vec<&str> = one_dep.split("/").collect();
+                if parts2.len() == 5 {
+                    let dcs = parts2[4].to_string();
+                    let dcc = dcs.parse::<usize>().unwrap();
+                    let one_res = DependencyCrateInfo {
+                        crate_name: parts2[0].to_string(),
+                        version: parts2[1].to_string(),
+                        relation: parts2[2].to_string(),
+                        license: parts2[3].to_string(),
+                        dependencies: dcc,
+                    };
+                    deps.push(one_res);
+                }
+            }
+            let real_res = DependencyInfo {
+                direct_count: direct as usize,
+                indirect_count: indirect as usize,
+                data: deps,
+            };
+            res.push(real_res);
+        }
+        Ok(res)
+    }
+    pub async fn get_dependent_from_pg(
+        &self,
+        nsfront: String,
+        nsbehind: String,
+        name: String,
+        version: String,
+    ) -> Result<Vec<DependentInfo>, Box<dyn std::error::Error>> {
+        let id = nsfront.clone() + "/" + &nsbehind + "/" + &name + "/" + &version;
+        let rows = self
+            .client
+            .query("SELECT * FROM dependent_cache WHERE id = $1;", &[&id])
+            .await
+            .unwrap();
+        let mut res = vec![];
+        for row in rows {
+            let all_dependent: String = row.get("dependent");
+            let direct: i32 = row.get("direct_count");
+            let indirect: i32 = row.get("indirect_count");
+            let mut deps = vec![];
+            let parts1: Vec<&str> = all_dependent.split("|").collect();
+            for part in parts1 {
+                let one_dep = part.to_string();
+                let parts2: Vec<&str> = one_dep.split("/").collect();
+                if parts2.len() == 3 {
+                    let one_res = DependentData {
+                        crate_name: parts2[0].to_string(),
+                        version: parts2[1].to_string(),
+                        relation: parts2[2].to_string(),
+                    };
+                    deps.push(one_res);
+                }
+            }
+            let real_res = DependentInfo {
+                direct_count: direct as usize,
+                indirect_count: indirect as usize,
+                data: deps,
+            };
+            res.push(real_res);
+        }
+        Ok(res)
+    }
+    pub async fn insert_dependency_into_pg(
+        &self,
+        nsfront: String,
+        nsbehind: String,
+        name: String,
+        version: String,
+        dep_info: DependencyInfo,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let id = nsfront.clone() + "/" + &nsbehind + "/" + &name + "/" + &version;
+        let mut every_dep = vec![];
+        for one_dep in dep_info.data {
+            let dcs = one_dep.dependencies.to_string();
+            let one_res = one_dep.crate_name.clone()
+                + "/"
+                + &one_dep.version
+                + "/"
+                + &one_dep.relation
+                + "/"
+                + &one_dep.license
+                + "/"
+                + &dcs;
+            every_dep.push(one_res);
+        }
+        let real_dep = every_dep.join("|");
+        self.client
+            .execute(
+                "
+                        INSERT INTO dependency_cache (
+                            id,direct_count,indirect_count,dependency
+                        ) VALUES ($1, $2,$3,$4);
+                        ",
+                &[
+                    &id,
+                    &(dep_info.direct_count as i32),
+                    &(dep_info.indirect_count as i32),
+                    &real_dep,
+                ],
+            )
+            .await
+            .unwrap();
+        Ok(())
+    }
+    pub async fn insert_dependent_into_pg(
+        &self,
+        nsfront: String,
+        nsbehind: String,
+        name: String,
+        version: String,
+        dep_info: DependentInfo,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let id = nsfront.clone() + "/" + &nsbehind + "/" + &name + "/" + &version;
+        let mut every_dep = vec![];
+        for one_dep in dep_info.data {
+            let one_res =
+                one_dep.crate_name.clone() + "/" + &one_dep.version + "/" + &one_dep.relation;
+            every_dep.push(one_res);
+        }
+        let real_dep = every_dep.join("|");
+        self.client
+            .execute(
+                "
+                        INSERT INTO dependent_cache (
+                            id,direct_count,indirect_count,dependent
+                        ) VALUES ($1, $2,$3,$4);
+                        ",
+                &[
+                    &id,
+                    &(dep_info.direct_count as i32),
+                    &(dep_info.indirect_count as i32),
+                    &real_dep,
                 ],
             )
             .await

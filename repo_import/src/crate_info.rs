@@ -1,4 +1,7 @@
-use crate::utils::{get_namespace_by_repo_path, insert_program_by_name};
+use crate::{
+    utils::{get_namespace_by_repo_path, insert_program_by_name},
+    Licenses,
+};
 use model::tugraph_model::{Application, HasType, Library, Program, UProgram};
 use std::{
     fs,
@@ -12,6 +15,7 @@ use walkdir::WalkDir;
 pub(crate) async fn extract_info_local(
     local_repo_path: PathBuf,
     git_url: String,
+    lic: &mut Vec<Licenses>,
 ) -> Vec<(Program, HasType, UProgram)> {
     let mut res = vec![];
 
@@ -47,19 +51,22 @@ pub(crate) async fn extract_info_local(
 
                     tracing::debug!("Found Crate: {}, islib: {}", name, islib);
                     let id = Uuid::new_v4().to_string();
-                    let mut program =
-                        from_cargo_toml(local_repo_path.clone(), entry_path.to_path_buf(), &id)
-                            .await
-                            .unwrap();
+                    let mut program = from_cargo_toml(
+                        local_repo_path.clone(),
+                        entry_path.to_path_buf(),
+                        &id,
+                        lic,
+                    )
+                    .await
+                    .unwrap();
                     /*let mut name2 = "".to_string();
-                    if program.name == "" {
+                    if program.name.is_empty() {
                         if let Some(namespace) = program.namespace.clone() {
                             let namespace_str = namespace.as_str();
-                            let parts: Vec<String> =
-                                namespace_str.split('/').map(|x| x.to_string()).collect();
+                            let parts: Vec<&str> = namespace_str.split('/').collect();
                             if parts.len() == 2 {
-                                program.name = parts[1].clone();
-                                name2 = parts[1].clone();
+                                program.name = parts[1].to_string();
+                                name2 = parts[1].to_string();
                             }
                         }
                     }
@@ -131,9 +138,9 @@ async fn is_crate_lib(crate_path: &str) -> Result<bool, String> {
 
     // 优先检查 Cargo.toml 中的 '[lib]' 和 '[[bin]]'
     let has_lib_in_toml = cargo_toml.get("lib").is_some();
-    let has_bin_in_toml = cargo_toml.get("bin").map_or(false, |bins| {
-        bins.as_array().map_or(false, |b| !b.is_empty())
-    });
+    let has_bin_in_toml = cargo_toml
+        .get("bin")
+        .is_some_and(|bins| bins.as_array().is_some_and(|b| !b.is_empty()));
 
     if has_lib_in_toml || has_bin_in_toml {
         return Ok(has_lib_in_toml && !has_bin_in_toml);
@@ -161,27 +168,66 @@ async fn from_cargo_toml(
     local_repo_path: PathBuf,
     cargo_toml_path: PathBuf,
     id: &str,
+    lic: &mut Vec<Licenses>,
 ) -> Result<Program, Box<dyn std::error::Error>> {
     let content = fs::read_to_string(cargo_toml_path)?;
     let parsed = content.parse::<Value>()?;
 
-    let program = Program::new(
+    let mut program = Program::new(
         id.to_string(),
         parsed["package"]["name"]
             .as_str()
             .unwrap_or_default()
             .to_string(),
         parsed["package"]
-            .get("decription")
+            .get("description")
             .unwrap_or(&Value::String(String::from("None")))
             .as_str()
             .map(String::from),
         get_namespace_by_repo_path(local_repo_path.to_str().unwrap()),
         None,
+        parsed["package"]
+            .get("repository")
+            .unwrap_or(&Value::String(String::from("None")))
+            .as_str()
+            .map(String::from),
         None,
-        None,
-        None,
+        parsed["package"]
+            .get("documentation")
+            .unwrap_or(&Value::String(String::from("None")))
+            .as_str()
+            .map(String::from),
     );
-
+    let license = parsed["package"]
+        .get("license")
+        .unwrap_or(&Value::String(String::from("None")))
+        .as_str()
+        .map(String::from);
+    let newlicense = Licenses {
+        program_id: program.id.clone(),
+        program_name: program.name.clone(),
+        program_namespace: program.namespace.clone(),
+        license,
+    };
+    if program.name.is_empty() {
+        if let Some(ns) = program.namespace.clone() {
+            let new_ns = ns.as_str();
+            let parts: Vec<&str> = new_ns.split('/').collect();
+            if parts.len() == 2 {
+                program.name = parts[1].to_string();
+            }
+        }
+    }
+    if let Some(docurl) = program.doc_url.clone() {
+        if docurl.is_empty() {
+            program.doc_url = Some("None".to_string());
+        }
+    }
+    if let Some(githuburl) = program.github_url.clone() {
+        if githuburl.is_empty() {
+            program.github_url = Some("None".to_string());
+        }
+    }
+    lic.push(newlicense);
     Ok(program)
 }

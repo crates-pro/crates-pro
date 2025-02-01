@@ -22,6 +22,8 @@ pub struct Model {
     pub err_message: Option<String>,
     pub created_at: DateTime,
     pub updated_at: DateTime,
+    #[sea_orm(column_type = "Text")]
+    pub version: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

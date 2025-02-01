@@ -1,12 +1,11 @@
 use std::cmp::Ordering;
 use std::collections::HashSet;
-//use std::collections::HashSet;
 use std::env;
 use std::error::Error;
 use std::time::Instant;
 
 use crate::data_reader::DataReaderTrait;
-use crate::db::DBHandler;
+use crate::db::{db_connection_config_from_env, DBHandler};
 use crate::NameVersion;
 use crate::Query;
 use actix_multipart::Multipart;
@@ -53,29 +52,29 @@ struct QueryItem {
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DependencyCrateInfo {
-    crate_name: String,
-    version: String,
-    relation: String,
-    license: String,
-    dependencies: usize,
+    pub crate_name: String,
+    pub version: String,
+    pub relation: String,
+    pub license: String,
+    pub dependencies: usize,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DependencyInfo {
-    direct_count: usize,
-    indirect_count: usize,
-    data: Vec<DependencyCrateInfo>,
+    pub direct_count: usize,
+    pub indirect_count: usize,
+    pub data: Vec<DependencyCrateInfo>,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DependentInfo {
-    direct_count: usize,
-    indirect_count: usize,
-    data: Vec<DependentData>,
+    pub direct_count: usize,
+    pub indirect_count: usize,
+    pub data: Vec<DependentData>,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DependentData {
-    crate_name: String,
-    version: String,
-    relation: String,
+    pub crate_name: String,
+    pub version: String,
+    pub relation: String,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Crateinfo {
@@ -108,9 +107,170 @@ pub struct RustSec {
     pub aliases: Vec<String>,
     pub small_desc: String,
 }
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Deptree {
+    pub name_and_version: String,
+    pub cve_count: usize,
+    pub direct_dependency: Vec<Deptree>,
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Versionpage {
+    pub version: String,
+    pub dependents: usize,
+}
+
 impl ApiHandler {
     pub async fn new(reader: Box<dyn DataReaderTrait>) -> Self {
         Self { reader }
+    }
+    pub async fn get_version_page(
+        &self,
+        nsfront: String,
+        nsbehind: String,
+        nname: String,
+        _nversion: String,
+    ) -> impl Responder {
+        let db_connection_config = db_connection_config_from_env();
+        #[allow(unused_variables)]
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+            .await
+            .unwrap();
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+        let dbhandler = DBHandler { client };
+        let res = dbhandler
+            .get_version_from_pg(nsfront.clone(), nsbehind.clone(), nname.clone())
+            .await
+            .unwrap();
+        if res.is_empty() {
+            let namespace = nsfront.clone() + "/" + &nsbehind;
+            let all_versions = self
+                .reader
+                .new_get_lib_version(namespace.clone(), nname.clone())
+                .await
+                .unwrap();
+            let mut getversions = vec![];
+            for version in all_versions {
+                getversions.push(version);
+            }
+            getversions.sort_by(|a, b| {
+                let version_a = Version::parse(a);
+                let version_b = Version::parse(b);
+
+                match (version_a, version_b) {
+                    (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
+                    (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => Ordering::Equal,
+                }
+            });
+            let mut every_version = vec![];
+            for version in getversions {
+                let name_and_version = nname.clone() + "/" + &version.clone();
+                let all_dts = self
+                    .reader
+                    .new_get_all_dependents(namespace.clone(), name_and_version.clone())
+                    .await
+                    .unwrap();
+                let versionpage = Versionpage {
+                    version,
+                    dependents: all_dts.len(),
+                };
+                every_version.push(versionpage);
+            }
+            dbhandler
+                .insert_version_into_pg(
+                    nsbehind.clone(),
+                    nsfront.clone(),
+                    nname.clone(),
+                    every_version.clone(),
+                )
+                .await
+                .unwrap();
+            HttpResponse::Ok().json(every_version)
+        } else {
+            let all_version = res[0].clone();
+            let mut every_version = vec![];
+            let parts1: Vec<&str> = all_version.split('/').collect();
+            for part in parts1 {
+                let tmp_version = part.to_string();
+                let parts2: Vec<&str> = tmp_version.split('|').collect();
+                let res_version = parts2[0].to_string();
+                let res_dependents = parts2[1].to_string();
+                let res_versionpage = Versionpage {
+                    version: res_version.clone(),
+                    dependents: res_dependents.parse::<usize>().unwrap(),
+                };
+                every_version.push(res_versionpage);
+            }
+            HttpResponse::Ok().json(every_version)
+        }
+    }
+    pub async fn get_graph(
+        &self,
+        nsfront: String,
+        nsbehind: String,
+        nname: String,
+        nversion: String,
+    ) -> impl Responder {
+        let db_connection_config = db_connection_config_from_env();
+        #[allow(unused_variables)]
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+            .await
+            .unwrap();
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+        let dbhandler = DBHandler { client };
+        let res = dbhandler
+            .get_graph_from_pg(
+                nsfront.clone(),
+                nsbehind.clone(),
+                nname.clone(),
+                nversion.clone(),
+            )
+            .await
+            .unwrap();
+        if res.is_empty() {
+            println!("first time");
+            let nav = nname.clone() + "/" + &nversion;
+            let rustcve = dbhandler
+                .get_direct_rustsec(&nname, &nversion)
+                .await
+                .unwrap();
+            let mut res = Deptree {
+                name_and_version: nav.clone(),
+                cve_count: rustcve.len(),
+                direct_dependency: Vec::new(),
+            };
+            let mut visited = HashSet::new();
+            visited.insert(nav.clone());
+            self.reader
+                .build_graph(&mut res, &mut visited)
+                .await
+                .unwrap();
+            let graph = serde_json::to_string(&res).unwrap();
+            dbhandler
+                .insert_graph_into_pg(
+                    nsfront.clone(),
+                    nsbehind.clone(),
+                    nname.clone(),
+                    nversion.clone(),
+                    graph.clone(),
+                )
+                .await
+                .unwrap();
+            HttpResponse::Ok().json(res)
+        } else {
+            println!("second time");
+            let res_tree: Deptree = serde_json::from_str(&res[0]).unwrap();
+            HttpResponse::Ok().json(res_tree)
+        }
     }
     pub async fn get_direct_dep_for_graph(
         &self,
@@ -195,13 +355,11 @@ impl ApiHandler {
             name_and_version = nname.clone() + "/" + &maxversion.clone();
         } //get dependency count
         println!("name_and_version:{}", name_and_version);
+        let db_connection_config = db_connection_config_from_env();
         #[allow(unused_variables)]
-        let (client, connection) = tokio_postgres::connect(
-            "host=172.17.0.1 port=30432 user=mega password=mega dbname=cratespro",
-            NoTls,
-        )
-        .await
-        .unwrap();
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+            .await
+            .unwrap();
         tokio::spawn(async move {
             if let Err(e) = connection.await {
                 eprintln!("connection error: {}", e);
@@ -271,7 +429,7 @@ impl ApiHandler {
                 "finish get_direct_dependent_nodes:{}",
                 direct_dependent_count
             );
-            let all_dependent_nodes = self
+            /*let all_dependent_nodes = self
                 .reader
                 .new_get_all_dependents(namespace.clone(), name_and_version.clone())
                 .await
@@ -290,7 +448,7 @@ impl ApiHandler {
                     indirect_dependent.push(node);
                 }
             }
-            let indirect_dependent_count = indirect_dependent.len();
+            let indirect_dependent_count = indirect_dependent.len();*/
 
             let getcves = dbhandler
                 .get_direct_rustsec(&nname, &nversion)
@@ -330,7 +488,7 @@ impl ApiHandler {
             };
             let dt_count = DependentCount {
                 direct: direct_dependent_count,
-                indirect: indirect_dependent_count,
+                indirect: 0,
             };
             let res = Crateinfo {
                 crate_name: nname.clone(),
@@ -360,13 +518,11 @@ impl ApiHandler {
     }
     pub async fn get_cves(&self) -> impl Responder {
         //println!("enter get cve");
+        let db_connection_config = db_connection_config_from_env();
         #[allow(unused_variables)]
-        let (client, connection) = tokio_postgres::connect(
-            "host=172.17.0.1 port=30432 user=mega password=mega dbname=cratespro",
-            NoTls,
-        )
-        .await
-        .unwrap();
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+            .await
+            .unwrap();
         //println!("connect client");
         tokio::spawn(async move {
             if let Err(e) = connection.await {
@@ -457,6 +613,117 @@ impl ApiHandler {
         HttpResponse::Ok().json(res_deps)
     }
 
+    pub async fn dependency_cache(
+        &self,
+        name: String,
+        version: String,
+        nsfront: String,
+        nsbehind: String,
+    ) -> impl Responder {
+        let db_connection_config = db_connection_config_from_env();
+        #[allow(unused_variables)]
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+            .await
+            .unwrap();
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+        let dbhandler = DBHandler { client };
+        let res = dbhandler
+            .get_dependency_from_pg(
+                nsfront.clone(),
+                nsbehind.clone(),
+                name.clone(),
+                version.clone(),
+            )
+            .await
+            .unwrap();
+        if res.is_empty() {
+            let namespace = nsfront.clone() + "/" + &nsbehind.clone();
+            let nameversion = name.clone() + "/" + &version.clone();
+            println!("{} {}", namespace.clone(), nameversion.clone());
+            let direct_nodes = self
+                .reader
+                .new_get_direct_dependency_nodes(&namespace, &nameversion)
+                .await
+                .unwrap();
+            let getdirect_count = direct_nodes.len();
+            let all_dependency_nodes = self
+                .reader
+                .new_get_all_dependencies(namespace.clone(), nameversion.clone())
+                .await
+                .unwrap();
+            let mut indirect_dependency = vec![];
+            for node in all_dependency_nodes {
+                let mut dr = false;
+                for node2 in direct_nodes.clone() {
+                    let nv = node2.name.clone() + "/" + &node2.version.clone();
+                    if node == nv {
+                        dr = true;
+                        break;
+                    }
+                }
+                if !dr {
+                    indirect_dependency.push(node);
+                }
+            }
+            let indirect_dependency_count = indirect_dependency.len();
+            let mut deps = vec![];
+            for item in direct_nodes {
+                let dep_count = self.reader.count_dependencies(item.clone()).await.unwrap();
+                let dep = DependencyCrateInfo {
+                    crate_name: item.clone().name,
+                    version: item.clone().version,
+                    relation: "Direct".to_string(),
+                    license: "".to_string(),
+                    dependencies: dep_count,
+                };
+                deps.push(dep);
+            }
+            for item in indirect_dependency {
+                let parts: Vec<&str> = item.split('/').collect();
+                let newitem = NameVersion {
+                    name: parts[0].to_string(),
+                    version: parts[1].to_string(),
+                };
+                let dep_count = self
+                    .reader
+                    .count_dependencies(newitem.clone())
+                    .await
+                    .unwrap();
+
+                let dep = DependencyCrateInfo {
+                    crate_name: parts[0].to_string(),
+                    version: parts[1].to_string(),
+                    relation: "Indirect".to_string(),
+                    license: "".to_string(),
+                    dependencies: dep_count,
+                };
+                deps.push(dep);
+            }
+
+            let res_deps = DependencyInfo {
+                direct_count: getdirect_count,
+                indirect_count: indirect_dependency_count,
+                data: deps,
+            };
+            dbhandler
+                .insert_dependency_into_pg(
+                    nsfront.clone(),
+                    nsbehind.clone(),
+                    name.clone(),
+                    version.clone(),
+                    res_deps.clone(),
+                )
+                .await
+                .unwrap();
+            HttpResponse::Ok().json(res_deps.clone())
+        } else {
+            HttpResponse::Ok().json(res[0].clone())
+        }
+    }
     pub async fn new_get_dependent(
         &self,
         name: String,
@@ -473,12 +740,12 @@ impl ApiHandler {
             .await
             .unwrap();
         let getdirect_count = direct_nodes.len();
-        let all_dependent_nodes = self
-            .reader
-            .new_get_all_dependents(namespace.clone(), nameversion.clone())
-            .await
-            .unwrap();
-        let mut indirect_dependent = vec![];
+        // let all_dependent_nodes = self
+        //     .reader
+        //     .new_get_all_dependents(namespace.clone(), nameversion.clone())
+        //     .await
+        //     .unwrap();
+        /*let mut indirect_dependent = vec![];
         for node in all_dependent_nodes {
             let mut dr = false;
             for node2 in direct_nodes.clone() {
@@ -492,7 +759,7 @@ impl ApiHandler {
                 indirect_dependent.push(node);
             }
         }
-        let indirect_dependent_count = indirect_dependent.len();
+        let indirect_dependent_count = indirect_dependent.len();*/
         let mut deps = vec![];
         let mut count1 = 0;
         for item in direct_nodes {
@@ -507,8 +774,8 @@ impl ApiHandler {
                 break;
             }
         }
-        let mut count2 = 0;
-        for item in indirect_dependent {
+        // let mut count2 = 0;
+        /*for item in indirect_dependent {
             let parts: Vec<&str> = item.split('/').collect();
             let dep = DependentData {
                 crate_name: parts[0].to_string(),
@@ -520,14 +787,119 @@ impl ApiHandler {
                 break;
             }
             deps.push(dep);
-        }
+        }*/
 
         let res_deps = DependentInfo {
             direct_count: getdirect_count,
-            indirect_count: indirect_dependent_count,
+            indirect_count: 0,
             data: deps,
         };
         HttpResponse::Ok().json(res_deps)
+    }
+    pub async fn dependent_cache(
+        &self,
+        name: String,
+        version: String,
+        nsfront: String,
+        nsbehind: String,
+    ) -> impl Responder {
+        let namespace = nsfront.clone() + "/" + &nsbehind.clone();
+        let nameversion = name.clone() + "/" + &version.clone();
+        let db_connection_config = db_connection_config_from_env();
+        #[allow(unused_variables)]
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+            .await
+            .unwrap();
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+        let dbhandler = DBHandler { client };
+        let res = dbhandler
+            .get_dependent_from_pg(
+                nsfront.clone(),
+                nsbehind.clone(),
+                name.clone(),
+                version.clone(),
+            )
+            .await
+            .unwrap();
+        if res.is_empty() {
+            let direct_nodes = self
+                .reader
+                .new_get_direct_dependent_nodes(&namespace, &nameversion)
+                .await
+                .unwrap();
+            let getdirect_count = direct_nodes.len();
+            let all_dependent_nodes = self
+                .reader
+                .new_get_all_dependents(namespace.clone(), nameversion.clone())
+                .await
+                .unwrap();
+            let mut indirect_dependent = vec![];
+            for node in all_dependent_nodes {
+                let mut dr = false;
+                for node2 in direct_nodes.clone() {
+                    let nv = node2.name.clone() + "/" + &node2.version.clone();
+                    if node == nv {
+                        dr = true;
+                        break;
+                    }
+                }
+                if !dr {
+                    indirect_dependent.push(node);
+                }
+            }
+            let indirect_dependent_count = indirect_dependent.len();
+            let mut deps = vec![];
+            let mut count1 = 0;
+            for item in direct_nodes {
+                let dep = DependentData {
+                    crate_name: item.clone().name,
+                    version: item.clone().version,
+                    relation: "Direct".to_string(),
+                };
+                deps.push(dep);
+                count1 += 1;
+                if count1 == 50 {
+                    break;
+                }
+            }
+            let mut count2 = 0;
+            for item in indirect_dependent {
+                let parts: Vec<&str> = item.split('/').collect();
+                let dep = DependentData {
+                    crate_name: parts[0].to_string(),
+                    version: parts[1].to_string(),
+                    relation: "Indirect".to_string(),
+                };
+                count2 += 1;
+                if count2 == 50 {
+                    break;
+                }
+                deps.push(dep);
+            }
+
+            let res_deps = DependentInfo {
+                direct_count: getdirect_count,
+                indirect_count: indirect_dependent_count,
+                data: deps,
+            };
+            dbhandler
+                .insert_dependent_into_pg(
+                    nsfront.clone(),
+                    nsbehind.clone(),
+                    name.clone(),
+                    version.clone(),
+                    res_deps.clone(),
+                )
+                .await
+                .unwrap();
+            HttpResponse::Ok().json(res_deps)
+        } else {
+            HttpResponse::Ok().json(res[0].clone())
+        }
     }
     #[allow(clippy::vec_init_then_push)]
     pub async fn query_crates(&self, q: Query) -> impl Responder {
@@ -542,12 +914,10 @@ impl ApiHandler {
         //let programs = self.reader.get_program_by_name(&name).await.unwrap();
         //
         //
-        let (client, connection) = tokio_postgres::connect(
-            "host=172.17.0.1 port=30432 user=mega password=mega dbname=cratespro",
-            NoTls,
-        )
-        .await
-        .unwrap();
+        let db_connection_config = db_connection_config_from_env();
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+            .await
+            .unwrap();
         tokio::spawn(async move {
             if let Err(e) = connection.await {
                 eprintln!("connection error: {}", e);

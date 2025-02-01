@@ -4,26 +4,26 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-actix-web = "4.0"
-serde_json = { workspace = true }
+model = { workspace = true }
+repo_import = { workspace = true }
+search = { workspace = true }
+tudriver = { workspace = true }
+
+# third-party (第三方依赖, 不写具体版本号, 具体版本只在根目录 Cargo.toml 中出现)
+actix-multipart = { workspace = true }
+actix-web = { workspace = true }
+async-trait = { workspace = true }
+futures-util = { workspace = true }
+sanitize-filename = { workspace = true }
+semver = { workspace = true }
 serde = { workspace = true }
-tudriver = { path = "../tudriver" }
-model = { path = "../model" }
-tracing = { workspace = true }
+serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-postgres = { workspace = true }
-actix-multipart = "0.7"
-futures-util = "0.3"
-sanitize-filename = "0.5"
-semver = "1.0"
+tracing = { workspace = true }
 uuid = { workspace = true, features = [
     "v4",                # Lets you generate random UUIDs
     "fast-rng",          # Use a faster (but still sufficiently random) RNG
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ] }
-async-trait = { workspace = true }
-zip = "2.2.0"
-repo_import = { path = "../repo_import" }
-search = { path = "../search" }
-[dev-dependencies]
-actix-rt = "2.10"
+zip = { workspace = true }

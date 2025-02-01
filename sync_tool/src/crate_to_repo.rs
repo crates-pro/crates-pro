@@ -1,10 +1,13 @@
 use std::{
+    //collections::HashSet,
     env,
-    fs::{self, File},
-    io::{self, BufReader},
+    fs::{self, File, OpenOptions},
+    io::{self, BufReader, Write},
     path::{Path, PathBuf},
     process::{exit, Command},
     str::FromStr,
+    sync::Arc,
+    time::Instant,
 };
 
 use chrono::Utc;
@@ -14,6 +17,7 @@ use kafka_model::message_model;
 use rdkafka::producer::FutureProducer;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set, Unchanged};
 use tar::Archive;
+use tokio::sync::mpsc;
 use url::Url;
 use walkdir::WalkDir;
 
@@ -28,6 +32,49 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
     let conn = util::db_connection().await;
     let producer = kafka::get_producer();
 
+    let log_file_path = "logfile_3.log";
+    let info_log_file_path = "info_1.log";
+    let start_entry = "callgrind"; // 替换为实际的crate_entry名称
+    let end_entry = "ckb-sentry-anyhow"; // 替换为实际的crate_entry名称
+    let mut start_processing = false;
+
+    let (log_tx, mut log_rx) = mpsc::channel(100);
+    let (info_log_tx, mut info_log_rx) = mpsc::channel(100);
+    let log_file_path = log_file_path.to_string();
+    let info_log_file_path = info_log_file_path.to_string();
+
+    // 启动一个单独的任务来处理日志写入
+    tokio::spawn(async move {
+        let mut log_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_file_path)
+            .unwrap();
+
+        while let Some(log_entry) = log_rx.recv().await {
+            if let Err(e) = writeln!(log_file, "{}", log_entry) {
+                eprintln!("Failed to write to log file: {}", e);
+            }
+        }
+    });
+
+    // 启动一个单独的任务来处理 info 日志写入
+    tokio::spawn(async move {
+        let mut info_log_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(info_log_file_path)
+            .unwrap();
+
+        while let Some(info_log_entry) = info_log_rx.recv().await {
+            if let Err(e) = writeln!(info_log_file, "{}", info_log_entry) {
+                eprintln!("Failed to write to info log file: {}", e);
+            }
+        }
+    });
+
+    let mut tasks = vec![];
+
     for crate_entry in WalkDir::new(workspace)
         .min_depth(1)
         .max_depth(1)
@@ -36,80 +83,204 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
     {
         if crate_entry.path().is_dir() {
             println!("re: {:?}", crate_entry);
-            let crate_path = crate_entry.path();
-            let crate_name = crate_path.file_name().unwrap().to_str().unwrap();
-            let repo_path = &crate_path.join(crate_name);
-
-            let record = crate::get_record(&conn, crate_name).await;
-            if record.status == Unchanged(RepoSyncStatus::Succeed) {
-                tracing::info!("skipping:{:?}", record.crate_name);
-                // let kafka_payload: repo_sync_status::Model = record.try_into().unwrap();
-                // kafka::producer::send_message(
-                //     &producer,
-                //     &env::var("KAFKA_TOPIC").unwrap(),
-                //     serde_json::to_string(&kafka_payload).unwrap(),
-                // )
-                // .await;
-                continue;
-            }
-
-            if repo_path.exists() {
-                println!("repo_path: {}", repo_path.display());
-                match fs::remove_dir_all(repo_path) {
-                    Ok(()) => (),
-                    Err(e) => println!("Failed to remove directory: {}", e),
-                }
-            }
-
-            let mut crate_versions: Vec<PathBuf> = WalkDir::new(crate_path)
-                .min_depth(1)
-                .max_depth(1)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| {
-                    e.file_type().is_file() && e.path().extension().unwrap_or_default() == "crate"
-                })
-                .map(|entry| entry.path().to_path_buf())
-                .collect();
-            crate_versions.sort();
-
-            for crate_v in crate_versions {
-                let repo = open_or_make_repo(repo_path);
-
-                decompress_crate_file(&crate_v, crate_entry.path()).unwrap_or_else(|e| {
-                    eprintln!("{}", e);
-                });
-
-                let uncompress_path = remove_extension(&crate_v);
-                if fs::read_dir(&uncompress_path).is_err() {
-                    continue;
-                }
-                empty_folder(repo.workdir().unwrap()).unwrap();
-                copy_all_files(&uncompress_path, repo.workdir().unwrap()).unwrap();
-
-                let version = &crate_v
+            let crate_path = Arc::new(crate_entry.path().to_path_buf()); // 使用 Arc 包装 PathBuf
+            let crate_name = Arc::new(
+                crate_path
                     .file_name()
                     .unwrap()
                     .to_str()
                     .unwrap()
-                    .replace(&format!("{}-", crate_name), "")
-                    .replace(".crate", "");
-                add_and_commit(&repo, version, repo_path);
-                //fs::remove_dir_all(uncompress_path).unwrap();
-                match fs::remove_dir_all(uncompress_path) {
-                    Ok(()) => (),
-                    Err(e) => println!("Failed to remove uncompress_path: {}", e),
-                }
+                    .to_string(),
+            ); // 使用 Arc 包装 String
+            if *crate_name == start_entry {
+                start_processing = true;
+            }
+            if !start_processing {
+                continue;
+            }
+            if *crate_name == end_entry {
+                break;
             }
 
-            if repo_path.exists() {
-                push_to_remote(&conn, crate_name, repo_path, record, &producer).await;
-            } else {
-                eprintln!("empty crates directory:{:?}", crate_entry.path())
-            }
+            let conn_clone = conn.clone();
+            let producer_clone = producer.clone();
+            let log_tx_clone = log_tx.clone();
+            let info_log_tx_clone = info_log_tx.clone();
+            let crate_path_clone = Arc::clone(&crate_path);
+            let crate_name_clone = Arc::clone(&crate_name);
+
+            let task = tokio::spawn(async move {
+                if log_tx_clone
+                    .send(format!("re: {:?}", crate_path_clone))
+                    .await
+                    .is_err()
+                {
+                    eprintln!("Failed to send log: channel closed");
+                }
+                println!("re: {:?}", crate_path_clone);
+                let repo_path = crate_path_clone.join(&*crate_name_clone);
+
+                let record = crate::get_record(&conn_clone, &crate_name_clone).await;
+                if record.status == Unchanged(RepoSyncStatus::Succeed) {
+                    tracing::info!("skipping:{:?}", record.crate_name);
+                    if log_tx_clone
+                        .send(format!("skipping: {:?}", record.crate_name))
+                        .await
+                        .is_err()
+                    {
+                        eprintln!("Failed to send log: channel closed");
+                    }
+                    if info_log_tx_clone
+                        .send(format!("info: skipping {:?}", record.crate_name))
+                        .await
+                        .is_err()
+                    {
+                        eprintln!("Failed to send info log: channel closed");
+                    }
+                    return;
+                }
+
+                if repo_path.exists() {
+                    println!("repo_path: {}", repo_path.display());
+                    if log_tx_clone
+                        .send(format!("repo_path: {}", repo_path.display()))
+                        .await
+                        .is_err()
+                    {
+                        eprintln!("Failed to send log: channel closed");
+                    }
+                    match fs::remove_dir_all(&repo_path) {
+                        Ok(()) => (),
+                        Err(e) => println!("Failed to remove directory: {}", e),
+                    }
+                }
+
+                let mut crate_versions: Vec<PathBuf> = WalkDir::new(&*crate_path_clone)
+                    .min_depth(1)
+                    .max_depth(1)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                    .filter(|e| {
+                        e.file_type().is_file()
+                            && e.path().extension().unwrap_or_default() == "crate"
+                    })
+                    .map(|entry| entry.path().to_path_buf())
+                    .collect();
+                crate_versions.sort();
+
+                let start = Instant::now();
+                for crate_v in crate_versions {
+                    let repo = open_or_make_repo(&repo_path);
+
+                    let start = Instant::now();
+                    decompress_crate_file(&crate_v, &crate_path_clone).unwrap_or_else(|e| {
+                        eprintln!("{}", e);
+                    });
+                    let duration = start.elapsed();
+                    println!("decompress_crate_file: {:?}", duration.as_millis());
+                    if log_tx_clone
+                        .send(format!("decompress_crate_file: {:?}", duration.as_millis()))
+                        .await
+                        .is_err()
+                    {
+                        eprintln!("Failed to send log: channel closed");
+                    }
+
+                    let uncompress_path = remove_extension(&crate_v);
+
+                    if fs::read_dir(&uncompress_path).is_err() {
+                        continue;
+                    }
+
+                    if let Err(e) = empty_folder(repo.workdir().unwrap()) {
+                        println!("Failed to empty folder: {}", e);
+                    }
+
+                    if let Err(e) = copy_all_files(&uncompress_path, repo.workdir().unwrap()) {
+                        println!("Failed to copy all files: {}", e);
+                    }
+
+                    let version = crate_v
+                        .file_name()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .replace(&format!("{}-", crate_name_clone), "")
+                        .replace(".crate", "");
+
+                    let start = Instant::now();
+                    add_and_commit(&repo, &version, &repo_path);
+                    let duration = start.elapsed();
+                    println!("add_and_commit: {:?}", duration.as_millis());
+                    if log_tx_clone
+                        .send(format!("add_and_commit: {:?}", duration.as_millis()))
+                        .await
+                        .is_err()
+                    {
+                        eprintln!("Failed to send log: channel closed");
+                    }
+
+                    match fs::remove_dir_all(&uncompress_path) {
+                        Ok(()) => (),
+                        Err(e) => println!("Failed to remove uncompress_path: {}", e),
+                    }
+                }
+                let duration = start.elapsed();
+                println!("total version operation : {:?}", duration.as_millis());
+                if log_tx_clone
+                    .send(format!(
+                        "total version operation: {:?}",
+                        duration.as_millis()
+                    ))
+                    .await
+                    .is_err()
+                {
+                    eprintln!("Failed to send log: channel closed");
+                }
+
+                let start = Instant::now();
+                if repo_path.exists() {
+                    push_to_remote(
+                        &conn_clone,
+                        &crate_name_clone,
+                        &repo_path,
+                        record,
+                        &producer_clone,
+                    )
+                    .await;
+                    if info_log_tx_clone
+                        .send(format!("info: succeed {:?}", &repo_path))
+                        .await
+                        .is_err()
+                    {
+                        eprintln!("Failed to send info log: channel closed");
+                    }
+                } else {
+                    eprintln!("empty crates directory:{:?}", crate_path_clone)
+                }
+                let duration = start.elapsed();
+                println!(
+                    "repo_path.exists and push to remote: {:?}",
+                    duration.as_millis()
+                );
+                log_tx_clone
+                    .send(format!(
+                        "repo_path.exists and push to remote: {:?}",
+                        duration.as_millis()
+                    ))
+                    .await
+                    .unwrap();
+            });
+
+            tasks.push(task);
         }
     }
 
+    for task in tasks {
+        if let Err(e) = task.await {
+            eprintln!("Task failed: {:?}", e);
+        }
+    }
     fn open_or_make_repo(repo_path: &Path) -> Repository {
         match Repository::open(repo_path) {
             Ok(repo) => repo,
@@ -210,10 +381,25 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
 
             if path.is_dir() {
                 if !path.ends_with(".git") {
-                    copy_all_files(&path, &dest_path).unwrap();
+                    //copy_all_files(&path, &dest_path).unwrap();
+                    match copy_all_files(&path, &dest_path) {
+                        Ok(_) => (),
+                        Err(e) => eprintln!(
+                            "Failed to copy files from {:?} to {:?}: {}",
+                            path, dest_path, e
+                        ),
+                    }
                 }
             } else {
-                fs::copy(&path, &dest_path).unwrap();
+                //fs::copy(&path, &dest_path).unwrap();
+                if let Err(e) = fs::copy(&path, &dest_path) {
+                    println!(
+                        "Failed to copy file from {} to {}: {}",
+                        path.display(),
+                        dest_path.display(),
+                        e
+                    );
+                }
             }
         }
         Ok(())
@@ -250,14 +436,14 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
         let new_path = format!("/third-part/crates/{}", crate_name);
         url.set_path(&new_path);
 
-        git_command_with_env()
+        Command::new("git")
             .arg("remote")
             .arg("remove")
             .arg("nju")
             .output()
             .unwrap();
 
-        git_command_with_env()
+        Command::new("git")
             .arg("remote")
             .arg("add")
             .arg("nju")
@@ -266,15 +452,15 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
             .unwrap();
 
         //git push --set-upstream nju master
-        let push_res = git_command_with_env()
+        let push_res = Command::new("git")
             .arg("push")
             .arg("--set-upstream")
             .arg("nju")
-            .arg("master")
+            .arg("main") //改为main
             .output()
             .unwrap();
 
-        git_command_with_env()
+        Command::new("git")
             .arg("push")
             .arg("nju")
             .arg("--tags")
@@ -300,7 +486,7 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
             Utc::now(),                            // 当前时间作为时间戳
             "Extra information".to_string(),       // 设置 extra_field，示例中为一个字符串
         );
-        println!("=================kafka_message{:?}", kafka_message_model);
+        println!("kafka_message{:?}", kafka_message_model);
         kafka::producer::send_message(
             producer,
             &env::var("KAFKA_TOPIC_NEW").unwrap(),
@@ -333,14 +519,5 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
         // Unpack the tar archive to the destination directory
         archive.unpack(dst)?;
         Ok(())
-    }
-
-    fn git_command_with_env() -> Command {
-        let mut cmd = Command::new("git");
-        cmd.env_remove("http_proxy")
-            .env_remove("https_proxy")
-            .env_remove("HTTP_PROXY")
-            .env_remove("HTTPS_PROXY");
-        cmd
     }
 }
