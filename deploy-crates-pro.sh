@@ -6,7 +6,7 @@ INFRA_PATH=/home/rust/workspace/crates-pro-infra
 LATEST_SRC_PATH=.
 # deployment
 NAMESPACE=crates-pro
-INSTANCE=main
+INSTANCE=test1
 DEPLOYMENT=cratespro-backend-$INSTANCE
 KAFKA_HOST=172.17.0.1:30092
 # build
@@ -43,7 +43,8 @@ done
 kubectl set image deployment/$DEPLOYMENT -n $NAMESPACE crates-pro=$RUNNER_IMAGE
 
 # Wait until all kafka consumers are removed
-while docker run --rm -t bitnami/kafka -- kafka-consumer-groups.sh --bootstrap-server $KAFKA_HOST --group default_group --describe | grep rdkafka > /dev/null; do
+CONSUMER_GROUP=instance-$INSTANCE-group
+while docker run --rm -t bitnami/kafka -- kafka-consumer-groups.sh --bootstrap-server $KAFKA_HOST --group $CONSUMER_GROUP --describe | grep rdkafka > /dev/null; do
     sleep 5
 done
 
