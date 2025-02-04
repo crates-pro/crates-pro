@@ -9,6 +9,7 @@ edition = "2021"
 model = { workspace = true }
 
 # third-party (第三方依赖, 不写具体版本号, 具体版本只在根目录 Cargo.toml 中出现)
+bincode = { workspace = true }
 cargo_metadata = { workspace = true }
 csv = { workspace = true }
 dotenvy = { workspace = true }

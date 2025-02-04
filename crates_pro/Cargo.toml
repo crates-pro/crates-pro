@@ -25,6 +25,8 @@ repo_import = { workspace = true }
 
 # third-party (第三方依赖, 不写具体版本号, 具体版本只在根目录 Cargo.toml 中出现)
 dotenvy = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
 neo4rs = { workspace = true }
 rdkafka = { workspace = true, features = ["cmake-build"] }
 serde_json = { workspace = true }

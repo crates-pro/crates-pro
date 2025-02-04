@@ -20,14 +20,16 @@ use model::{repo_sync_model, tugraph_model::*};
 use rdkafka::error::KafkaError;
 use rdkafka::message::BorrowedMessage;
 use rdkafka::Message;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use url::Url;
 use version_info::VersionUpdater;
@@ -53,7 +55,7 @@ pub struct ImportDriver {
     pub user_import_handler: KafkaHandler,
     pub sender_handler: KafkaHandler,
 }
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Licenses {
     pub program_id: String,
     pub program_name: String,
@@ -64,35 +66,48 @@ pub struct Licenses {
 impl ImportDriver {
     pub async fn new(dont_clone: bool) -> Self {
         tracing::info!("Start to setup Kafka client.");
-        let kafka_broker = env::var("KAFKA_BROKER").unwrap();
-        let consumer_group_id = env::var("KAFKA_CONSUMER_GROUP_ID").unwrap();
 
-        tracing::info!("Kafka parameters: {},{}", kafka_broker, consumer_group_id);
+        let should_reset_kafka_offset = env::var("SHOULD_RESET_KAFKA_OFFSET").unwrap().eq("1");
 
-        let context = ImportContext {
-            dont_clone,
-            ..Default::default()
+        let (import_handler, user_import_handler, sender_handler) = init_kafka_handler()
+            .await
+            .expect("Failed to initialize Kafka handlers");
+
+        let context = if !should_reset_kafka_offset {
+            // 如果不需要重置offset，则从checkpoint中恢复context
+            let checkpoint_dir =
+                env::var("CHECKPOINT_DIR").unwrap_or_else(|_| "./checkpoints".to_string());
+            let checkpoint_path = format!("{}/latest.json", checkpoint_dir);
+
+            match ImportContext::load_from_file(&checkpoint_path).await {
+                Ok(mut ctx) => {
+                    // 如果有保存的 offset 且不需要重置到0，则恢复到该位置
+                    if let Some(offset) = ctx.kafka_offset {
+                        tracing::info!("Restoring Kafka consumer to offset: {}", offset);
+                        if let Err(e) = import_handler.seek_to_offset(offset).await {
+                            tracing::error!("Failed to seek to offset {}: {}", offset, e);
+                        }
+                    }
+                    ctx.write_tugraph_import_files().await;
+                    tracing::info!("Restored context from checkpoint");
+                    ctx
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load checkpoint: {}", e);
+                    ImportContext {
+                        dont_clone,
+                        ..Default::default()
+                    }
+                }
+            }
+        } else {
+            // 如果需要重置offset，则创建一个新的context
+            tracing::info!("Resetting Kafka offset, creating new context");
+            ImportContext {
+                dont_clone,
+                ..Default::default()
+            }
         };
-
-        // Data from Mega
-        let import_handler = KafkaHandler::new_consumer(
-            &kafka_broker,
-            &consumer_group_id,
-            &env::var("KAFKA_IMPORT_TOPIC").unwrap(),
-        )
-        .expect("Invalid import kafka handler");
-
-        // Data from user-uploading
-        let user_import_handler = KafkaHandler::new_consumer(
-            &kafka_broker,
-            &consumer_group_id,
-            &env::var("KAFKA_USER_IMPORT_TOPIC").unwrap(),
-        )
-        .expect("Invalid import kafka handler");
-
-        // sending for analysis
-        let sender_handler =
-            KafkaHandler::new_producer(&kafka_broker).expect("Invalid import kafka handler");
 
         tracing::info!("Finish to setup Kafka client.");
 
@@ -125,7 +140,7 @@ impl ImportDriver {
     }
 
     pub async fn import_from_mq_for_a_message(&mut self) -> Result<(), ()> {
-        tracing::info!("Start to import from a message!");
+        tracing::info!("Try to import from a message!");
         // //tracing::debug
         // println!("Context size: {}", self.context.calculate_memory_usage());
         // let kafka_import_topic = env::var("KAFKA_IMPORT_TOPIC").unwrap();
@@ -139,11 +154,12 @@ impl ImportDriver {
             }
             Ok(m) => m,
         };
+
         //println!("message:{:?}", message.payload());
         let model = match serde_json::from_slice::<repo_sync_model::MessageModel>(
             message.payload().unwrap(),
         ) {
-            Ok(m) => Some(m),
+            Ok(m) => Some(m.clone()),
             Err(e) => {
                 tracing::info!("Error while deserializing message payload: {:?}", e);
                 None
@@ -158,6 +174,15 @@ impl ImportDriver {
             message.offset(),
             message.timestamp()
         );
+
+        // 早一个offset，防止当前消息没解析完就结束了
+        let offset = message.offset();
+        self.context.kafka_offset = Some(offset);
+        if offset % 2000 == 0 {
+            tracing::info!("Reached message offset: {}", offset);
+            self.context.print_status().await;
+        }
+
         /*if matches!(kind, MessageKind::UserUpload) {
             //from user upload
             tracing::info!("user upload path:{}", model.clone().unwrap().mega_url);
@@ -213,7 +238,7 @@ impl ImportDriver {
                 }
             };
             let clone_need_time = clone_start_time.elapsed();
-            tracing::info!("clone need time: {:?}", clone_need_time);
+            tracing::trace!("clone need time: {:?}", clone_need_time);
             let new_versions = self
                 .context
                 .parse_a_local_repo_and_return_new_versions(local_repo_path, mega_url_suffix)
@@ -236,7 +261,7 @@ impl ImportDriver {
             let insert_time = Instant::now();
             insert_namespace_by_repo_path(path.to_str().unwrap().to_string(), namespace.clone());
             let insert_need_time = insert_time.elapsed();
-            tracing::info!(
+            tracing::trace!(
                 "insert_namespace_by_repo_path need time: {:?}",
                 insert_need_time
             );
@@ -263,11 +288,68 @@ impl ImportDriver {
         tracing::info!("Finish to import from a message!");
         Ok(())
     }
+
+    pub async fn save_checkpoint(&mut self) -> Result<(), Box<dyn Error>> {
+        tracing::info!("Saving checkpoint...");
+        let checkpoint_dir =
+            env::var("CHECKPOINT_DIR").unwrap_or_else(|_| "./checkpoints".to_string());
+        tokio::fs::create_dir_all(&checkpoint_dir).await?;
+
+        // 保存二进制checkpoint (如果文件存在会覆盖)
+        let checkpoint_path = format!("{}/latest.json", checkpoint_dir);
+        if tokio::fs::try_exists(&checkpoint_path).await? {
+            tokio::fs::remove_file(&checkpoint_path).await?;
+        }
+        tracing::info!("Saving checkpoint to {}", checkpoint_path);
+        self.context.save_to_file(&checkpoint_path).await?;
+
+        // 保存人类可读的摘要 (如果文件存在会覆盖)
+        let summary_path = format!("{}/summary.txt", checkpoint_dir);
+        if tokio::fs::try_exists(&summary_path).await? {
+            tokio::fs::remove_file(&summary_path).await?;
+        }
+        tracing::info!("Saving summary to {}", summary_path);
+        tokio::fs::write(summary_path, self.context.format_status()).await?;
+
+        tracing::info!("Checkpoint saved to {}", checkpoint_path);
+
+        Ok(())
+    }
+}
+
+/// 根据环境变量初始化kafka handler
+/// KAFKA_CONSUMER_GROUP_ID 会根据测试or部署来设置
+/// 详情见 https://github.com/crates-pro/private_docs/discussions/1#discussioncomment-12032278
+async fn init_kafka_handler() -> Result<(KafkaHandler, KafkaHandler, KafkaHandler), KafkaError> {
+    let kafka_broker = env::var("KAFKA_BROKER").unwrap();
+    let consumer_group_id = env::var("KAFKA_CONSUMER_GROUP_ID").unwrap();
+    tracing::info!("Kafka parameters: {},{}", kafka_broker, consumer_group_id);
+    // 创建三个kafka handler
+    // Data from Mega
+    let import_handler = KafkaHandler::new_consumer(
+        &kafka_broker,
+        &consumer_group_id,
+        &env::var("KAFKA_IMPORT_TOPIC").unwrap(),
+    )
+    .expect("Invalid import kafka handler");
+
+    // Data from user-uploading
+    let user_import_handler = KafkaHandler::new_consumer(
+        &kafka_broker,
+        &consumer_group_id,
+        &env::var("KAFKA_USER_IMPORT_TOPIC").unwrap(),
+    )
+    .expect("Invalid import kafka handler");
+
+    // sending for analysis
+    let sender_handler =
+        KafkaHandler::new_producer(&kafka_broker).expect("Invalid import kafka handler");
+    Ok((import_handler, user_import_handler, sender_handler))
 }
 
 /// internal structure,
 /// a context for repo parsing and importing.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ImportContext {
     pub dont_clone: bool,
 
@@ -300,6 +382,10 @@ pub struct ImportContext {
     version_memory: HashSet<model::general_model::Version>,
 
     pub version_updater: VersionUpdater,
+
+    // 新增字段保存 Kafka offset
+    #[serde(default)]
+    pub kafka_offset: Option<i64>,
 }
 
 impl ImportContext {
@@ -616,7 +702,7 @@ impl ImportContext {
                     }*/
                     let proccess_need_time = proccess_time.elapsed();
                     tracing::info!("Finish processing repo: {}", repo_path.display());
-                    tracing::info!("processing repo need time: {:?}", proccess_need_time);
+                    tracing::trace!("processing repo need time: {:?}", proccess_need_time);
                 }
             }
         } else {
@@ -650,7 +736,7 @@ impl ImportContext {
         .collect();
         let collect_need_time = collect_time.elapsed();
         tracing::info!("Finish to collect_and_filter_programs {:?}", repo_path);
-        tracing::info!(
+        tracing::trace!(
             "collect_and_filter_programs need time: {:?}",
             collect_need_time
         );
@@ -681,16 +767,23 @@ impl ImportContext {
             .collect();
         let collect_need_time = collect_time.elapsed();
         tracing::info!("Finish to collect_and_filter_versions {:?}", repo_path);
-        tracing::info!(
+        tracing::trace!(
             "collect_and_filter_versions need time: {:?}",
             collect_need_time
         );
         all_dependencies
     }
 
+    async fn normalize(&mut self) {
+        self.depends_on
+            .clone_from(&(self.version_updater.to_depends_on_edges().await));
+    }
+
     /// write data base into tugraph import files
-    pub fn write_tugraph_import_files(&self) {
+    pub async fn write_tugraph_import_files(&mut self) {
         tracing::info!("Start to write");
+        self.normalize().await;
+
         let write_time = Instant::now();
         let tugraph_import_files = PathBuf::from(env::var("TUGRAPH_IMPORT_FILES_PG").unwrap());
         fs::create_dir_all(tugraph_import_files.clone())
@@ -765,7 +858,95 @@ impl ImportContext {
         );
         tracing::info!("Finish to write");
         let write_need_time = write_time.elapsed();
-        tracing::info!("write need time: {:?}", write_need_time);
+        tracing::trace!("write need time: {:?}", write_need_time);
+    }
+
+    pub async fn save_to_file(&mut self, path: &str) -> Result<(), String> {
+        self.normalize().await;
+        let serialized =
+            bincode::serialize(self).map_err(|e| format!("Serialization error: {}", e))?;
+
+        let mut file = File::create(path)
+            .await
+            .map_err(|e| format!("Failed to create file: {}", e))?;
+
+        file.write_all(&serialized)
+            .await
+            .map_err(|e| format!("Failed to write to file: {}", e))?;
+
+        Ok(())
+    }
+
+    pub async fn load_from_file(path: &str) -> Result<Self, String> {
+        tracing::info!("Start to load from file: {}", path);
+
+        let content = tokio::fs::read(path)
+            .await
+            .map_err(|e| format!("Failed to read file: {}", e))?;
+
+        let context: ImportContext =
+            bincode::deserialize(&content).map_err(|e| format!("Deserialization error: {}", e))?;
+        tracing::info!(
+            "Context loaded successfully, there are {} programs",
+            context.programs.len()
+        );
+        Ok(context)
+    }
+
+    fn format_status(&self) -> String {
+        format!(
+            "Checkpoint Summary:\n\
+             Time: {}\n\
+             Kafka Offset: {}\n\
+             \n\
+             Collection Sizes:\n\
+             - Programs: {}\n\
+             - Libraries: {}\n\
+             - Applications: {}\n\
+             - Library Versions: {}\n\
+             - Application Versions: {}\n\
+             - Versions: {}\n\
+             - Licenses: {}\n\
+             \n\
+             Memory Sets:\n\
+             - Program Memory: {}\n\
+             - Version Memory: {}\n\
+             \n\
+             Edge Collections:\n\
+             - Has Lib Type: {}\n\
+             - Has App Type: {}\n\
+             - Lib Has Version: {}\n\
+             - App Has Version: {}\n\
+             - Lib Has Dep Version: {}\n\
+             - App Has Dep Version: {}\n\
+             - Depends On: {}\n",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            self.kafka_offset.unwrap_or(-1),
+            self.programs.len(),
+            self.libraries.len(),
+            self.applications.len(),
+            self.library_versions.len(),
+            self.application_versions.len(),
+            self.versions.len(),
+            self.licenses.len(),
+            self.program_memory.len(),
+            self.version_memory.len(),
+            self.has_lib_type.len(),
+            self.has_app_type.len(),
+            self.lib_has_version.len(),
+            self.app_has_version.len(),
+            self.lib_has_dep_version.len(),
+            self.app_has_dep_version.len(),
+            self.depends_on.len(),
+        )
+    }
+
+    pub async fn print_status(&mut self) {
+        self.normalize().await;
+        tracing::info!("{}", self.format_status());
     }
 }
 

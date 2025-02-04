@@ -9,8 +9,11 @@ use data_transporter::{run_api_server, Transporter};
 use repo_import::ImportDriver;
 
 use crate::cli::CratesProCli;
+use futures_util::future::FutureExt;
+use std::sync::atomic::{AtomicBool, Ordering};
 #[allow(unused_imports)]
 use std::{env, fs, sync::Arc, time::Duration};
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::Mutex;
 
 pub struct CoreController {
@@ -48,7 +51,6 @@ impl CoreController {
             }));
 
         let dont_clone = self.cli.dont_clone;
-
         let state_clone1: Arc<tokio::sync::Mutex<SharedState>> = Arc::clone(&shared_state);
         let import_task = tokio::spawn(async move {
             if import {
@@ -60,43 +62,60 @@ impl CoreController {
                         .unwrap_or_else(|x| panic!("{}", x));
                 }
 
-                // conduct repo parsing and importing
                 let mut import_driver = ImportDriver::new(dont_clone).await;
                 let mut count = 0;
+                let is_importing = Arc::new(AtomicBool::new(false));
+                let is_importing_clone = Arc::clone(&is_importing);
+                let mut term_signal = signal(SignalKind::terminate()).unwrap();
+                let mut received_term = false;
+
                 loop {
                     let mut state = state_clone1.lock().await;
                     while state.is_packaging {
-                        drop(state); // 释放锁以便等待
+                        drop(state);
                         tokio::time::sleep(Duration::from_secs(1)).await;
-                        state = state_clone1.lock().await; // 重新获取锁
+                        state = state_clone1.lock().await;
                     }
 
-                    let _ = import_driver.import_from_mq_for_a_message().await;
-                    count += 1;
-                    //let _ = import_driver.context.write_tugraph_import_files();
-                    if count == 1000 {
-                        import_driver.context.depends_on.clone_from(
-                            &(import_driver
-                                .context
-                                .version_updater
-                                .to_depends_on_edges()
-                                .await),
+                    is_importing_clone.store(true, Ordering::SeqCst);
+                    let result = import_driver.import_from_mq_for_a_message().await;
+                    is_importing_clone.store(false, Ordering::SeqCst);
+
+                    if !received_term && term_signal.recv().now_or_never().is_some() {
+                        tracing::info!(
+                            "Import task received SIGTERM, will exit after current message"
                         );
-                        //let _ = import_driver.context.update_max_version().await.unwrap();
-                        import_driver.context.write_tugraph_import_files();
+                        received_term = true;
+                    }
+
+                    if received_term {
+                        tracing::info!("Import task saving final checkpoint...");
+                        if let Err(e) = import_driver.save_checkpoint().await {
+                            tracing::error!("Failed to save final checkpoint: {}", e);
+                        } else {
+                            tracing::info!("Final checkpoint saved successfully");
+                        }
+                        std::process::exit(0);
+                    }
+
+                    count += 1;
+                    if count == 1000 {
+                        import_driver.context.write_tugraph_import_files().await;
                         count = 0;
                     }
                     drop(state);
 
-                    tokio::time::sleep(Duration::from_secs(0)).await;
+                    if result.is_err() {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
                 }
             }
         });
 
         let state_clone2: Arc<tokio::sync::Mutex<SharedState>> = Arc::clone(&shared_state);
         let analyze_task = tokio::spawn(async move {
-            if analysis {
-                loop {
+            loop {
+                if analysis {
                     let mut state = state_clone2.lock().await;
                     while state.is_packaging {
                         drop(state);
@@ -169,8 +188,20 @@ impl CoreController {
             .unwrap();
         }
 
-        import_task.await.unwrap();
-        analyze_task.await.unwrap();
-        package_task.await.unwrap();
+        // 只等待实际运行的任务
+        if import {
+            import_task.await.unwrap();
+            tracing::info!("Import task completed");
+        }
+
+        if analysis {
+            analyze_task.await.unwrap();
+            tracing::info!("Analyze task completed");
+        }
+
+        if package {
+            package_task.await.unwrap();
+            tracing::info!("Package task completed");
+        }
     }
 }

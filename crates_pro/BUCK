@@ -23,7 +23,9 @@ pkg_deps = [
     "//third-party:structopt",
     "//third-party:tokio",
     "//third-party:tracing",
-    "//third-party:tracing-subscriber"
+    "//third-party:tracing-subscriber",
+    "//third-party:futures",
+    "//third-party:futures-util",
 ]
 
 cargo.rust_binary(

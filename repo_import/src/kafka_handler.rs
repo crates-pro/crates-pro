@@ -120,6 +120,23 @@ impl KafkaHandler {
             tracing::error!("Called send_message on a consumer");
         }
     }
+
+    /// seek to offset
+    pub async fn seek_to_offset(&self, offset: i64) -> Result<(), rdkafka::error::KafkaError> {
+        tracing::info!("Start to seek to offset: {}", offset);
+        if let KafkaHandler::Consumer(consumer) = self {
+            let topic_partitions = consumer.assignment()?;
+            for topic_partition in topic_partitions.elements() {
+                consumer.seek(
+                    topic_partition.topic(),
+                    topic_partition.partition(),
+                    rdkafka::Offset::Offset(offset),
+                    None,
+                )?;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// reset the mq
