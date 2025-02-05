@@ -12,6 +12,7 @@ rust_library(
     edition = "2021",
     deps = [
         "//project/crates-pro:model",
+        "//third-party:bincode",
         "//third-party:cargo_metadata",
         "//third-party:csv",
         "//third-party:dotenvy",

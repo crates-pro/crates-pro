@@ -17,13 +17,15 @@ pkg_deps = [
     "//project/crates-pro:search",
     "//project/crates-pro:tudriver",
     "//third-party:dotenvy",
+    "//third-party:futures",
+    "//third-party:futures-util",
     "//third-party:neo4rs",
     "//third-party:rdkafka",
     "//third-party:serde_json",
     "//third-party:structopt",
     "//third-party:tokio",
     "//third-party:tracing",
-    "//third-party:tracing-subscriber"
+    "//third-party:tracing-subscriber",
 ]
 
 cargo.rust_binary(

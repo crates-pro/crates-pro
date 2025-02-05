@@ -4,6 +4,7 @@ use crate::ImportContext;
 use git2::{Oid, Repository};
 use git2::{TreeWalkMode, TreeWalkResult};
 use model::tugraph_model::DependsOn;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::mem;
 use std::path::PathBuf;
@@ -156,7 +157,7 @@ impl ImportContext {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct VersionUpdater {
     /// a reverse record: who depends on the key?
     pub reverse_depends_on_map: HashMap<String, Vec<(String, model::general_model::Version)>>,
@@ -299,7 +300,7 @@ impl VersionUpdater {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VersionParser {
     version_map: HashMap<String, Vec<String>>,
 }

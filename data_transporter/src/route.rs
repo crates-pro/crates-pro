@@ -934,14 +934,14 @@ impl ApiHandler {
             .search_crate(&question, SearchSortCriteria::Relavance)
             .await
             .unwrap();
-        println!("search need time:{:?}", start_time2.elapsed());
+        tracing::trace!("search need time:{:?}", start_time2.elapsed());
         //
         let mut seen = HashSet::new();
         let uniq_res: Vec<RecommendCrate> = res
             .into_iter()
             .filter(|x| seen.insert((x.name.clone(), x.namespace.clone())))
             .collect();
-        println!("total programs: {}", uniq_res.len());
+        tracing::trace!("total programs: {}", uniq_res.len());
         let mut gettotal_page = uniq_res.len() / per_page;
         if uniq_res.is_empty() || uniq_res.len() % per_page != 0 {
             gettotal_page += 1;

@@ -1,4 +1,4 @@
-use csv::Writer;
+use csv::WriterBuilder;
 use lazy_static::lazy_static;
 use model::tugraph_model::{Program, UProgram};
 use serde::Serialize;
@@ -44,24 +44,16 @@ pub(crate) fn write_into_csv<T: Serialize + Default + Debug>(
     csv_path: PathBuf,
     programs: Vec<T>,
 ) -> Result<(), Box<dyn Error>> {
-    // open the csv
-
     let serialized = serde_json::to_value(T::default()).unwrap();
 
     if let serde_json::Value::Object(map) = serialized {
-        //let field_names: Vec<String> = map.keys().cloned().collect();
         let field_names: Vec<&str> = map.keys().map(|s| s.as_str()).collect();
-
-        //debug!("{:?}", field_names);
-
         write_to_csv(field_names, csv_path.to_str().unwrap(), false)?;
     }
 
     for program in &programs {
         let fields = get_fields(program);
         let fields = fields.iter().map(|s| s.as_str()).collect::<Vec<_>>();
-
-        //debug!("{:?}", fields);
         write_to_csv(fields, csv_path.to_str().unwrap(), true)?;
     }
 
@@ -82,10 +74,12 @@ fn write_to_csv(data: Vec<&str>, file_path: &str, append: bool) -> Result<(), Bo
             .open(file_path)?
     };
 
-    let mut wtr = Writer::from_writer(file);
+    let mut wtr = WriterBuilder::new()
+        .quote_style(csv::QuoteStyle::Necessary)
+        .double_quote(true)
+        .from_writer(file);
 
     wtr.write_record(&data)?;
-
     wtr.flush()?;
     Ok(())
 }
