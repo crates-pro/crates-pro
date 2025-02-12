@@ -174,7 +174,7 @@ impl DataReaderTrait for DataReader {
         namespace: String,
         name: String,
     ) -> Result<String, Box<dyn Error>> {
-        println!("{}|{}", namespace.clone(), name.clone());
+        tracing::info!("{}|{}", namespace.clone(), name.clone());
         let query = format!(
             "
             MATCH (n:program {{namespace:'{}'}}) WHERE n.name='{}'
@@ -183,6 +183,7 @@ RETURN n.github_url
             &namespace, &name
         );
         let results = self.client.exec_query(&query).await?;
+        tracing::info!("finish get github_url");
         let mut res = vec![];
         for node in results {
             res.push(node);
@@ -505,7 +506,7 @@ RETURN n.doc_url
         namespace: &str,
         nameversion: &str,
     ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>> {
-        println!("enter get_direct_dependency_nodes");
+        tracing::info!("enter get_direct_dependency_nodes");
         let query1 = format!(
             "
                 MATCH (p:program {{namespace: '{}'}})-[:has_type]->(l)-[:has_version]->(lv {{name_and_version: '{}'}})-[:has_dep_version]->(vs:version)-[:depends_on]->(m:version)

@@ -5,8 +5,8 @@ FROM tugraph/tugraph-compile-centos8:1.3.4
 # Install dependencies
 RUN dnf update -y \
     && dnf group install -y "Development Tools" \
-    && dnf install -y glibc-langpack-en sudo tzdata \
-    && dnf install -y clang cmake curl git net-tools
+    && dnf install -y glibc-langpack-en sudo tzdata
+RUN dnf install -y clang cmake curl git net-tools tree
 
 # Install Docker
 ARG DOCKER_GID

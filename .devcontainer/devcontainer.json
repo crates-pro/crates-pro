@@ -12,6 +12,9 @@
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
     "mounts": [
         "source=/home/rust/workspace/crates-pro-infra,target=/home/rust/workspace/crates-pro-infra,type=bind",
+        // Add mounts for snapshot taking
+        "source=/home/rust/src/crates-pro-control,target=/home/rust/src/crates-pro-control,type=bind",
+        "source=/mnt/devops/snapshots,target=/mnt/devops/snapshots,type=bind",
         // Add mounts for Docker and kubectl
         "source=/home/rust/.docker/config.json,target=/tmp/docker-config.json,readonly,type=bind",
         "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",

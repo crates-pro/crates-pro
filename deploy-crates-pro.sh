@@ -9,11 +9,12 @@ NAMESPACE=crates-pro
 INSTANCE=test1
 DEPLOYMENT=cratespro-backend-$INSTANCE
 KAFKA_HOST=172.17.0.1:30092
+TAKE_SNAPSHOT_BEFORE_REDEPLOY=1
 # build
-NONCE=$(openssl rand -hex 4)
-STAGE1_IMAGE=crates-pro-infra:base-$NONCE
-STAGE2_IMAGE=crates-pro-infra:override-crates-pro-$NONCE
-RUNNER_IMAGE=localhost:30500/crates-pro:local-$NONCE
+TIMESTAMP=$(date +%Y%m%d-%H%M)
+STAGE1_IMAGE=crates-pro-infra:base-$TIMESTAMP
+STAGE2_IMAGE=crates-pro-infra:override-crates-pro-$TIMESTAMP
+RUNNER_IMAGE=localhost:30500/crates-pro:local-$TIMESTAMP
 
 docker build -t $STAGE1_IMAGE \
     -f $INFRA_PATH/images/base.Dockerfile \
@@ -38,6 +39,11 @@ kubectl scale deployment $DEPLOYMENT -n $NAMESPACE --replicas=0
 while kubectl get pods -n $NAMESPACE | grep $DEPLOYMENT > /dev/null; do
     sleep 5
 done
+
+# Take snapshot if enabled
+if [ "$TAKE_SNAPSHOT_BEFORE_REDEPLOY" -eq 1 ]; then
+    /home/rust/src/crates-pro-control/cpctl-snapshot $INSTANCE
+fi
 
 # Set new image
 kubectl set image deployment/$DEPLOYMENT -n $NAMESPACE crates-pro=$RUNNER_IMAGE

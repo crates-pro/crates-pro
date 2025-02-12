@@ -5,7 +5,7 @@ use std::error::Error;
 use std::time::Instant;
 
 use crate::data_reader::DataReaderTrait;
-use crate::db::{db_connection_config_from_env, DBHandler};
+use crate::db::{db_connection_config_from_env, db_cratesio_connection_config_from_env, DBHandler};
 use crate::NameVersion;
 use crate::Query;
 use actix_multipart::Multipart;
@@ -82,8 +82,8 @@ pub struct Crateinfo {
     pub description: String,
     pub dependencies: DependencyCount,
     pub dependents: DependentCount,
-    pub cves: Vec<RustSec>,
-    pub dep_cves: Vec<RustSec>,
+    pub cves: Vec<NewRustsec>,
+    pub dep_cves: Vec<NewRustsec>,
     pub license: String,
     pub github_url: String,
     pub doc_url: String,
@@ -107,6 +107,22 @@ pub struct RustSec {
     pub aliases: Vec<String>,
     pub small_desc: String,
 }
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash)]
+pub struct NewRustsec {
+    pub id: String,
+    pub subtitle: String,
+    pub reported: String,
+    pub issued: String,
+    pub package: String,
+    pub ttype: String,
+    pub keywords: String,
+    pub aliases: String,
+    pub reference: String,
+    pub patched: String,
+    pub unaffected: String,
+    pub description: String,
+    pub url: String,
+}
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Deptree {
     pub name_and_version: String,
@@ -116,6 +132,8 @@ pub struct Deptree {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Versionpage {
     pub version: String,
+    pub updated_at: String,
+    pub downloads: String,
     pub dependents: usize,
 }
 
@@ -131,6 +149,7 @@ impl ApiHandler {
         _nversion: String,
     ) -> impl Responder {
         let db_connection_config = db_connection_config_from_env();
+        let _db_cratesio_connection_config = db_cratesio_connection_config_from_env();
         #[allow(unused_variables)]
         let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
             .await
@@ -141,17 +160,21 @@ impl ApiHandler {
             }
         });
         let dbhandler = DBHandler { client };
+        tracing::info!("finish connect cratespro");
         let res = dbhandler
             .get_version_from_pg(nsfront.clone(), nsbehind.clone(), nname.clone())
             .await
             .unwrap();
+        tracing::info!("finish get version from pg");
         if res.is_empty() {
+            tracing::info!("res is empty");
             let namespace = nsfront.clone() + "/" + &nsbehind;
             let all_versions = self
                 .reader
                 .new_get_lib_version(namespace.clone(), nname.clone())
                 .await
                 .unwrap();
+            tracing::info!("finish get all versions");
             let mut getversions = vec![];
             for version in all_versions {
                 getversions.push(version);
@@ -175,11 +198,24 @@ impl ApiHandler {
                     .new_get_all_dependents(namespace.clone(), name_and_version.clone())
                     .await
                     .unwrap();
-                let versionpage = Versionpage {
-                    version,
-                    dependents: all_dts.len(),
-                };
-                every_version.push(versionpage);
+                tracing::info!("finish get all dependents");
+                let res = dbhandler
+                    .get_dump_from_cratesio_pg(nname.clone(), version.clone())
+                    .await
+                    .unwrap();
+                tracing::info!("finish get dump from pg");
+                if !res.is_empty() {
+                    let parts: Vec<&str> = res.split("/").collect();
+                    if parts.len() == 2 {
+                        let versionpage = Versionpage {
+                            version,
+                            dependents: all_dts.len(),
+                            updated_at: parts[0].to_string(),
+                            downloads: parts[1].to_string(),
+                        };
+                        every_version.push(versionpage);
+                    }
+                }
             }
             dbhandler
                 .insert_version_into_pg(
@@ -199,10 +235,14 @@ impl ApiHandler {
                 let tmp_version = part.to_string();
                 let parts2: Vec<&str> = tmp_version.split('|').collect();
                 let res_version = parts2[0].to_string();
-                let res_dependents = parts2[1].to_string();
+                let res_updated = parts2[1].to_string();
+                let res_downloads = parts2[2].to_string();
+                let res_dependents = parts2[3].to_string();
                 let res_versionpage = Versionpage {
                     version: res_version.clone(),
                     dependents: res_dependents.parse::<usize>().unwrap(),
+                    updated_at: res_updated,
+                    downloads: res_downloads,
                 };
                 every_version.push(res_versionpage);
             }
@@ -354,7 +394,7 @@ impl ApiHandler {
 
             name_and_version = nname.clone() + "/" + &maxversion.clone();
         } //get dependency count
-        println!("name_and_version:{}", name_and_version);
+        tracing::info!("name_and_version:{}", name_and_version);
         let db_connection_config = db_connection_config_from_env();
         #[allow(unused_variables)]
         let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
@@ -365,13 +405,16 @@ impl ApiHandler {
                 eprintln!("connection error: {}", e);
             }
         });
+        tracing::info!("finish connect pg");
         let dbhandler = DBHandler { client };
         let qid = namespace.clone() + "/" + &nname + "/" + &nversion;
         let qres = dbhandler
             .query_crates_info_from_pg(&qid, nname.clone())
             .await
             .unwrap();
+        tracing::info!("finish query crates from pg");
         if qres.is_empty() {
+            tracing::info!("qres is empty");
             let mut githuburl = self
                 .reader
                 .get_github_url(namespace.clone(), nname.clone())
@@ -394,7 +437,7 @@ impl ApiHandler {
                 .await
                 .unwrap();
             let direct_dependency_count = direct_dependency_nodes.len();
-            println!(
+            tracing::info!(
                 "finish get_direct_dependency_nodes:{}",
                 direct_dependency_count
             ); //ok
@@ -425,7 +468,7 @@ impl ApiHandler {
                 .await
                 .unwrap();
             let direct_dependent_count = direct_dependent_nodes.len();
-            println!(
+            tracing::info!(
                 "finish get_direct_dependent_nodes:{}",
                 direct_dependent_count
             );

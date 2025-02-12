@@ -2,8 +2,9 @@ use std::{cmp::Ordering, collections::HashSet, env};
 
 use crate::route::{
     Crateinfo, DependencyCount, DependencyCrateInfo, DependencyInfo, DependentCount, DependentData,
-    DependentInfo, RustSec, Versionpage,
+    DependentInfo, NewRustsec, RustSec, Versionpage,
 };
+use chrono::NaiveDateTime;
 use model::tugraph_model::{Program, UProgram};
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -33,6 +34,16 @@ pub fn db_connection_config_from_env() -> String {
         env::var("POSTGRES_USER_NAME").unwrap(),
         env::var("POSTGRES_USER_PASSWORD").unwrap(),
         env::var("POSTGRES_CRATESPRO_DB").unwrap()
+    )
+}
+pub fn db_cratesio_connection_config_from_env() -> String {
+    format!(
+        "host={} port={} user={} password={} dbname={}",
+        env::var("POSTGRES_HOST_IP").unwrap(),
+        env::var("POSTGRES_HOST_PORT").unwrap(),
+        env::var("POSTGRES_USER_NAME").unwrap(),
+        env::var("POSTGRES_USER_PASSWORD").unwrap(),
+        env::var("POSTGRES_CRATESIO_DB").unwrap()
     )
 }
 
@@ -538,7 +549,8 @@ impl DBHandler {
         &self,
         cname: &str,
         version: &str,
-    ) -> Result<Vec<RustSec>, Error> {
+    ) -> Result<Vec<NewRustsec>, Error> {
+        tracing::info!("enter get direct_rustsec");
         let rows = self
             .client
             .query("SELECT * FROM rustsecs;", &[])
@@ -569,16 +581,42 @@ impl DBHandler {
                     .await
                     .unwrap();
                 if !matched {
-                    getres.push(rc.clone());
+                    let rows2 = self
+                        .client
+                        .query("SELECT * FROM rustsec_info WHERE id=$1;", &[&rc.clone().id])
+                        .await
+                        .unwrap();
+                    for row in rows2 {
+                        let tmp_id: String = row.get("id");
+                        let rs_url =
+                            "https://rustsec.org/advisories/".to_string() + &tmp_id + ".html";
+                        let nrs = NewRustsec {
+                            id: row.get("id"),
+                            subtitle: row.get("subtitle"),
+                            reported: row.get("reported"),
+                            issued: row.get("issued"),
+                            package: row.get("package"),
+                            ttype: row.get("type"),
+                            keywords: row.get("keywords"),
+                            aliases: row.get("aliases"),
+                            reference: row.get("reference"),
+                            patched: row.get("patched"),
+                            unaffected: row.get("unaffected"),
+                            description: row.get("description"),
+                            url: rs_url.clone(),
+                        };
+                        getres.push(nrs.clone());
+                    }
                 }
             }
         }
+        tracing::info!("finish get direct_rustsec");
         Ok(getres)
     }
     pub async fn get_dependency_rustsec(
         &self,
         nameversion: HashSet<String>,
-    ) -> Result<Vec<RustSec>, Error> {
+    ) -> Result<Vec<NewRustsec>, Error> {
         let rows = self
             .client
             .query("SELECT * FROM rustsecs;", &[])
@@ -613,12 +651,38 @@ impl DBHandler {
                         .await
                         .unwrap();
                     if !matched {
-                        getres.push(rc.clone());
+                        let rows2 = self
+                            .client
+                            .query("SELECT * FROM rustsec_info WHERE id=$1;", &[&rc.clone().id])
+                            .await
+                            .unwrap();
+                        for row in rows2 {
+                            let tmp_id: String = row.get("id");
+                            let rs_url =
+                                "https://rustsec.org/advisories/".to_string() + &tmp_id + ".html";
+                            let nrs = NewRustsec {
+                                id: row.get("id"),
+                                subtitle: row.get("subtitle"),
+                                reported: row.get("reported"),
+                                issued: row.get("issued"),
+                                package: row.get("package"),
+                                ttype: row.get("type"),
+                                keywords: row.get("keywords"),
+                                aliases: row.get("aliases"),
+                                reference: row.get("reference"),
+                                patched: row.get("patched"),
+                                unaffected: row.get("unaffected"),
+                                description: row.get("description"),
+                                url: rs_url.clone(),
+                            };
+                            getres.push(nrs.clone());
+                        }
+                        //getres.push(rc.clone());
                     }
                 }
             }
         }
-        let unique: Vec<RustSec> = getres
+        let unique: Vec<NewRustsec> = getres
             .into_iter()
             .collect::<HashSet<_>>()
             .into_iter()
@@ -763,6 +827,7 @@ impl DBHandler {
         id: &str,
         name: String,
     ) -> Result<Vec<Crateinfo>, Box<dyn std::error::Error>> {
+        tracing::info!("start query crates from pg");
         let rows = self
             .client
             .query(
@@ -771,6 +836,7 @@ impl DBHandler {
             )
             .await
             .unwrap();
+        tracing::info!("good 1");
         let mut cf = vec![];
         for row in rows {
             let desc: String = row.get("description");
@@ -785,69 +851,55 @@ impl DBHandler {
             let du: String = row.get("doc_url");
             let dep_cs: String = row.get("dep_cves");
             let mut getcves = vec![];
-            let everypartscs: Vec<&str> = cs.split('|').collect();
+            let everypartscs: Vec<&str> = cs.split("||||||").collect();
             for part in everypartscs {
                 let new_part = part.to_string();
-                let parts2: Vec<&str> = new_part.split('/').collect();
-                if parts2.len() == 2 {
-                    let empty_vec: Vec<String> = Vec::new();
-                    let onecve = RustSec {
+                let parts2: Vec<&str> = new_part.split("------").collect();
+                if parts2.len() == 13 {
+                    let onecve = NewRustsec {
                         id: parts2[0].to_string(),
-                        cratename: "".to_string(),
-                        patched: "".to_string(),
-                        aliases: empty_vec,
-                        small_desc: parts2[1].to_string(),
-                    };
-                    getcves.push(onecve);
-                } else if parts2.len() == 3 {
-                    let part2clone = parts2[2].to_string();
-                    let tp: Vec<&str> = part2clone.split(';').collect();
-                    let mut real_aliases = vec![];
-                    for part in tp {
-                        real_aliases.push(part.to_string());
-                    }
-                    let onecve = RustSec {
-                        id: parts2[0].to_string(),
-                        cratename: "".to_string(),
-                        patched: "".to_string(),
-                        aliases: real_aliases,
-                        small_desc: parts2[1].to_string(),
+                        subtitle: parts2[1].to_string(),
+                        reported: parts2[2].to_string(),
+                        issued: parts2[3].to_string(),
+                        package: parts2[4].to_string(),
+                        ttype: parts2[5].to_string(),
+                        keywords: parts2[6].to_string(),
+                        aliases: parts2[7].to_string(),
+                        reference: parts2[8].to_string(),
+                        patched: parts2[9].to_string(),
+                        unaffected: parts2[10].to_string(),
+                        description: parts2[12].to_string(),
+                        url: parts2[11].to_string(),
                     };
                     getcves.push(onecve);
                 }
             }
+            tracing::info!("good 2");
             let mut getdepcs = vec![];
-            let everypartsdepcs: Vec<&str> = dep_cs.split('|').collect();
+            let everypartsdepcs: Vec<&str> = dep_cs.split("||||||").collect();
             for part in everypartsdepcs {
                 let new_part = part.to_string();
-                let parts2: Vec<&str> = new_part.split('/').collect();
-                if parts2.len() == 2 {
-                    let empty_vec: Vec<String> = Vec::new();
-                    let onecve = RustSec {
+                let parts2: Vec<&str> = new_part.split("------").collect();
+                if parts2.len() == 13 {
+                    let onecve = NewRustsec {
                         id: parts2[0].to_string(),
-                        cratename: "".to_string(),
-                        patched: "".to_string(),
-                        aliases: empty_vec,
-                        small_desc: parts2[1].to_string(),
-                    };
-                    getdepcs.push(onecve);
-                } else if parts2.len() == 3 {
-                    let part2clone = parts2[2].to_string();
-                    let tp: Vec<&str> = part2clone.split(';').collect();
-                    let mut real_aliases = vec![];
-                    for part in tp {
-                        real_aliases.push(part.to_string());
-                    }
-                    let onecve = RustSec {
-                        id: parts2[0].to_string(),
-                        cratename: "".to_string(),
-                        patched: "".to_string(),
-                        aliases: real_aliases,
-                        small_desc: parts2[1].to_string(),
+                        subtitle: parts2[1].to_string(),
+                        reported: parts2[2].to_string(),
+                        issued: parts2[3].to_string(),
+                        package: parts2[4].to_string(),
+                        ttype: parts2[5].to_string(),
+                        keywords: parts2[6].to_string(),
+                        aliases: parts2[7].to_string(),
+                        reference: parts2[8].to_string(),
+                        patched: parts2[9].to_string(),
+                        unaffected: parts2[10].to_string(),
+                        description: parts2[12].to_string(),
+                        url: parts2[11].to_string(),
                     };
                     getdepcs.push(onecve);
                 }
             }
+            tracing::info!("good 3");
             let mut getversions = vec![];
             let partsvs: Vec<&str> = vs.split('/').collect();
             for part in partsvs {
@@ -872,6 +924,7 @@ impl DBHandler {
                 dep_cves: getdepcs,
             };
             cf.push(res_crates_info);
+            tracing::info!("good 4");
         }
         Ok(cf)
     }
@@ -891,33 +944,147 @@ impl DBHandler {
         let mut every_cs = vec![];
         for rs in crateinfo.clone().cves {
             let t_id = rs.clone().id;
-            let t_small_desc = rs.clone().small_desc;
-            let t_aliases = rs.clone().aliases.join(";");
-            let tmp_strings = [t_id, t_small_desc, t_aliases];
+            let mut t_subtitle = rs.clone().subtitle;
+            if t_subtitle.is_empty() {
+                t_subtitle = "Null".to_string();
+            }
+            let mut t_reported = rs.clone().reported;
+            if t_reported.is_empty() {
+                t_reported = "Null".to_string();
+            }
+            let mut t_issued = rs.clone().issued;
+            if t_issued.is_empty() {
+                t_issued = "Null".to_string();
+            }
+            let mut t_package = rs.clone().package;
+            if t_package.is_empty() {
+                t_package = "Null".to_string();
+            }
+            let mut t_type = rs.clone().ttype;
+            if t_type.is_empty() {
+                t_type = "Null".to_string();
+            }
+            let mut t_keywords = rs.clone().keywords;
+            if t_keywords.is_empty() {
+                t_keywords = "Null".to_string();
+            }
+            let mut t_aliases = rs.clone().aliases;
+            if t_aliases.is_empty() {
+                t_aliases = "Null".to_string();
+            }
+            let mut t_reference = rs.clone().reference;
+            if t_reference.is_empty() {
+                t_reference = "Null".to_string();
+            }
+            let mut t_patched = rs.clone().patched;
+            if t_patched.is_empty() {
+                t_patched = "Null".to_string();
+            }
+            let mut t_unaffected = rs.clone().unaffected;
+            if t_unaffected.is_empty() {
+                t_unaffected = "Null".to_string();
+            }
+            let mut t_desc = rs.clone().description;
+            if t_desc.is_empty() {
+                t_desc = "Null".to_string();
+            }
+            let t_url = rs.clone().url;
+            let tmp_strings = [
+                t_id,
+                t_subtitle,
+                t_reported,
+                t_issued,
+                t_package,
+                t_type,
+                t_keywords,
+                t_aliases,
+                t_reference,
+                t_patched,
+                t_unaffected,
+                t_url,
+                t_desc,
+            ];
             let result: String = tmp_strings
                 .iter()
                 .filter(|&s| !s.is_empty())
                 .cloned() // 复制引用的字符串
                 .collect::<Vec<String>>()
-                .join("/");
+                .join("------");
             every_cs.push(result);
         }
-        let cs = every_cs.clone().join("|");
+        let cs = every_cs.clone().join("||||||");
         let mut every_dep_cs = vec![];
         for rs in crateinfo.clone().dep_cves {
             let t_id = rs.clone().id;
-            let t_small_desc = rs.clone().small_desc;
-            let t_aliases = rs.clone().aliases.join(";");
-            let tmp_strings = [t_id, t_small_desc, t_aliases];
+            let mut t_subtitle = rs.clone().subtitle;
+            if t_subtitle.is_empty() {
+                t_subtitle = "Null".to_string();
+            }
+            let mut t_reported = rs.clone().reported;
+            if t_reported.is_empty() {
+                t_reported = "Null".to_string();
+            }
+            let mut t_issued = rs.clone().issued;
+            if t_issued.is_empty() {
+                t_issued = "Null".to_string();
+            }
+            let mut t_package = rs.clone().package;
+            if t_package.is_empty() {
+                t_package = "Null".to_string();
+            }
+            let mut t_type = rs.clone().ttype;
+            if t_type.is_empty() {
+                t_type = "Null".to_string();
+            }
+            let mut t_keywords = rs.clone().keywords;
+            if t_keywords.is_empty() {
+                t_keywords = "Null".to_string();
+            }
+            let mut t_aliases = rs.clone().aliases;
+            if t_aliases.is_empty() {
+                t_aliases = "Null".to_string();
+            }
+            let mut t_reference = rs.clone().reference;
+            if t_reference.is_empty() {
+                t_reference = "Null".to_string();
+            }
+            let mut t_patched = rs.clone().patched;
+            if t_patched.is_empty() {
+                t_patched = "Null".to_string();
+            }
+            let mut t_unaffected = rs.clone().unaffected;
+            if t_unaffected.is_empty() {
+                t_unaffected = "Null".to_string();
+            }
+            let mut t_desc = rs.clone().description;
+            if t_desc.is_empty() {
+                t_desc = "Null".to_string();
+            }
+            let t_url = rs.clone().url;
+            let tmp_strings = [
+                t_id,
+                t_subtitle,
+                t_reported,
+                t_issued,
+                t_package,
+                t_type,
+                t_keywords,
+                t_aliases,
+                t_reference,
+                t_patched,
+                t_unaffected,
+                t_url,
+                t_desc,
+            ];
             let result: String = tmp_strings
                 .iter()
                 .filter(|&s| !s.is_empty())
                 .cloned() // 复制引用的字符串
                 .collect::<Vec<String>>()
-                .join("/");
+                .join("------");
             every_dep_cs.push(result);
         }
-        let depcs = every_dep_cs.clone().join("|");
+        let depcs = every_dep_cs.clone().join("||||||");
         self.client
             .execute(
                 "
@@ -1018,7 +1185,13 @@ impl DBHandler {
         let mut every_version = vec![];
         for vp in versionpg {
             let dts_count = vp.dependents.to_string();
-            let one_version = vp.version.clone() + "|" + &dts_count;
+            let one_version = vp.version.clone()
+                + "|"
+                + &vp.updated_at.clone()
+                + "|"
+                + &vp.downloads.clone()
+                + "|"
+                + &dts_count;
             every_version.push(one_version);
         }
         let versions = every_version.join("/");
@@ -1034,6 +1207,44 @@ impl DBHandler {
             .await
             .unwrap();
         Ok(())
+    }
+    pub async fn get_dump_from_cratesio_pg(
+        &self,
+        name: String,
+        version: String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        tracing::info!("enter get dump");
+        let rows1 = self
+            .client
+            .query("SELECT * FROM crates WHERE name=$1 LIMIT 1", &[&name])
+            .await
+            .unwrap();
+        tracing::info!("finish get id");
+        let mut res = "".to_string();
+        for row in rows1 {
+            tracing::info!("enter rows1");
+            let crate_id: i32 = row.get("id");
+            tracing::info!("id:{}", crate_id.clone());
+            tracing::info!("start get num,up,dl");
+            let rows = self
+                .client
+                .query("SELECT * FROM versions WHERE crate_id=$1;", &[&crate_id])
+                .await
+                .unwrap();
+            tracing::info!("finish get num,up,dl");
+            for row in rows {
+                let num: String = row.get("num");
+                let updated_at: NaiveDateTime = row.get("updated_at");
+                let downloads: i32 = row.get("downloads");
+                let downloads_string = downloads.to_string();
+                let updated_at_string = updated_at.to_string();
+                if num == version {
+                    res = updated_at_string + "/" + &downloads_string;
+                }
+            }
+            tracing::info!("finish get dump");
+        }
+        Ok(res)
     }
     pub async fn get_dependency_from_pg(
         &self,
