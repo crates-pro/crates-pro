@@ -13,6 +13,7 @@ rust_library(
         "//third-party:sea-orm",
         "//third-party:serde",
         "//third-party:serde_json",
+        "//third-party:utoipa",
     ],
     visibility = ["PUBLIC"],
 )

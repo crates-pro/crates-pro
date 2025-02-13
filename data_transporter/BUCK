@@ -27,6 +27,8 @@ rust_library(
         "//third-party:tokio",
         "//third-party:tokio-postgres",
         "//third-party:tracing",
+        "//third-party:utoipa",
+        "//third-party:utoipa-swagger-ui",
         "//third-party:uuid",
         "//third-party:zip",
     ],

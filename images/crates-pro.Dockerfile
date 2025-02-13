@@ -26,6 +26,12 @@ RUN curl -O https://downloads.apache.org/kafka/${KAFKA_VERSION}/kafka_${SCALA_VE
 
 WORKDIR /workdir
 
+# Download resources required by `//third-party/vendor/utoipa-swagger-ui-9.0.0-patch1/src/lib.rs`
+# See https://github.com/crates-pro/crates-pro-infra/tree/main/third-party#step-4-update-patches
+RUN curl -L -o swagger-ui-5.17.14.zip https://github.com/swagger-api/swagger-ui/archive/refs/tags/v5.17.14.zip \
+    && unzip -j swagger-ui-5.17.14.zip "swagger-ui-5.17.14/dist/*" -d ./swagger-ui-5.17.14-dist \
+    && rm -f swagger-ui-5.17.14.zip
+
 # Copy and configure crates-pro
 COPY --from=builder /build/crates_pro ./crates_pro
 COPY --from=builder /build/.env ./.env

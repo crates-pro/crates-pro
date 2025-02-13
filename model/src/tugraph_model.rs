@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Represents detailed information about a Rust crate.
 ///
 /// This structure includes metadata fields that describe a crate, such as its name,
 /// current version, description, and various URLs related to its documentation,
 /// repository, and license, along with a count of its dependencies.
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, ToSchema)]
 pub struct Program {
     /// The id
     pub id: String,
@@ -51,7 +52,7 @@ impl Program {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub enum UProgram {
     Library(Library),
     Application(Application),
@@ -65,7 +66,7 @@ impl CrateType2Idx for UProgram {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, ToSchema)]
 pub struct Library {
     /// The id
     pub id: String,
@@ -88,7 +89,7 @@ impl Library {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, ToSchema)]
 pub struct Application {
     /// The id
     pub id: String,
@@ -106,7 +107,7 @@ impl Application {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub enum UVersion {
     LibraryVersion(LibraryVersion),
     ApplicationVersion(ApplicationVersion),
@@ -130,7 +131,7 @@ impl UVersion {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, ToSchema)]
 pub struct LibraryVersion {
     /// The id
     pub id: String,
@@ -157,7 +158,7 @@ impl LibraryVersion {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, ToSchema)]
 pub struct ApplicationVersion {
     /// The id
     pub id: String,
@@ -181,7 +182,7 @@ impl ApplicationVersion {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, ToSchema)]
 pub struct Version {
     /// The name and version of the crate.
     pub name_and_version: String,

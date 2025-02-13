@@ -11,3 +11,4 @@ chrono = { workspace = true }
 sea-orm = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+utoipa = { workspace = true, features = ["actix_extras"] }
