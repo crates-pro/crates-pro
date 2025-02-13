@@ -1,10 +1,8 @@
 mod data_packer;
 mod data_reader;
 mod db;
-mod route;
+mod handler;
 mod transporter;
-
-use std::sync::Arc;
 
 use model::tugraph_model::UVersion;
 use search::search_prepare;
@@ -14,30 +12,89 @@ pub use transporter::Transporter;
 
 use crate::data_reader::DataReader; // 确保导入你的 DataReader
 use crate::db::db_connection_config_from_env;
-use crate::route::ApiHandler;
+use crate::handler::ApiHandler;
 
 use actix_multipart::Multipart;
 use actix_web::{web, App, HttpResponse, HttpServer};
-#[derive(Deserialize, Debug)]
+use utoipa::{OpenApi, ToSchema};
+use utoipa_swagger_ui::SwaggerUi;
+
+#[derive(Deserialize, Debug, ToSchema)]
 pub struct Query {
     query: String,
     pagination: Pagination,
 }
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, ToSchema)]
 pub struct Pagination {
     page: usize,
     per_page: usize,
 }
 
-pub async fn run_api_server(
-    uri: &str,
-    user: &str,
-    password: &str,
-    db: &str,
-) -> std::io::Result<()> {
+async fn get_tugraph_api_handler() -> ApiHandler {
+    let tugraph_bolt_url = &std::env::var("TUGRAPH_BOLT_URL").unwrap();
+    let tugraph_user_name = &std::env::var("TUGRAPH_USER_NAME").unwrap();
+    let tugraph_user_password = &std::env::var("TUGRAPH_USER_PASSWORD").unwrap();
+    let tugraph_cratespro_db = &std::env::var("TUGRAPH_CRATESPRO_DB").unwrap();
+    let reader = DataReader::new(
+        tugraph_bolt_url,
+        tugraph_user_name,
+        tugraph_user_password,
+        tugraph_cratespro_db,
+    )
+    .await
+    .unwrap();
+    ApiHandler::new(reader).await
+}
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        handler::get_cves,
+        handler::get_all_crates,
+        //route::get_version_page,
+        // route::get_graph,
+        // route::get_direct_dep_for_graph,
+        // route::new_get_crates_front_info,
+        // route::new_get_dependency,
+        // route::dependency_cache,
+        // route::new_get_dependent,
+        // route::dependent_cache,
+        // route::query_crates,
+
+        // route::get_crate_details,
+    ),
+    components(
+        schemas(
+            model::tugraph_model::Program,
+            db::Allcve,
+            // Query, 
+            // Pagination,
+            // route::QueryCratesInfo,
+            // route::QueryData,
+            // route::QueryItem,
+            // route::DependencyInfo,
+            // route::DependencyCrateInfo,
+            // route::DependentInfo,
+            // route::DependentData,
+            // route::Crateinfo,
+            
+            // route::Versionpage,
+            // route::NewRustsec,
+            // NameVersion,
+            // route::Deptree,
+        )
+    ),
+    tags(
+        (name = "crates", description = "Crates API"),
+        (name = "dependencies", description = "Dependencies API"),
+        (name = "search", description = "Search API"),
+        (name = "security", description = "Security API")
+    )
+)]
+struct ApiDoc;
+
+pub async fn run_api_server() -> std::io::Result<()> {
     tracing::info!("Start run_api_server");
-    let reader = DataReader::new(uri, user, password, db).await.unwrap();
-    let api_handler = Arc::new(ApiHandler::new(Box::new(reader)).await);
     let db_connection_config = db_connection_config_from_env();
     let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
         .await
@@ -50,102 +107,104 @@ pub async fn run_api_server(
     let pre_search = search_prepare::SearchPrepare::new(&client).await;
     pre_search.prepare_tsv().await.unwrap();
     HttpServer::new(move || {
-        let api_handler_clone = Arc::clone(&api_handler);
         tracing::info!("start route");
         App::new()
-            .app_data(web::Data::new(api_handler_clone))
+            .service(
+                SwaggerUi::new("/swagger-ui/{_:.*}")
+                    .url("/api-docs/openapi.json", ApiDoc::openapi())
+            )
+            .route(
+                "/api/cvelist",
+                web::get().to(
+                    || async move {
+                        //println!("get cves");
+                        handler::get_cves().await
+                    },
+                ),
+            )
             .route(
                 "/api/crates",
-                web::get().to(|data: web::Data<Arc<ApiHandler>>| async move {
-                    data.get_all_crates().await
+                web::get().to(|| async move {
+                    handler::get_all_crates().await
                 }),
             )
             .route(
                 "/api/crates/{cratename}",
                 web::get().to(
-                    |data: web::Data<Arc<ApiHandler>>, name: web::Path<String>| async move {
+                    |name: web::Path<String>| async move {
                         println!("2");
-                        data.get_crate_details(name.into_inner().into()).await
+                        handler::get_crate_details(name.into_inner().into()).await
                     },
                 ),
             )
-            .route(
-                "/api/cvelist",
-                web::get().to(
-                    |data: web::Data<Arc<ApiHandler>>| async move {
-                        //println!("get cves");
-                        data.get_cves().await
-                    },
-                ),
-            )
+            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/versions", 
+            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
+                let (nsfront,nsbehind,cratename, version) = path.into_inner();
+                handler::get_version_page(nsfront,nsbehind,cratename,version).await
+            }))
+            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graphpage", 
+            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
+                println!("get graph page");
+                let (nsfront,nsbehind,cratename, version) = path.into_inner();
+                handler::get_graph(nsfront,nsbehind,cratename,version).await
+            }))
+
             .route(
                 "/api/submit",
                 web::post().to(
-                    |_data: web::Data<Arc<ApiHandler>>, payload: Multipart| async move {
+                    | payload: Multipart| async move {
                         println!("submit!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-                        ApiHandler::upload_crate(payload).await
+                        handler::upload_crate(payload).await
                     },
                 ),
             )
             .route("/api/search", web::post().to(
-                |data: web::Data<Arc<ApiHandler>>,payload: web::Json<Query>| async move{
+                |payload: web::Json<Query>| async move{
                     //println!("3");
                     let query = payload.into_inner();
                     //println!("query {:?}",query);
-                    data.query_crates(query).await
+                    handler::query_crates(query).await
             },),)
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies", 
-            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
+            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
                 println!("2");
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                data.dependency_cache(cratename,version,nsfront,nsbehind).await
+                handler::dependency_cache(cratename,version,nsfront,nsbehind).await
             }))
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencycache", 
-            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
+            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
                 println!("2");
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                data.new_get_dependency(cratename,version,nsfront,nsbehind).await
+                handler::new_get_dependency(cratename,version,nsfront,nsbehind).await
             }))
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graph", 
-            web::get().to(|_data:web::Data<Arc<ApiHandler>>,_path: web::Path<(String, String,String,String)>|async move{
+            web::get().to(|_path: web::Path<(String, String,String,String)>|async move{
                 println!("2");
                 //let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 //data.new_get_dependency(cratename,version,nsfront,nsbehind).await
                 HttpResponse::Ok().json(())
             }))
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependents", 
-            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
+            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                data.dependent_cache(cratename,version,nsfront,nsbehind).await
+                handler::dependent_cache(cratename,version,nsfront,nsbehind).await
             }))
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependentcache", 
-            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
+            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                data.new_get_dependent(cratename,version,nsfront,nsbehind).await
+                handler::new_get_dependent(cratename,version,nsfront,nsbehind).await
             }))
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}", 
-            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
+            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
                 println!("1");
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                data.new_get_crates_front_info(cratename,version,nsfront,nsbehind).await
+                handler::new_get_crates_front_info(cratename,version,nsfront,nsbehind).await
             }))
             .route("/api/graph/{cratename}/{version}/direct", 
-            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String,String)>|async move{
+            web::get().to(|path: web::Path<(String,String)>|async move{
                 println!("enter get graph");
                 let (cratename, version) = path.into_inner();
-                data.get_direct_dep_for_graph(cratename,version).await
-            }))
-            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/versions", 
-            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
-                println!("1");
-                let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                data.get_version_page(nsfront,nsbehind,cratename,version).await
-            }))
-            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graphpage", 
-            web::get().to(|data:web::Data<Arc<ApiHandler>>,path: web::Path<(String, String,String,String)>|async move{
-                println!("get graph page");
-                let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                data.get_graph(nsfront,nsbehind,cratename,version).await
+                handler::get_direct_dep_for_graph(cratename,version).await
             }))
     })
     .bind("0.0.0.0:6888")?
@@ -153,7 +212,7 @@ pub async fn run_api_server(
     .await
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct NameVersion {
     pub name: String,
     pub version: String,
@@ -174,7 +233,7 @@ impl NameVersion {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct VersionInfo {
     pub version_base: UVersion,
     pub dependencies: Vec<NameVersion>,

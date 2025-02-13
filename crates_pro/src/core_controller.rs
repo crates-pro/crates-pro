@@ -174,18 +174,7 @@ impl CoreController {
         });
 
         if package {
-            let tugraph_bolt_url = env::var("TUGRAPH_BOLT_URL").unwrap();
-            let tugraph_user_name = env::var("TUGRAPH_USER_NAME").unwrap();
-            let tugraph_user_password = env::var("TUGRAPH_USER_PASSWORD").unwrap();
-            let tugraph_cratespro_db = env::var("TUGRAPH_CRATESPRO_DB").unwrap();
-            run_api_server(
-                &tugraph_bolt_url,
-                &tugraph_user_name,
-                &tugraph_user_password,
-                &tugraph_cratespro_db,
-            )
-            .await
-            .unwrap();
+            run_api_server().await.unwrap();
         }
 
         // 只等待实际运行的任务

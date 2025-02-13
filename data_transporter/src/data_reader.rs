@@ -9,15 +9,13 @@ use std::{
 use tokio_postgres::NoTls;
 use tudriver::tugraph_client::TuGraphClient;
 
-use async_trait::async_trait;
-
 use crate::{
     db::{db_connection_config_from_env, DBHandler},
-    route::Deptree,
+    handler::Deptree,
     NameVersion,
 };
-#[async_trait]
-pub trait DataReaderTrait: Send + Sync {
+
+pub trait DataReaderTrait {
     async fn get_all_programs_id(&self) -> Vec<String>;
     async fn get_program(&self, program_id: &str) -> Result<Program, Box<dyn Error>>;
     async fn get_type(&self, program_id: &str) -> Result<(UProgram, bool), Box<dyn Error>>;
@@ -120,7 +118,6 @@ impl DataReader {
     }
 }
 
-#[async_trait]
 impl DataReaderTrait for DataReader {
     async fn build_graph(
         &self,
@@ -163,7 +160,7 @@ impl DataReaderTrait for DataReader {
                 direct_dependency: Vec::new(),
             };
             if visited.insert(dep_nv.clone()) {
-                let _ = self.build_graph(&mut dn, visited).await.unwrap();
+                Box::pin(self.build_graph(&mut dn, visited)).await?;
                 rootnode.direct_dependency.push(dn);
             }
         }
@@ -549,7 +546,9 @@ RETURN m.name_and_version as name_and_version
             .unwrap();
         for node in nodes.clone() {
             println!("{} {}", node.clone().name, node.clone().version);
-            let new_nodes = self.get_indirect_dependency_nodes(node).await.unwrap();
+            let new_nodes = Box::pin(self.get_indirect_dependency_nodes(node))
+                .await
+                .unwrap();
             for new_node in new_nodes {
                 println!("{} {}", new_node.clone().name, new_node.clone().version);
                 nodes.push(new_node);
@@ -672,7 +671,9 @@ RETURN m.name_and_version as name_and_version
             .await
             .unwrap();
         for node in nodes.clone() {
-            let new_nodes = self.get_indirect_dependent_nodes(node).await.unwrap();
+            let new_nodes = Box::pin(self.get_indirect_dependent_nodes(node))
+                .await
+                .unwrap();
             for new_node in new_nodes {
                 nodes.push(new_node);
             }

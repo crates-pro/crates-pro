@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::HashSet, env};
 
-use crate::route::{
+use crate::handler::{
     Crateinfo, DependencyCount, DependencyCrateInfo, DependencyInfo, DependentCount, DependentData,
     DependentInfo, NewRustsec, RustSec, Versionpage,
 };
@@ -9,10 +9,11 @@ use model::tugraph_model::{Program, UProgram};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio_postgres::{Error, NoTls};
+use utoipa::ToSchema;
 pub struct DBHandler {
     pub client: tokio_postgres::Client,
 }
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct CveInfo {
     cve_id: String,
     url: String,
@@ -21,7 +22,7 @@ pub struct CveInfo {
     start_version: String,
     end_version: String,
 }
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct Allcve {
     cves: Vec<CveInfo>,
 }
