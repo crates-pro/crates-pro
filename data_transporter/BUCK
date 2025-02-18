@@ -5,7 +5,7 @@ rust_library(
         "src/data_reader.rs",
         "src/db.rs",
         "src/lib.rs",
-        "src/route.rs",
+        "src/handler.rs",
         "src/transporter.rs",
     ],
     crate_root = "src/lib.rs",

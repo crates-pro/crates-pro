@@ -51,6 +51,14 @@ async fn get_tugraph_api_handler() -> ApiHandler {
     paths(
         handler::get_cves,
         handler::get_all_crates,
+        handler::get_version_page,
+        //handler::get_graph,
+        handler::get_crate_details,
+        handler::dependency_cache,
+        handler::dependent_cache,
+        handler::new_get_crates_front_info,
+        handler::query_crates,
+        //handler::get_graph,
         //route::get_version_page,
         // route::get_graph,
         // route::get_direct_dep_for_graph,
@@ -67,6 +75,17 @@ async fn get_tugraph_api_handler() -> ApiHandler {
         schemas(
             model::tugraph_model::Program,
             db::Allcve,
+            handler::Versionpage,
+            //handler::Deptree,
+            //handler::Crateinfo,
+            handler::DependencyInfo,
+            handler::DependentInfo,
+            handler::Crateinfo,
+            model::tugraph_model::UProgram,
+            VersionInfo,
+            Query,
+            handler::QueryCratesInfo,
+            //handler::Deptree,
             // Query, 
             // Pagination,
             // route::QueryCratesInfo,
@@ -88,7 +107,9 @@ async fn get_tugraph_api_handler() -> ApiHandler {
         (name = "crates", description = "Crates API"),
         (name = "dependencies", description = "Dependencies API"),
         (name = "search", description = "Search API"),
-        (name = "security", description = "Security API")
+        (name = "security", description = "Security API"),
+        (name = "versions", description = "Version API"),
+        //(name = "upload", description = "Upload API"),
     )
 )]
 struct ApiDoc;

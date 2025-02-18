@@ -146,7 +146,7 @@ pub struct Versionpage {
     pub dependents: usize,
 }
 
-/// 获取crates信息
+/// 获取cve信息
 #[utoipa::path(
     get,
     path = "/api/cvelist",
@@ -256,7 +256,7 @@ pub async fn get_crate_details(crate_name: web::Path<String>) -> impl Responder 
         (status = 200, description = "成功获取版本信息", body = Vec<Versionpage>),
         (status = 404, description = "未找到版本信息")
     ),
-    tag = "crates"
+    tag = "versions"
 )]
 pub async fn get_version_page(
     nsfront: String,
@@ -509,19 +509,21 @@ pub async fn get_max_version(versions: Vec<String>) -> Result<String, Box<dyn Er
     Ok(res)
 }
 
-/// 获取直接依赖关系图
+/// 获取crate主页面
 #[utoipa::path(
     get,
-    path = "/api/graph/{cratename}/{version}/direct",
+    path = "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}",
     params(
+        ("nsfront" = String, Path, description = "命名空间前缀"),
+        ("nsbehind" = String, Path, description = "命名空间后缀"), 
         ("cratename" = String, Path, description = "crate 名称"),
         ("version" = String, Path, description = "版本号")
     ),
     responses(
-        (status = 200, description = "成功获取直接依赖关系图"),
-        (status = 404, description = "未找到依赖关系图")
+        (status = 200, description = "成功获取crate信息"),
+        (status = 404, description = "未找到相关crate信息")
     ),
-    tag = "dependencies"
+    tag = "crates"
 )]
 pub async fn new_get_crates_front_info(
     nname: String,
@@ -806,7 +808,22 @@ pub async fn new_get_dependency(
     };
     HttpResponse::Ok().json(res_deps)
 }
-
+///获取依赖关系
+#[utoipa::path(
+    get,
+    path = "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies",
+    params(
+        ("nsfront" = String, Path, description = "命名空间前缀"),
+        ("nsbehind" = String, Path, description = "命名空间后缀"), 
+        ("cratename" = String, Path, description = "crate 名称"),
+        ("version" = String, Path, description = "版本号")
+    ),
+    responses(
+        (status = 200, description = "成功获取依赖关系", body = DependencyInfo),
+        (status = 404, description = "未找到依赖关系")
+    ),
+    tag = "dependencies"
+)]
 pub async fn dependency_cache(
     name: String,
     version: String,
@@ -1010,7 +1027,7 @@ pub async fn new_get_dependent(
         (status = 200, description = "成功获取被依赖关系", body = DependentInfo),
         (status = 404, description = "未找到被依赖关系")
     ),
-    tag = "dependencies"
+    tag = "dependents"
 )]
 pub async fn dependent_cache(
     name: String,
@@ -1217,7 +1234,6 @@ pub async fn query_crates(q: Query) -> impl Responder {
     //println!("response {:?}", response);
     HttpResponse::Ok().json(response)
 }
-
 pub async fn upload_crate(mut payload: Multipart) -> impl Responder {
     use futures_util::StreamExt as _;
     let analysis_result = String::new();
