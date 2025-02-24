@@ -1473,6 +1473,7 @@ pub async fn submituserinfo(info: Userinfo) -> impl Responder {
     });
     let dbhandler = DBHandler { client };
     tracing::info!("enter submituserinfo and set db client");
+    #[allow(clippy::let_unit_value)]
     let _ = dbhandler
         .insert_userinfo_into_pg(info.clone())
         .await
