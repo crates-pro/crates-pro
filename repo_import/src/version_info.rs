@@ -263,6 +263,7 @@ impl VersionUpdater {
                                 //break;
                             }
                         }
+                        #[allow(clippy::if_same_then_else)]
                         if !found {
                             v.push(model::general_model::Version::new(
                                 &cur_release.name,
