@@ -29,7 +29,37 @@ pub struct Pagination {
     page: usize,
     per_page: usize,
 }
+#[derive(Deserialize, Debug, ToSchema,Serialize,Clone)]
+pub struct Loginfo {
+    email: String,
+    image:String,
+    name: String,
+}
+#[derive(Deserialize, Debug, ToSchema,Serialize,Clone)]
+pub struct Userinfo {
+    user:Loginfo,
+    expires:String,
+}
+#[derive(Deserialize, Debug, ToSchema,Serialize,Clone)]
+pub struct UploadedCrate {
+    name:String,
+    time:String,
+}
+#[allow(non_snake_case)]
+#[derive(Debug, Deserialize)]
+struct Root {
+    requestBody: RequestBody,
+}
 
+#[derive(Debug, Deserialize)]
+struct RequestBody {
+    session: Userinfo,
+}
+#[allow(non_snake_case)]
+#[derive(Debug, Deserialize)]
+struct RequestBody2 {
+    requestBody: String,
+}
 async fn get_tugraph_api_handler() -> ApiHandler {
     let tugraph_bolt_url = &std::env::var("TUGRAPH_BOLT_URL").unwrap();
     let tugraph_user_name = &std::env::var("TUGRAPH_USER_NAME").unwrap();
@@ -179,6 +209,36 @@ pub async fn run_api_server() -> std::io::Result<()> {
                     },
                 ),
             )
+            .route(
+                "/api/submitCrate",
+                web::post().to(
+                    | payload: Multipart| async move {
+                        tracing::info!("enter submitcrate");
+                        handler::upload_crate(payload).await
+                    },
+                ),
+            )
+            .route("/api/submitUserinfo", web::post().to(
+                |payload: String| async move{
+                    //println!("3");
+                    //web::Json<Userinfo>
+                    tracing::info!("enter submitUserinfo");
+                    tracing::info!("payload:{}",payload.clone());
+                    let query:Root = serde_json::from_str(&payload).unwrap();
+                    tracing::info!("userinfo {:?}",query);
+                    //println!("query {:?}",query);
+                    handler::submituserinfo(query.requestBody.session).await
+            },),)
+            .route("/api/profile", web::post().to(
+                |payload: String| async move{
+                    //println!("3");
+                    tracing::info!("enter profile");
+                    tracing::info!("payload:{}",payload.clone());
+                    let query:RequestBody2 = serde_json::from_str(&payload).unwrap();
+                    tracing::info!("profile email:{}",query.requestBody.clone());
+                    //println!("query {:?}",query);
+                    handler::query_upload_crate(query.requestBody).await
+            },),)
             .route("/api/search", web::post().to(
                 |payload: web::Json<Query>| async move{
                     //println!("3");

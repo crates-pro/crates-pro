@@ -249,19 +249,26 @@ impl VersionUpdater {
                 if requirement.matches(&sem_ver) {
                     if let Some(v) = self.actually_depends_on_map.get_mut(reverse_dep) {
                         let mut found = false;
+                        let mut exist = false;
                         for x in &mut *v {
                             if x.name == cur_release.name {
                                 found = true;
                                 let prev_sem_ver = semver::Version::parse(&x.version).unwrap();
-                                if sem_ver > prev_sem_ver {
+                                if sem_ver == prev_sem_ver {
+                                    exist = true;
                                     //replace
-                                    x.version.clone_from(&cur_release.version);
+                                    //x.version.clone_from(&cur_release.version);
                                 }
                                 //found break;
-                                break;
+                                //break;
                             }
                         }
                         if !found {
+                            v.push(model::general_model::Version::new(
+                                &cur_release.name,
+                                &cur_release.version,
+                            ));
+                        } else if !exist {
                             v.push(model::general_model::Version::new(
                                 &cur_release.name,
                                 &cur_release.version,

@@ -1,8 +1,11 @@
 use std::{cmp::Ordering, collections::HashSet, env};
 
-use crate::handler::{
-    Crateinfo, DependencyCount, DependencyCrateInfo, DependencyInfo, DependentCount, DependentData,
-    DependentInfo, NewRustsec, RustSec, Versionpage,
+use crate::{
+    handler::{
+        Crateinfo, DependencyCount, DependencyCrateInfo, DependencyInfo, DependentCount,
+        DependentData, DependentInfo, NewRustsec, RustSec, Versionpage,
+    },
+    UploadedCrate, Userinfo,
 };
 use chrono::NaiveDateTime;
 use model::tugraph_model::{Program, UProgram};
@@ -1408,5 +1411,63 @@ impl DBHandler {
             .await
             .unwrap();
         Ok(())
+    }
+    pub async fn insert_userinfo_into_pg(
+        &self,
+        info: Userinfo,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        tracing::info!("enter insert userinfo into pg");
+        self.client
+            .execute(
+                "INSERT INTO userloginfo(
+                        id,image,name,expires) VALUES ($1, $2,$3,$4)
+                        ON CONFLICT (id)
+                        DO UPDATE SET image = $2, name = $3, expires = $4;",
+                &[
+                    &info.user.email,
+                    &info.user.image,
+                    &info.user.name,
+                    &info.expires,
+                ],
+            )
+            .await
+            .unwrap();
+        Ok(())
+    }
+    pub async fn query_uploaded_crates_from_pg(
+        &self,
+        email: String,
+    ) -> Result<Vec<UploadedCrate>, Box<dyn std::error::Error>> {
+        let rows = self
+            .client
+            .query("SELECT * FROM uploadedcrate WHERE email=$1", &[&email])
+            .await
+            .unwrap();
+        let mut res = vec![];
+        for row in rows {
+            let name: String = row.get("filename");
+            let time: String = row.get("uploadtime");
+            let tmp_res = UploadedCrate { name, time };
+            res.push(tmp_res);
+        }
+        Ok(res)
+    }
+    pub async fn query_uploaded_url_from_pg(
+        &self,
+        email: String,
+    ) -> Result<Vec<UploadedCrate>, Box<dyn std::error::Error>> {
+        let rows = self
+            .client
+            .query("SELECT * FROM uploadedurl WHERE email=$1", &[&email])
+            .await
+            .unwrap();
+        let mut res = vec![];
+        for row in rows {
+            let name: String = row.get("githuburl");
+            let time: String = row.get("uploadtime");
+            let tmp_res = UploadedCrate { name, time };
+            res.push(tmp_res);
+        }
+        Ok(res)
     }
 }
