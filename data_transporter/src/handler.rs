@@ -1,19 +1,20 @@
 use std::cmp::Ordering;
 use std::collections::HashSet;
+#[allow(unused_imports)]
 use std::env;
 use std::error::Error;
 use std::time::Instant;
 
 use crate::data_reader::{DataReader, DataReaderTrait};
 use crate::db::{db_connection_config_from_env, db_cratesio_connection_config_from_env, DBHandler};
-use crate::{get_tugraph_api_handler, NameVersion};
+use crate::{get_tugraph_api_handler, NameVersion, Userinfo};
 use crate::{Query, VersionInfo};
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse, Responder};
-use model::repo_sync_model;
-use model::repo_sync_model::CrateType;
+//use model::repo_sync_model;
+//use model::repo_sync_model::CrateType;
 use model::tugraph_model::{Program, UProgram};
-use repo_import::ImportDriver;
+//use repo_import::ImportDriver;
 use sanitize_filename::sanitize;
 use search::crates_search::RecommendCrate;
 //use search::crates_search::RecommendCrate;
@@ -277,6 +278,16 @@ pub async fn get_version_page(
         }
     });
     let dbhandler = DBHandler { client };
+    #[allow(unused_variables)]
+    let (client2, connection2) = tokio_postgres::connect(&_db_cratesio_connection_config, NoTls)
+        .await
+        .unwrap();
+    tokio::spawn(async move {
+        if let Err(e) = connection2.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+    let dbhandler2 = DBHandler { client: client2 };
     tracing::info!("finish connect cratespro");
     let res = dbhandler
         .get_version_from_pg(nsfront.clone(), nsbehind.clone(), nname.clone())
@@ -316,7 +327,7 @@ pub async fn get_version_page(
                 .await
                 .unwrap();
             tracing::info!("finish get all dependents");
-            let res = dbhandler
+            let res = dbhandler2
                 .get_dump_from_cratesio_pg(nname.clone(), version.clone())
                 .await
                 .unwrap();
@@ -1234,105 +1245,267 @@ pub async fn query_crates(q: Query) -> impl Responder {
     //println!("response {:?}", response);
     HttpResponse::Ok().json(response)
 }
+//post of upload
 pub async fn upload_crate(mut payload: Multipart) -> impl Responder {
+    tracing::info!("enter upload crate");
     use futures_util::StreamExt as _;
-    let analysis_result = String::new();
+    let mut upload_time: Option<String> = None;
+    let mut user_email: Option<String> = None;
+    let mut github_link: Option<String> = None;
+    let mut file_name: Option<String> = None;
     while let Some(Ok(mut field)) = payload.next().await {
+        tracing::info!("enter while");
         if let Some(content_disposition) = field.content_disposition() {
-            if let Some(filename) = content_disposition.get_filename() {
-                let sanitized_filename = sanitize(filename);
-                if sanitized_filename.ends_with(".zip") {
-                    let zip_filepath = format!("target/zip/upload/{}", sanitized_filename);
-                    let _ = tokio::fs::create_dir_all("target/zip/upload/").await;
-                    let mut f = tokio::fs::File::create(&zip_filepath).await.unwrap();
-                    while let Some(chunk) = field.next().await {
-                        let data = chunk.unwrap();
-                        f.write_all(&data).await.unwrap();
-                    }
-                    let parts: Vec<&str> = sanitized_filename.split('.').collect();
-                    let mut filename = "".to_string();
-                    if parts.len() >= 2 {
-                        filename = parts[0].to_string();
-                        println!("filename without zip: {}", filename);
-                    }
-                    let mut zip_file = tokio::fs::File::open(&zip_filepath).await.unwrap();
-                    let mut buffer = Vec::new();
-                    zip_file.read_to_end(&mut buffer).await.unwrap();
-                    let reader = Cursor::new(buffer.clone());
-                    let mut archive = ZipArchive::new(reader).unwrap();
-                    for i in 0..archive.len() {
-                        let mut file = archive.by_index(i).unwrap();
-                        let outpath = match file.enclosed_name() {
-                            Some(path) => {
-                                format!("target/www/uploads/{}/{}", filename, path.display())
-                            }
-                            None => continue,
-                        };
-
-                        if file.name().ends_with('/') {
-                            // This is a directory, create it
-                            tokio::fs::create_dir_all(&outpath).await.unwrap();
+            tracing::info!("enter first if");
+            if let Some(name) = content_disposition.get_name() {
+                tracing::info!("enter second if");
+                match name {
+                    "file" => {
+                        tracing::info!("enter match file");
+                        let filename = if let Some(file_name) = content_disposition.get_filename() {
+                            file_name.to_string()
                         } else {
-                            // Ensure the parent directory exists
-                            if let Some(parent) = std::path::Path::new(&outpath).parent() {
-                                if !parent.exists() {
-                                    tokio::fs::create_dir_all(&parent).await.unwrap();
-                                }
+                            "default.zip".to_string()
+                        };
+                        tracing::info!("filename:{}", filename.clone());
+                        let sanitized_filename = sanitize(filename.clone());
+                        file_name = Some(filename.clone());
+                        tracing::info!("file_name:{:?}", file_name.clone());
+                        if sanitized_filename.ends_with(".zip") {
+                            tracing::info!("enter file zip");
+                            let zip_filepath = format!("target/zip/upload/{}", sanitized_filename);
+                            let _ = tokio::fs::create_dir_all("target/zip/upload/").await;
+                            let mut f = tokio::fs::File::create(&zip_filepath).await.unwrap();
+                            while let Some(chunk) = field.next().await {
+                                let data = chunk.unwrap();
+                                f.write_all(&data).await.unwrap();
                             }
+                            let parts: Vec<&str> = sanitized_filename.split('.').collect();
+                            let mut filename = "".to_string();
+                            if parts.len() >= 2 {
+                                filename = parts[0].to_string();
+                                println!("filename without zip: {}", filename);
+                            }
+                            let mut zip_file = tokio::fs::File::open(&zip_filepath).await.unwrap();
+                            let mut buffer = Vec::new();
+                            zip_file.read_to_end(&mut buffer).await.unwrap();
+                            let reader = Cursor::new(buffer.clone());
+                            let mut archive = ZipArchive::new(reader).unwrap();
+                            for i in 0..archive.len() {
+                                let mut file = archive.by_index(i).unwrap();
+                                let outpath = match file.enclosed_name() {
+                                    Some(path) => {
+                                        format!(
+                                            "target/www/uploads/{}/{}",
+                                            filename,
+                                            path.display()
+                                        )
+                                    }
+                                    None => continue,
+                                };
 
-                            // Write the file
-                            let mut outfile = tokio::fs::File::create(&outpath).await.unwrap();
-                            while let Ok(bytes_read) = file.read(&mut buffer) {
-                                if bytes_read == 0 {
-                                    break;
+                                if file.name().ends_with('/') {
+                                    // This is a directory, create it
+                                    tokio::fs::create_dir_all(&outpath).await.unwrap();
+                                } else {
+                                    // Ensure the parent directory exists
+                                    if let Some(parent) = std::path::Path::new(&outpath).parent() {
+                                        if !parent.exists() {
+                                            tokio::fs::create_dir_all(&parent).await.unwrap();
+                                        }
+                                    }
+
+                                    // Write the file
+                                    let mut outfile =
+                                        tokio::fs::File::create(&outpath).await.unwrap();
+                                    while let Ok(bytes_read) = file.read(&mut buffer) {
+                                        if bytes_read == 0 {
+                                            break;
+                                        }
+                                        outfile.write_all(&buffer[..bytes_read]).await.unwrap();
+                                    }
                                 }
-                                outfile.write_all(&buffer[..bytes_read]).await.unwrap();
                             }
+                            tracing::info!("finish match file");
+                            //send message
+                            /*let send_url = format!("target/www/uploads/{}", filename);
+                            let sent_payload = repo_sync_model::Model {
+                                id: 0,
+                                crate_name: filename,
+                                github_url: None,
+                                mega_url: send_url,
+                                crate_type: CrateType::Lib,
+                                status: model::repo_sync_model::RepoSyncStatus::Syncing,
+                                err_message: None,
+                            };
+                            let kafka_user_import_topic =
+                                env::var("KAFKA_USER_IMPORT_TOPIC").unwrap();
+                            let import_driver = ImportDriver::new(false).await;
+                            let _ = import_driver
+                                .user_import_handler
+                                .send_message(
+                                    &kafka_user_import_topic,
+                                    "",
+                                    &serde_json::to_string(&sent_payload).unwrap(),
+                                )
+                                .await;
+                            break;*/
+                        } else {
+                            tracing::info!("enter else");
+                            let filepath =
+                                format!("/home/rust/output/www/uploads/{}", sanitized_filename);
+                            let mut f = tokio::fs::File::create(&filepath).await.unwrap();
+
+                            while let Some(chunk) = field.next().await {
+                                let data = chunk.unwrap();
+                                f.write_all(&data).await.unwrap();
+                            }
+                            break;
                         }
+                        // analyze
                     }
-                    //send message
-                    let send_url = format!("target/www/uploads/{}", filename);
-                    let sent_payload = repo_sync_model::Model {
-                        id: 0,
-                        crate_name: filename,
-                        github_url: None,
-                        mega_url: send_url,
-                        crate_type: CrateType::Lib,
-                        status: model::repo_sync_model::RepoSyncStatus::Syncing,
-                        err_message: None,
-                    };
-                    let kafka_user_import_topic = env::var("KAFKA_USER_IMPORT_TOPIC").unwrap();
-                    let import_driver = ImportDriver::new(false).await;
-                    let _ = import_driver
-                        .user_import_handler
-                        .send_message(
-                            &kafka_user_import_topic,
-                            "",
-                            &serde_json::to_string(&sent_payload).unwrap(),
-                        )
-                        .await;
-                    break;
-                } else {
-                    let filepath = format!("/home/rust/output/www/uploads/{}", sanitized_filename);
-                    let mut f = tokio::fs::File::create(&filepath).await.unwrap();
+                    "githubLink" => {
+                        let mut url_data = Vec::new();
 
-                    while let Some(chunk) = field.next().await {
-                        let data = chunk.unwrap();
-                        f.write_all(&data).await.unwrap();
+                        // 读取字段的内容
+                        while let Some(chunk) = field.next().await {
+                            let data = chunk.unwrap();
+                            url_data.extend_from_slice(&data);
+                        }
+                        github_link = Some(String::from_utf8(url_data).unwrap_or_default());
                     }
-                    break;
+                    "uploadTime" => {
+                        tracing::info!("enter match uploadtime");
+                        let mut time_data = Vec::new();
+
+                        while let Some(chunk) = field.next().await {
+                            let data = chunk.unwrap();
+                            time_data.extend_from_slice(&data);
+                        }
+                        upload_time = Some(String::from_utf8(time_data).unwrap_or_default());
+                        tracing::info!("uploadtime:{:?}", upload_time);
+                    }
+                    "user_email" => {
+                        tracing::info!("enter match user_email");
+                        let mut email_data = Vec::new();
+
+                        while let Some(chunk) = field.next().await {
+                            let data = chunk.unwrap();
+                            email_data.extend_from_slice(&data);
+                        }
+                        user_email = Some(String::from_utf8(email_data).unwrap_or_default());
+                        tracing::info!("user_email:{:?}", user_email);
+                    }
+                    _ => {
+                        tracing::info!("enter match nothing");
+                    }
                 }
-                // analyze
-            } /*else if Some("link") == field.name() {
-                  // 处理 URL 链接
-                  let mut url = String::new();
-                  while let Some(chunk) = field.next().await {
-                      url.push_str(&String::from_utf8(chunk.unwrap().to_vec()).unwrap());
-                  }
-                  println!("Received URL: {}", url);
-              }*/
+            }
         }
     }
-
-    HttpResponse::Ok().json(analysis_result)
+    if let Some(filename) = file_name {
+        tracing::info!("enter 1/2 if let");
+        let db_connection_config = db_connection_config_from_env();
+        #[allow(unused_variables)]
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+            .await
+            .unwrap();
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+        let dbhandler = DBHandler { client };
+        if let Some(uploadtime) = upload_time.clone() {
+            tracing::info!("enter upload time:{}", uploadtime.clone());
+            if let Some(useremail) = user_email.clone() {
+                tracing::info!("enter user email:{}", useremail.clone());
+                dbhandler
+                    .client
+                    .execute(
+                        "INSERT INTO uploadedcrate(email,filename,uploadtime) VALUES ($1, $2,$3);",
+                        &[&useremail.clone(), &filename.clone(), &uploadtime.clone()],
+                    )
+                    .await
+                    .unwrap();
+            }
+        }
+    };
+    if let Some(githublink) = github_link {
+        tracing::info!("enter 2/2 if let");
+        let db_connection_config = db_connection_config_from_env();
+        #[allow(unused_variables)]
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+            .await
+            .unwrap();
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+        let dbhandler = DBHandler { client };
+        if let Some(uploadtime) = upload_time.clone() {
+            if let Some(useremail) = user_email.clone() {
+                dbhandler
+                    .client
+                    .execute(
+                        "INSERT INTO uploadedurl(email,githuburl,uploadtime) VALUES ($1, $2,$3);",
+                        &[&useremail.clone(), &githublink.clone(), &uploadtime.clone()],
+                    )
+                    .await
+                    .unwrap();
+            }
+        }
+    }
+    HttpResponse::Ok().json(())
+}
+//post of log in
+pub async fn submituserinfo(info: Userinfo) -> impl Responder {
+    let db_connection_config = db_connection_config_from_env();
+    #[allow(unused_variables)]
+    let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+        .await
+        .unwrap();
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+    let dbhandler = DBHandler { client };
+    tracing::info!("enter submituserinfo and set db client");
+    #[allow(clippy::let_unit_value)]
+    let _ = dbhandler
+        .insert_userinfo_into_pg(info.clone())
+        .await
+        .unwrap();
+    HttpResponse::Ok().json(())
+}
+pub async fn query_upload_crate(email: String) -> impl Responder {
+    let db_connection_config = db_connection_config_from_env();
+    #[allow(unused_variables)]
+    let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+        .await
+        .unwrap();
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+    let dbhandler = DBHandler { client };
+    let mut real_res = vec![];
+    let res = dbhandler
+        .query_uploaded_crates_from_pg(email.clone())
+        .await
+        .unwrap();
+    for row in res {
+        real_res.push(row);
+    }
+    let res2 = dbhandler
+        .query_uploaded_url_from_pg(email.clone())
+        .await
+        .unwrap();
+    for row in res2 {
+        real_res.push(row);
+    }
+    HttpResponse::Ok().json(real_res)
 }
