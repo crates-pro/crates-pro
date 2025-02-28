@@ -15,7 +15,7 @@ use crate::utils::{
 };
 
 //use git::hard_reset_to_head;
-use git2::Repository;
+use git2::{ObjectType, Oid, Repository};
 use model::{repo_sync_model, tugraph_model::*};
 use rdkafka::error::KafkaError;
 use rdkafka::message::BorrowedMessage;
@@ -138,7 +138,7 @@ impl ImportDriver {
 
         Err(KafkaError::NoMessageReceived)
     }
-
+    #[allow(clippy::let_unit_value)]
     pub async fn import_from_mq_for_a_message(&mut self) -> Result<(), ()> {
         tracing::info!("Try to import from a message!");
         // //tracing::debug
@@ -210,6 +210,8 @@ impl ImportDriver {
 
         let clone_crates_dir =
             env::var("NEW_CRATES_DIR").unwrap_or_else(|_| CLONE_CRATES_DIR.to_string());
+        let split_crates_dir =
+            env::var("SPLIT_CRATES_DIR").unwrap_or_else(|_| CLONE_CRATES_DIR.to_string());
         //changes clone_or_not_clone
         let git_url = {
             let git_url_base = Url::parse(&git_url_base)
@@ -239,6 +241,20 @@ impl ImportDriver {
             };
             let clone_need_time = clone_start_time.elapsed();
             tracing::trace!("clone need time: {:?}", clone_need_time);
+            let parts: Vec<&str> = namespace.split("/").collect();
+            let mut crate_name = "".to_string();
+            if parts.len() == 2 {
+                crate_name = parts[1].to_string();
+            }
+            let _ = self
+                .export_tags(
+                    path.to_str().unwrap(),
+                    &split_crates_dir,
+                    namespace.clone(),
+                    crate_name,
+                )
+                .await
+                .unwrap();
             let new_versions = self
                 .context
                 .parse_a_local_repo_and_return_new_versions(local_repo_path, mega_url_suffix)
@@ -265,12 +281,25 @@ impl ImportDriver {
                 "insert_namespace_by_repo_path need time: {:?}",
                 insert_need_time
             );
+            let parts: Vec<&str> = namespace.split("/").collect();
+            let mut crate_name = "".to_string();
+            if parts.len() == 2 {
+                crate_name = parts[1].to_string();
+            }
+            let _ = self
+                .export_tags(
+                    path.to_str().unwrap(),
+                    &split_crates_dir,
+                    namespace.clone(),
+                    crate_name,
+                )
+                .await
+                .unwrap();
             let new_versions = self
                 .context
                 .parse_a_local_repo_and_return_new_versions(path, mega_url_suffix)
                 .await
                 .unwrap();
-
             if matches!(kind, MessageKind::UserUpload) {
                 for ver in new_versions {
                     self.sender_handler
@@ -284,7 +313,6 @@ impl ImportDriver {
             }
         } //changes
           //self.context.write_tugraph_import_files();
-
         tracing::info!("Finish to import from a message!");
         Ok(())
     }
@@ -313,6 +341,104 @@ impl ImportDriver {
 
         tracing::info!("Checkpoint saved to {}", checkpoint_path);
 
+        Ok(())
+    }
+    pub async fn export_version(
+        &self,
+        repo_path: &str,
+        oid: &Oid,
+        output_path: &str,
+        folder_name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = match Repository::open(repo_path) {
+            Ok(repo) => repo,
+            Err(e) => {
+                tracing::info!("Failed to open repository: {}", e);
+                return Err(e.into());
+            }
+        };
+        let output_folder = Path::new(output_path).join(folder_name);
+        if output_folder.exists() {
+            tokio::fs::remove_dir_all(&output_folder).await?;
+        }
+        tokio::fs::create_dir_all(&output_folder).await?;
+        let tree = repo
+            .find_object(*oid, Some(ObjectType::Commit))?
+            .peel_to_commit()?
+            .tree()
+            .unwrap();
+        tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
+            let entry_path = if let Some(name) = entry.name() {
+                PathBuf::from(root).join(name)
+            } else {
+                return 1;
+            };
+
+            let output_file_path = output_folder.join(entry_path);
+            if entry.kind() == Some(ObjectType::Blob) {
+                let blob = entry
+                    .to_object(&repo)
+                    .and_then(|obj| obj.peel_to_blob())
+                    .unwrap();
+                if let Some(parent) = output_file_path.parent() {
+                    std::fs::create_dir_all(parent).unwrap();
+                }
+                std::fs::write(output_file_path, blob.content()).unwrap();
+            }
+            0
+        })?;
+        Ok(())
+    }
+    #[allow(clippy::manual_flatten)]
+    pub async fn export_tags(
+        &self,
+        repo_path: &str,
+        output_dir: &str,
+        namespace: String,
+        crate_name: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repo = match Repository::open(repo_path) {
+            Ok(repo) => repo,
+            Err(e) => {
+                tracing::info!("Failed to open repository: {}", e);
+                return Err(e.into());
+            }
+        };
+
+        let mut tags = Vec::new();
+        if let Ok(tag_names) = repo.tag_names(None) {
+            for tag_name in tag_names.iter().flatten() {
+                if let Ok(tag_object) = repo.revparse_single(tag_name) {
+                    let oid = match tag_object.kind() {
+                        Some(ObjectType::Tag) => tag_object.as_tag().unwrap().target_id(),
+                        Some(ObjectType::Commit) => tag_object.id(),
+                        _ => {
+                            continue;
+                        }
+                    };
+                    tags.push((
+                        tag_name
+                            .replace("/", "_")
+                            .replace("\\", "_")
+                            .replace(":", "_"),
+                        oid,
+                    ));
+                }
+            }
+        }
+        if !tags.is_empty() {
+            let real_output_dir = output_dir.to_string() + "/" + &namespace;
+            for (version_name, oid) in &tags {
+                let real_version_name = crate_name.clone() + "-" + version_name;
+                match self
+                    .export_version(repo_path, oid, real_output_dir.as_str(), &real_version_name)
+                    .await
+                {
+                    Ok(_) => {}
+                    Err(e) => tracing::info!("Failed to export version {}: {}", version_name, e),
+                }
+            }
+        }
         Ok(())
     }
 }
