@@ -138,7 +138,7 @@ impl ImportDriver {
 
         Err(KafkaError::NoMessageReceived)
     }
-
+    #[allow(clippy::let_unit_value)]
     pub async fn import_from_mq_for_a_message(&mut self) -> Result<(), ()> {
         tracing::info!("Try to import from a message!");
         // //tracing::debug
@@ -389,6 +389,7 @@ impl ImportDriver {
         })?;
         Ok(())
     }
+    #[allow(clippy::manual_flatten)]
     pub async fn export_tags(
         &self,
         repo_path: &str,
@@ -406,24 +407,22 @@ impl ImportDriver {
 
         let mut tags = Vec::new();
         if let Ok(tag_names) = repo.tag_names(None) {
-            for tag_name in tag_names.iter() {
-                if let Some(tag_name) = tag_name {
-                    if let Ok(tag_object) = repo.revparse_single(tag_name) {
-                        let oid = match tag_object.kind() {
-                            Some(ObjectType::Tag) => tag_object.as_tag().unwrap().target_id(),
-                            Some(ObjectType::Commit) => tag_object.id(),
-                            _ => {
-                                continue;
-                            }
-                        };
-                        tags.push((
-                            tag_name
-                                .replace("/", "_")
-                                .replace("\\", "_")
-                                .replace(":", "_"),
-                            oid,
-                        ));
-                    }
+            for tag_name in tag_names.iter().flatten() {
+                if let Ok(tag_object) = repo.revparse_single(tag_name) {
+                    let oid = match tag_object.kind() {
+                        Some(ObjectType::Tag) => tag_object.as_tag().unwrap().target_id(),
+                        Some(ObjectType::Commit) => tag_object.id(),
+                        _ => {
+                            continue;
+                        }
+                    };
+                    tags.push((
+                        tag_name
+                            .replace("/", "_")
+                            .replace("\\", "_")
+                            .replace(":", "_"),
+                        oid,
+                    ));
                 }
             }
         }
@@ -432,12 +431,7 @@ impl ImportDriver {
             for (version_name, oid) in &tags {
                 let real_version_name = crate_name.clone() + "-" + version_name;
                 match self
-                    .export_version(
-                        repo_path,
-                        &oid,
-                        real_output_dir.as_str(),
-                        &real_version_name,
-                    )
+                    .export_version(repo_path, oid, real_output_dir.as_str(), &real_version_name)
                     .await
                 {
                     Ok(_) => {}
