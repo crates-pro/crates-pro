@@ -11,7 +11,7 @@ CratesPro 是一个用于分析 Rust crates 的平台，旨在追踪所有 Rust 
 
 - 依赖追踪: 通过对 crate 及其版本的建模，CratesPro 能够追踪每个 crate 的依赖关系，帮助识别和监控漏洞的传播路径。（已实现，目前在前端实现，需要优化为TuGraph实现，存入PG）
 
-- 实时分析: 对于新上传的版本，CratesPro 能够实时进行分析，并更新数据库，确保数据的及时性。（待实现，难度：易）
+- 实时分析: 对于新上传的版本，CratesPro 能够实时进行分析，并更新数据库，确保数据的及时性。
 
 - 用户界面: 提供直观的用户界面，方便用户查询和分析 crates 的依赖关系和漏洞信息。这个在 [cratespro-frontend](https://github.com/crates-pro/cratespro-frontend) 里面。
 
@@ -40,7 +40,7 @@ CoreController 模块通过异步任务管理三个主要线程：
   - general_model: 在对crate进行分析时候的模型，与Tugraph无关。
   - repo_sync_model: 从Kafka导入数据的格式，一个message代表一个Model实例。
   - tugraph_model: 导入和导出tugraph的模型，对应了Tugraph的模型，repo_import将其写为json格式。具体的tugraph的数据结构可以参考import.config.tmp。
-- repo_import: 数据导入模块，Mega在消息队列中发送消息，告诉crates-pro哪个仓库有更新，该模块读取信息，然后下载该仓库，对仓库信息进行解析。目前是自动化解析之后会把导入文件写入tugraph_import_files_mq，然后把import.config放进去，手动导入，具体导入方式参考TuGraph文档。目前服务器设置的Tugraph中也有一个cratespro数据库，不过数据不够全面。
+- repo_import: 数据导入模块，Mega在消息队列中发送消息，告诉crates-pro哪个仓库有更新，该模块读取信息，然后下载该仓库，对仓库信息进行解析。目前是自动化解析之后会把导入文件写入tugraph_import_files_mq，然后把import.config放进去，手动导入，具体导入方式参考TuGraph文档。目前服务器设置的Tugraph中也有一个cratespro数据库。
   - kafka_handler: Kafka消息队列读取模块，封装了kafka。
   - git: 封装了从mega（可以理解成github）下载仓库的代码，以及其他git操作。
   - crate_info: 解析crate的基本信息。对应于Tugraph中的Program、Library、Application结构。目前只解析了基本的信息，还有一些需要扩展。

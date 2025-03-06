@@ -40,8 +40,8 @@ while kubectl get pods -n $NAMESPACE | grep $DEPLOYMENT > /dev/null; do
     sleep 5
 done
 
-# Take snapshot if enabled
-if [ "$TAKE_SNAPSHOT_BEFORE_REDEPLOY" -eq 1 ]; then
+# Take snapshot if enabled or if INSTANCE is "main"
+if [ "$TAKE_SNAPSHOT_BEFORE_REDEPLOY" -eq 1 ] || [ "$INSTANCE" = "main" ]; then
     /home/rust/src/crates-pro-control/cpctl-snapshot $INSTANCE
 fi
 
