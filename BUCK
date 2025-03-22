@@ -5,6 +5,24 @@ alias(
     visibility = ["PUBLIC"],
 )
 
+alias(
+    name = "bin_analyze",
+    actual = "//project/crates-pro/crates_pro:bin_analyze",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "bin_data_transport",
+    actual = "//project/crates-pro/crates_pro:bin_data_transport",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "bin_repo_import",
+    actual = "//project/crates-pro/crates_pro:bin_repo_import",
+    visibility = ["PUBLIC"],
+)
+
 # libraries
 alias(
     name = "analysis",

@@ -314,6 +314,216 @@ impl DBHandler {
 
         Ok(res)
     }
+    pub async fn process_closed_interval_of_match_version(
+        &self,
+        oneline_patched: String,
+        version: String,
+    ) -> Result<bool, Error> {
+        let mut matched = false;
+        let mut two_versions = vec![];
+        let newparts: Vec<&str> = oneline_patched.split(',').collect();
+        for part in newparts {
+            let one_version = part.to_string();
+            let res_one_version = one_version.trim();
+            two_versions.push(res_one_version.to_string());
+        }
+        let mut left = "".to_string();
+        let mut right = "".to_string();
+        if two_versions.len() == 2 {
+            if two_versions[0].clone().starts_with(">") || two_versions[0].clone().starts_with(">=")
+            {
+                left = two_versions[0].clone();
+                right = two_versions[1].clone();
+            } else if two_versions[0].clone().starts_with("<")
+                || two_versions[0].clone().starts_with("<=")
+            {
+                left = two_versions[1].clone();
+                right = two_versions[0].clone();
+            }
+        }
+        if (left.starts_with(">") && !left.starts_with(">="))
+            && (right.starts_with("<") && !right.starts_with("<="))
+        {
+            //> <
+            let mut versions = vec![];
+            let tmp_left = &left[1..];
+            let left_version = tmp_left.to_string();
+            let tmp_right = &right[1..];
+            let right_version = tmp_right.to_string();
+            versions.push(version.clone());
+            versions.push(left_version.clone());
+            versions.push(right_version.clone());
+            versions.sort_by(|a, b| {
+                let version_a = Version::parse(a);
+                let version_b = Version::parse(b);
+                match (version_a, version_b) {
+                    (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a),
+                    (Ok(_), Err(_)) => Ordering::Less,
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => Ordering::Equal,
+                }
+            });
+            if version.clone() == versions[1].clone()
+                && (versions[0].clone() != version.clone()
+                    && versions[2].clone() != version.clone())
+            {
+                matched = true;
+            }
+        } else if (left.starts_with(">") && !left.starts_with(">=")) && right.starts_with("<=") {
+            //> <=
+            let mut versions = vec![];
+            let tmp_left = &left[1..];
+            let left_version = tmp_left.to_string();
+            let tmp_right = &right[2..];
+            let right_version = tmp_right.to_string();
+            versions.push(version.clone());
+            versions.push(left_version.clone());
+            versions.push(right_version.clone());
+            versions.sort_by(|a, b| {
+                let version_a = Version::parse(a);
+                let version_b = Version::parse(b);
+                match (version_a, version_b) {
+                    (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a),
+                    (Ok(_), Err(_)) => Ordering::Less,
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => Ordering::Equal,
+                }
+            });
+            if version.clone() == versions[1].clone() && (versions[2].clone() != version.clone()) {
+                matched = true;
+            }
+        } else if left.starts_with(">=") && (right.starts_with("<") && !right.starts_with("<=")) {
+            //>= <
+            let mut versions = vec![];
+            let tmp_left = &left[2..];
+            let left_version = tmp_left.to_string();
+            let tmp_right = &right[1..];
+            let right_version = tmp_right.to_string();
+            versions.push(version.clone());
+            versions.push(left_version.clone());
+            versions.push(right_version.clone());
+            versions.sort_by(|a, b| {
+                let version_a = Version::parse(a);
+                let version_b = Version::parse(b);
+                match (version_a, version_b) {
+                    (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a),
+                    (Ok(_), Err(_)) => Ordering::Less,
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => Ordering::Equal,
+                }
+            });
+            if version.clone() == versions[1].clone() && (versions[0].clone() != version.clone()) {
+                matched = true;
+            }
+        } else if left.starts_with(">=") && right.starts_with("<=") {
+            //>= <=
+            let mut versions = vec![];
+            let tmp_left = &left[2..];
+            let left_version = tmp_left.to_string();
+            let tmp_right = &right[2..];
+            let right_version = tmp_right.to_string();
+            versions.push(version.clone());
+            versions.push(left_version.clone());
+            versions.push(right_version.clone());
+            versions.sort_by(|a, b| {
+                let version_a = Version::parse(a);
+                let version_b = Version::parse(b);
+                match (version_a, version_b) {
+                    (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a),
+                    (Ok(_), Err(_)) => Ordering::Less,
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => Ordering::Equal,
+                }
+            });
+            if version.clone() == versions[1].clone() {
+                matched = true;
+            }
+        }
+        Ok(matched)
+    }
+    pub async fn process_open_interval_of_match_version(
+        &self,
+        oneline_patched: String,
+        version: String,
+    ) -> Result<bool, Error> {
+        let mut matched = false;
+        if oneline_patched.starts_with(">") && !oneline_patched.starts_with(">=") {
+            let mut versions = vec![];
+            let trimmed = &oneline_patched[1..];
+            let res = trimmed.to_string();
+            versions.push(version.clone());
+            versions.push(res.clone());
+            versions.sort_by(|a, b| {
+                let version_a = Version::parse(a);
+                let version_b = Version::parse(b);
+                match (version_a, version_b) {
+                    (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a),
+                    (Ok(_), Err(_)) => Ordering::Less,
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => Ordering::Equal,
+                }
+            });
+            if versions[0].clone() == version.clone() && res.clone() != version.clone() {
+                matched = true;
+            }
+        } else if let Some(trimmed) = oneline_patched.strip_prefix(">=") {
+            let mut versions = vec![];
+            let res = trimmed.to_string();
+            versions.push(version.clone());
+            versions.push(res.clone());
+            versions.sort_by(|a, b| {
+                let version_a = Version::parse(a);
+                let version_b = Version::parse(b);
+                match (version_a, version_b) {
+                    (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a),
+                    (Ok(_), Err(_)) => Ordering::Less,
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => Ordering::Equal,
+                }
+            });
+            if versions[0].clone() == version.clone() {
+                matched = true;
+            }
+        } else if oneline_patched.starts_with("<") && !oneline_patched.starts_with("<=") {
+            let mut versions = vec![];
+            let trimmed = &oneline_patched[1..];
+            let res = trimmed.to_string();
+            versions.push(version.clone());
+            versions.push(res.clone());
+            versions.sort_by(|a, b| {
+                let version_a = Version::parse(a);
+                let version_b = Version::parse(b);
+                match (version_a, version_b) {
+                    (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a),
+                    (Ok(_), Err(_)) => Ordering::Less,
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => Ordering::Equal,
+                }
+            });
+            if versions[1].clone() == version.clone() && res.clone() != version.clone() {
+                matched = true;
+            }
+        } else if let Some(trimmed) = oneline_patched.strip_prefix("<=") {
+            let mut versions = vec![];
+            let res = trimmed.to_string();
+            versions.push(version.clone());
+            versions.push(res.clone());
+            versions.sort_by(|a, b| {
+                let version_a = Version::parse(a);
+                let version_b = Version::parse(b);
+                match (version_a, version_b) {
+                    (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a),
+                    (Ok(_), Err(_)) => Ordering::Less,
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => Ordering::Equal,
+                }
+            });
+            if versions[1].clone() == version.clone() {
+                matched = true;
+            }
+        }
+        Ok(matched)
+    }
     pub async fn match_version(&self, patched: String, version: String) -> Result<bool, Error> {
         let mut matched = false;
         let mut part_petched = vec![];
@@ -323,140 +533,18 @@ impl DBHandler {
         }
         for np in part_petched {
             let oneline_patched = np.to_string();
-            if oneline_patched.contains(",") {
-                //闭区间
-                let mut two_versions = vec![];
-                let newparts: Vec<&str> = oneline_patched.split(',').collect();
-                for part in newparts {
-                    let one_version = part.to_string();
-                    let res_one_version = one_version.trim();
-                    two_versions.push(res_one_version.to_string());
-                }
-                let mut left = "".to_string();
-                let mut right = "".to_string();
-                if two_versions.len() == 2 {
-                    if two_versions[0].clone().starts_with(">")
-                        || two_versions[0].clone().starts_with(">=")
-                    {
-                        left = two_versions[0].clone();
-                        right = two_versions[1].clone();
-                    } else if two_versions[0].clone().starts_with("<")
-                        || two_versions[0].clone().starts_with("<=")
-                    {
-                        left = two_versions[1].clone();
-                        right = two_versions[0].clone();
-                    }
-                }
-                if (left.starts_with(">") && !left.starts_with(">="))
-                    && (right.starts_with("<") && !right.starts_with("<="))
-                {
-                    //> <
-                    let mut versions = vec![];
-                    let tmp_left = &left[1..];
-                    let left_version = tmp_left.to_string();
-                    let tmp_right = &right[1..];
-                    let right_version = tmp_right.to_string();
-                    versions.push(version.clone());
-                    versions.push(left_version.clone());
-                    versions.push(right_version.clone());
-                    versions.sort_by(|a, b| {
-                        let version_a = Version::parse(a);
-                        let version_b = Version::parse(b);
-                        match (version_a, version_b) {
-                            (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
-                            (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
-                            (Err(_), Ok(_)) => Ordering::Greater,
-                            (Err(_), Err(_)) => Ordering::Equal,
-                        }
-                    });
-                    if version.clone() == versions[1].clone()
-                        && (versions[0].clone() != version.clone()
-                            && versions[2].clone() != version.clone())
-                    {
-                        matched = true;
-                    }
-                } else if (left.starts_with(">") && !left.starts_with(">="))
-                    && right.starts_with("<=")
-                {
-                    //> <=
-                    let mut versions = vec![];
-                    let tmp_left = &left[1..];
-                    let left_version = tmp_left.to_string();
-                    let tmp_right = &right[2..];
-                    let right_version = tmp_right.to_string();
-                    versions.push(version.clone());
-                    versions.push(left_version.clone());
-                    versions.push(right_version.clone());
-                    versions.sort_by(|a, b| {
-                        let version_a = Version::parse(a);
-                        let version_b = Version::parse(b);
-                        match (version_a, version_b) {
-                            (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
-                            (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
-                            (Err(_), Ok(_)) => Ordering::Greater,
-                            (Err(_), Err(_)) => Ordering::Equal,
-                        }
-                    });
-                    if version.clone() == versions[1].clone()
-                        && (versions[2].clone() != version.clone())
-                    {
-                        matched = true;
-                    }
-                } else if left.starts_with(">=")
-                    && (right.starts_with("<") && !right.starts_with("<="))
-                {
-                    //>= <
-                    //println!("1");
-                    let mut versions = vec![];
-                    let tmp_left = &left[2..];
-                    let left_version = tmp_left.to_string();
-                    let tmp_right = &right[1..];
-                    let right_version = tmp_right.to_string();
-                    versions.push(version.clone());
-                    versions.push(left_version.clone());
-                    versions.push(right_version.clone());
-                    versions.sort_by(|a, b| {
-                        let version_a = Version::parse(a);
-                        let version_b = Version::parse(b);
-                        match (version_a, version_b) {
-                            (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
-                            (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
-                            (Err(_), Ok(_)) => Ordering::Greater,
-                            (Err(_), Err(_)) => Ordering::Equal,
-                        }
-                    });
-                    //println!("{} {} {}",versions[0].clone(),versions[1].clone(),versions[2].clone());
-                    if version.clone() == versions[1].clone()
-                        && (versions[0].clone() != version.clone())
-                    {
-                        matched = true;
-                    }
-                } else if left.starts_with(">=") && right.starts_with("<=") {
-                    //>= <=
-                    let mut versions = vec![];
-                    let tmp_left = &left[2..];
-                    let left_version = tmp_left.to_string();
-                    let tmp_right = &right[2..];
-                    let right_version = tmp_right.to_string();
-                    versions.push(version.clone());
-                    versions.push(left_version.clone());
-                    versions.push(right_version.clone());
-                    versions.sort_by(|a, b| {
-                        let version_a = Version::parse(a);
-                        let version_b = Version::parse(b);
-                        match (version_a, version_b) {
-                            (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
-                            (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
-                            (Err(_), Ok(_)) => Ordering::Greater,
-                            (Err(_), Err(_)) => Ordering::Equal,
-                        }
-                    });
-                    if version.clone() == versions[1].clone() {
-                        matched = true;
-                    }
-                }
-            } else if oneline_patched.contains("^") {
-                //具体版本
+            if oneline_patched.clone().contains(",") {
+                //closed interval
+                matched = matched
+                    || self
+                        .process_closed_interval_of_match_version(
+                            oneline_patched.clone(),
+                            version.clone(),
+                        )
+                        .await
+                        .unwrap();
+            } else if oneline_patched.clone().contains("^") {
+                //specific version
                 if let Some(trimmed) = oneline_patched.strip_prefix("^") {
                     let res = trimmed.to_string();
                     if version == res {
@@ -464,87 +552,14 @@ impl DBHandler {
                     }
                 }
             } else {
-                //单侧区间
-                if oneline_patched.starts_with(">") && !oneline_patched.starts_with(">=") {
-                    let mut versions = vec![];
-                    let trimmed = &oneline_patched[1..];
-                    let res = trimmed.to_string();
-                    versions.push(version.clone());
-                    versions.push(res.clone());
-                    versions.sort_by(|a, b| {
-                        let version_a = Version::parse(a);
-                        let version_b = Version::parse(b);
-                        match (version_a, version_b) {
-                            (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
-                            (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
-                            (Err(_), Ok(_)) => Ordering::Greater,
-                            (Err(_), Err(_)) => Ordering::Equal,
-                        }
-                    });
-                    if versions[0].clone() == version.clone() && res.clone() != version.clone() {
-                        //println!("1");
-                        matched = true;
-                    }
-                } else if let Some(trimmed) = oneline_patched.strip_prefix(">=") {
-                    let mut versions = vec![];
-                    let res = trimmed.to_string();
-                    versions.push(version.clone());
-                    versions.push(res.clone());
-                    versions.sort_by(|a, b| {
-                        let version_a = Version::parse(a);
-                        let version_b = Version::parse(b);
-                        match (version_a, version_b) {
-                            (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
-                            (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
-                            (Err(_), Ok(_)) => Ordering::Greater,
-                            (Err(_), Err(_)) => Ordering::Equal,
-                        }
-                    });
-                    //println!("{} {}",versions[0].clone(),versions[1].clone());
-                    if versions[0].clone() == version.clone() {
-                        //println!("1");
-                        matched = true;
-                    }
-                } else if oneline_patched.starts_with("<") && !oneline_patched.starts_with("<=") {
-                    //println!("1");
-                    let mut versions = vec![];
-                    let trimmed = &oneline_patched[1..];
-                    let res = trimmed.to_string();
-                    versions.push(version.clone());
-                    versions.push(res.clone());
-                    versions.sort_by(|a, b| {
-                        let version_a = Version::parse(a);
-                        let version_b = Version::parse(b);
-                        match (version_a, version_b) {
-                            (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
-                            (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
-                            (Err(_), Ok(_)) => Ordering::Greater,
-                            (Err(_), Err(_)) => Ordering::Equal,
-                        }
-                    });
-                    //println!("|{}| |{}|",versions[0].clone(),versions[1].clone());
-                    if versions[1].clone() == version.clone() && res.clone() != version.clone() {
-                        matched = true;
-                    }
-                } else if let Some(trimmed) = oneline_patched.strip_prefix("<=") {
-                    let mut versions = vec![];
-                    let res = trimmed.to_string();
-                    versions.push(version.clone());
-                    versions.push(res.clone());
-                    versions.sort_by(|a, b| {
-                        let version_a = Version::parse(a);
-                        let version_b = Version::parse(b);
-                        match (version_a, version_b) {
-                            (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
-                            (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
-                            (Err(_), Ok(_)) => Ordering::Greater,
-                            (Err(_), Err(_)) => Ordering::Equal,
-                        }
-                    });
-                    if versions[1].clone() == version.clone() {
-                        matched = true;
-                    }
-                }
+                //open interval
+                matched = matched
+                    || self
+                        .process_open_interval_of_match_version(
+                            oneline_patched.clone(),
+                            version.clone(),
+                        )
+                        .await?;
             }
         }
         Ok(matched)
@@ -693,26 +708,12 @@ impl DBHandler {
             .collect();
         Ok(unique)
     }
-    #[allow(dead_code)]
+    /*#[allow(dead_code)]
     pub async fn get_direct_cve_by_cratenameandversion(
         &self,
         cratename: &str,
         version: &str,
     ) -> Result<Vec<String>, Error> {
-        /*let rows = self
-            .client
-            .query(
-                "SELECT cve_id FROM cves WHERE name = $1;",
-                &[&cratename.to_string()],
-            )
-            .await
-            .unwrap();
-        let mut cves = vec![];
-        for row in rows {
-            let cve_id: String = row.get(0);
-            cves.push(cve_id);
-        }
-        Ok(cves)*/
         let rows = self.client.query("SELECT * FROM cves;", &[]).await.unwrap();
         let mut getallcves = vec![];
         for row in rows {
@@ -804,7 +805,7 @@ impl DBHandler {
             .into_iter()
             .collect();
         Ok(unique)
-    }
+    }*/
     pub async fn get_license_by_name(
         &self,
         namespace: &str,
@@ -840,7 +841,7 @@ impl DBHandler {
             )
             .await
             .unwrap();
-        tracing::info!("good 1");
+
         let mut cf = vec![];
         for row in rows {
             let desc: String = row.get("description");
@@ -878,7 +879,7 @@ impl DBHandler {
                     getcves.push(onecve);
                 }
             }
-            tracing::info!("good 2");
+
             let mut getdepcs = vec![];
             let everypartsdepcs: Vec<&str> = dep_cs.split("||||||").collect();
             for part in everypartsdepcs {
@@ -903,7 +904,7 @@ impl DBHandler {
                     getdepcs.push(onecve);
                 }
             }
-            tracing::info!("good 3");
+
             let mut getversions = vec![];
             let partsvs: Vec<&str> = vs.split('/').collect();
             for part in partsvs {
@@ -928,25 +929,15 @@ impl DBHandler {
                 dep_cves: getdepcs,
             };
             cf.push(res_crates_info);
-            tracing::info!("good 4");
         }
         Ok(cf)
     }
-    pub async fn insert_crates_info_into_pg(
+    pub async fn process_cves(
         &self,
-        crateinfo: Crateinfo,
-        namespace: String,
-        name: String,
-        version: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let id = namespace.clone() + "/" + &name + "/" + &version;
-        let dcyct = crateinfo.dependencies.direct as i32;
-        let indcyct = crateinfo.dependencies.indirect as i32;
-        let dtct = crateinfo.dependents.direct as i32;
-        let indtct = crateinfo.dependents.indirect as i32;
-        let vs = crateinfo.versions.clone().join("/");
+        cves: Vec<NewRustsec>,
+    ) -> Result<String, Box<dyn std::error::Error>> {
         let mut every_cs = vec![];
-        for rs in crateinfo.clone().cves {
+        for rs in cves {
             let t_id = rs.clone().id;
             let mut t_subtitle = rs.clone().subtitle;
             if t_subtitle.is_empty() {
@@ -1017,78 +1008,23 @@ impl DBHandler {
             every_cs.push(result);
         }
         let cs = every_cs.clone().join("||||||");
-        let mut every_dep_cs = vec![];
-        for rs in crateinfo.clone().dep_cves {
-            let t_id = rs.clone().id;
-            let mut t_subtitle = rs.clone().subtitle;
-            if t_subtitle.is_empty() {
-                t_subtitle = "Null".to_string();
-            }
-            let mut t_reported = rs.clone().reported;
-            if t_reported.is_empty() {
-                t_reported = "Null".to_string();
-            }
-            let mut t_issued = rs.clone().issued;
-            if t_issued.is_empty() {
-                t_issued = "Null".to_string();
-            }
-            let mut t_package = rs.clone().package;
-            if t_package.is_empty() {
-                t_package = "Null".to_string();
-            }
-            let mut t_type = rs.clone().ttype;
-            if t_type.is_empty() {
-                t_type = "Null".to_string();
-            }
-            let mut t_keywords = rs.clone().keywords;
-            if t_keywords.is_empty() {
-                t_keywords = "Null".to_string();
-            }
-            let mut t_aliases = rs.clone().aliases;
-            if t_aliases.is_empty() {
-                t_aliases = "Null".to_string();
-            }
-            let mut t_reference = rs.clone().reference;
-            if t_reference.is_empty() {
-                t_reference = "Null".to_string();
-            }
-            let mut t_patched = rs.clone().patched;
-            if t_patched.is_empty() {
-                t_patched = "Null".to_string();
-            }
-            let mut t_unaffected = rs.clone().unaffected;
-            if t_unaffected.is_empty() {
-                t_unaffected = "Null".to_string();
-            }
-            let mut t_desc = rs.clone().description;
-            if t_desc.is_empty() {
-                t_desc = "Null".to_string();
-            }
-            let t_url = rs.clone().url;
-            let tmp_strings = [
-                t_id,
-                t_subtitle,
-                t_reported,
-                t_issued,
-                t_package,
-                t_type,
-                t_keywords,
-                t_aliases,
-                t_reference,
-                t_patched,
-                t_unaffected,
-                t_url,
-                t_desc,
-            ];
-            let result: String = tmp_strings
-                .iter()
-                .filter(|&s| !s.is_empty())
-                .cloned() // 复制引用的字符串
-                .collect::<Vec<String>>()
-                .join("------");
-            every_dep_cs.push(result);
-        }
-        let depcs = every_dep_cs.clone().join("||||||");
+        Ok(cs)
+    }
+    pub async fn insert_crates_info_into_pg(
+        &self,
+        crateinfo: Crateinfo,
+        namespace: String,
+        name: String,
+        version: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let id = namespace.clone() + "/" + &name + "/" + &version;
+        let dcyct = crateinfo.dependencies.direct as i32;
+        let indcyct = crateinfo.dependencies.indirect as i32;
+        let dtct = crateinfo.dependents.direct as i32;
+        let indtct = crateinfo.dependents.indirect as i32;
+        let vs = crateinfo.versions.clone().join("/");
+        let cs = self.process_cves(crateinfo.clone().cves).await.unwrap();
+        let depcs = self.process_cves(crateinfo.clone().dep_cves).await.unwrap();
         self.client
             .execute(
                 "

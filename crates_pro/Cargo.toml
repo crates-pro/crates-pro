@@ -9,6 +9,18 @@ name = "crates_pro"
 path = "src/main.rs"
 
 [[bin]]
+name = "analyze"
+path = "src/bin/bin_analyze.rs"
+
+[[bin]]
+name = "data_transport"
+path = "src/bin/bin_data_transport.rs"
+
+[[bin]]
+name = "repo_import"
+path = "src/bin/bin_repo_import.rs"
+
+[[bin]]
 name = "benchmark_controller"
 path = "src/bin/benchmark_controller.rs"
 
