@@ -10,15 +10,15 @@ path = "src/main.rs"
 
 [[bin]]
 name = "analyze"
-path = "src/bin/analyze.rs"
+path = "src/bin/bin_analyze.rs"
 
 [[bin]]
 name = "data_transport"
-path = "src/bin/data_transport.rs"
+path = "src/bin/bin_data_transport.rs"
 
 [[bin]]
 name = "repo_import"
-path = "src/bin/repo_import.rs"
+path = "src/bin/bin_repo_import.rs"
 
 [[bin]]
 name = "benchmark_controller"
