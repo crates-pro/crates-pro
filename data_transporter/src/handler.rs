@@ -881,6 +881,7 @@ pub async fn query_crates(q: Query) -> impl Responder {
     HttpResponse::Ok().json(response)
 }
 //post of upload
+#[allow(clippy::let_unit_value)]
 pub async fn upload_crate(mut payload: Multipart) -> impl Responder {
     tracing::info!("enter upload crate");
     use futures_util::StreamExt as _;

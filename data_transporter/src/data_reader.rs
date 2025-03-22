@@ -1027,7 +1027,6 @@ RETURN m.name_and_version as name_and_version
             let parsed: Value = serde_json::from_str(&res).unwrap();
             if let Some(version) = parsed.get("n.version").and_then(|v| v.as_str()) {
                 realres.push(version.to_string());
-            } else {
             }
         }
 
@@ -1055,7 +1054,6 @@ RETURN lv.version",
             let parsed: Value = serde_json::from_str(&res).unwrap();
             if let Some(version) = parsed.get("lv.version").and_then(|v| v.as_str()) {
                 realres.push(version.to_string());
-            } else {
             }
         }
 
@@ -1073,7 +1071,6 @@ RETURN lv.version",
             let parsed: Value = serde_json::from_str(&res).unwrap();
             if let Some(version) = parsed.get("n.version").and_then(|v| v.as_str()) {
                 realres.push(version.to_string());
-            } else {
             }
         }
         Ok(realres)
@@ -1100,7 +1097,6 @@ RETURN av.version",
             let parsed: Value = serde_json::from_str(&res).unwrap();
             if let Some(version) = parsed.get("av.version").and_then(|v| v.as_str()) {
                 realres.push(version.to_string());
-            } else {
             }
         }
 
