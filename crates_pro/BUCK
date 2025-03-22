@@ -6,6 +6,9 @@ filegroup(
         "src/cli.rs",
         "src/core_controller.rs",
         "src/main.rs",
+        "src/bin/bin_analyze.rs",
+        "src/bin/bin_data_transport.rs",
+        "src/bin/bin_repo_import.rs",
     ],
 )
 
@@ -32,6 +35,33 @@ cargo.rust_binary(
     name = "crates_pro",
     srcs = [":crates_pro-0.1.0.crate"],
     crate_root = "crates_pro-0.1.0.crate/src/main.rs",
+    edition = "2021",
+    deps = pkg_deps,
+    visibility = ["PUBLIC"],
+)
+
+cargo.rust_binary(
+    name = "bin_analyze",
+    srcs = [":crates_pro-0.1.0.crate"],
+    crate_root = "crates_pro-0.1.0.crate/src/bin/bin_analyze.rs",
+    edition = "2021",
+    deps = pkg_deps,
+    visibility = ["PUBLIC"],
+)
+
+cargo.rust_binary(
+    name = "bin_data_transport",
+    srcs = [":crates_pro-0.1.0.crate"],
+    crate_root = "crates_pro-0.1.0.crate/src/bin/bin_data_transport.rs",
+    edition = "2021",
+    deps = pkg_deps,
+    visibility = ["PUBLIC"],
+)
+
+cargo.rust_binary(
+    name = "bin_repo_import",
+    srcs = [":crates_pro-0.1.0.crate"],
+    crate_root = "crates_pro-0.1.0.crate/src/bin/bin_repo_import.rs",
     edition = "2021",
     deps = pkg_deps,
     visibility = ["PUBLIC"],

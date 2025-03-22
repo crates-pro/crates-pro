@@ -168,7 +168,6 @@ pub async fn run_api_server() -> std::io::Result<()> {
                 "/api/cvelist",
                 web::get().to(
                     || async move {
-                        //println!("get cves");
                         handler::get_cves().await
                     },
                 ),
@@ -183,7 +182,6 @@ pub async fn run_api_server() -> std::io::Result<()> {
                 "/api/crates/{cratename}",
                 web::get().to(
                     |name: web::Path<String>| async move {
-                        println!("2");
                         handler::get_crate_details(name.into_inner().into()).await
                     },
                 ),
@@ -195,7 +193,6 @@ pub async fn run_api_server() -> std::io::Result<()> {
             }))
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graphpage", 
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
-                println!("get graph page");
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 handler::get_graph(nsfront,nsbehind,cratename,version).await
             }))
@@ -204,7 +201,6 @@ pub async fn run_api_server() -> std::io::Result<()> {
                 "/api/submit",
                 web::post().to(
                     | payload: Multipart| async move {
-                        println!("submit!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
                         handler::upload_crate(payload).await
                     },
                 ),
@@ -220,49 +216,38 @@ pub async fn run_api_server() -> std::io::Result<()> {
             )
             .route("/api/submitUserinfo", web::post().to(
                 |payload: String| async move{
-                    //println!("3");
                     //web::Json<Userinfo>
                     tracing::info!("enter submitUserinfo");
                     tracing::info!("payload:{}",payload.clone());
                     let query:Root = serde_json::from_str(&payload).unwrap();
                     tracing::info!("userinfo {:?}",query);
-                    //println!("query {:?}",query);
                     handler::submituserinfo(query.requestBody.session).await
             },),)
             .route("/api/profile", web::post().to(
                 |payload: String| async move{
-                    //println!("3");
                     tracing::info!("enter profile");
                     tracing::info!("payload:{}",payload.clone());
                     let query:RequestBody2 = serde_json::from_str(&payload).unwrap();
                     tracing::info!("profile email:{}",query.requestBody.clone());
-                    //println!("query {:?}",query);
                     handler::query_upload_crate(query.requestBody).await
             },),)
             .route("/api/search", web::post().to(
                 |payload: web::Json<Query>| async move{
-                    //println!("3");
                     let query = payload.into_inner();
-                    //println!("query {:?}",query);
                     handler::query_crates(query).await
             },),)
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies", 
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
-                println!("2");
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 handler::dependency_cache(cratename,version,nsfront,nsbehind).await
             }))
-            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencycache", 
+            /* .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencycache", 
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
-                println!("2");
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 handler::new_get_dependency(cratename,version,nsfront,nsbehind).await
-            }))
+            }))*/
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graph", 
             web::get().to(|_path: web::Path<(String, String,String,String)>|async move{
-                println!("2");
-                //let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                //data.new_get_dependency(cratename,version,nsfront,nsbehind).await
                 HttpResponse::Ok().json(())
             }))
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependents", 
@@ -270,20 +255,18 @@ pub async fn run_api_server() -> std::io::Result<()> {
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 handler::dependent_cache(cratename,version,nsfront,nsbehind).await
             }))
-            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependentcache", 
+            /* .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependentcache", 
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 handler::new_get_dependent(cratename,version,nsfront,nsbehind).await
-            }))
+            }))*/
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}", 
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
-                println!("1");
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 handler::new_get_crates_front_info(cratename,version,nsfront,nsbehind).await
             }))
             .route("/api/graph/{cratename}/{version}/direct", 
             web::get().to(|path: web::Path<(String,String)>|async move{
-                println!("enter get graph");
                 let (cratename, version) = path.into_inner();
                 handler::get_direct_dep_for_graph(cratename,version).await
             }))

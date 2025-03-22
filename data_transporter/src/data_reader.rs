@@ -1,8 +1,10 @@
 use model::tugraph_model::{
     Application, ApplicationVersion, Library, LibraryVersion, Program, UProgram, UVersion,
 };
+use semver::Version;
 use serde_json::Value;
 use std::{
+    cmp::Ordering,
     collections::{HashSet, VecDeque},
     error::Error,
 };
@@ -10,8 +12,11 @@ use tokio_postgres::NoTls;
 use tudriver::tugraph_client::TuGraphClient;
 
 use crate::{
-    db::{db_connection_config_from_env, DBHandler},
-    handler::Deptree,
+    db::{db_connection_config_from_env, db_cratesio_connection_config_from_env, DBHandler},
+    handler::{
+        Crateinfo, DependencyCount, DependencyCrateInfo, DependencyInfo, DependentCount,
+        DependentData, DependentInfo, Deptree, Versionpage,
+    },
     NameVersion,
 };
 
@@ -65,6 +70,7 @@ pub trait DataReaderTrait {
     ) -> Result<Vec<String>, Box<dyn Error>>;
     #[allow(dead_code)]
     async fn get_app_version(&self, name: String) -> Result<Vec<String>, Box<dyn Error>>;
+    #[allow(dead_code)]
     async fn new_get_app_version(
         &self,
         namespace: String,
@@ -79,11 +85,11 @@ pub trait DataReaderTrait {
         namespace: String,
         nameversion: String,
     ) -> Result<HashSet<String>, Box<dyn Error>>;
-    #[allow(dead_code)]
+    /*#[allow(dead_code)]
     async fn get_all_dependents(
         &self,
         nameversion: NameVersion,
-    ) -> Result<HashSet<String>, Box<dyn Error>>;
+    ) -> Result<HashSet<String>, Box<dyn Error>>;*/
     async fn new_get_all_dependents(
         &self,
         namespace: String,
@@ -100,6 +106,33 @@ pub trait DataReaderTrait {
         rootnode: &mut Deptree,
         visited: &mut HashSet<String>,
     ) -> Result<(), Box<dyn Error>>;
+    async fn get_version_page_from_tg(
+        &self,
+        nsfront: String,
+        nsbehind: String,
+        nname: String,
+    ) -> Result<Vec<Versionpage>, Box<dyn Error>>;
+    async fn get_crates_front_info_from_tg(
+        &self,
+        nname: String,
+        nversion: String,
+        nsfront: String,
+        nsbehind: String,
+    ) -> Result<Crateinfo, Box<dyn Error>>;
+    async fn get_dependency_from_tg(
+        &self,
+        name: String,
+        version: String,
+        nsfront: String,
+        nsbehind: String,
+    ) -> Result<DependencyInfo, Box<dyn Error>>;
+    async fn get_dependent_from_tg(
+        &self,
+        name: String,
+        version: String,
+        nsfront: String,
+        nsbehind: String,
+    ) -> Result<DependentInfo, Box<dyn Error>>;
 }
 
 #[derive(Clone)]
@@ -119,17 +152,207 @@ impl DataReader {
 }
 
 impl DataReaderTrait for DataReader {
-    async fn build_graph(
+    async fn get_dependent_from_tg(
         &self,
-        rootnode: &mut Deptree,
-        visited: &mut HashSet<String>,
-    ) -> Result<(), Box<dyn Error>> {
-        let name_and_version = &rootnode.name_and_version;
-        let res = self
-            .get_direct_dependency_nodes(name_and_version)
+        name: String,
+        version: String,
+        nsfront: String,
+        nsbehind: String,
+    ) -> Result<DependentInfo, Box<dyn Error>> {
+        let namespace = nsfront.clone() + "/" + &nsbehind.clone();
+        let nameversion = name.clone() + "/" + &version.clone();
+        let direct_nodes = self
+            .new_get_direct_dependent_nodes(&namespace, &nameversion)
             .await
             .unwrap();
-        println!("direct dep count:{}", res.len());
+        let getdirect_count = direct_nodes.len();
+        let all_dependent_nodes = self
+            .new_get_all_dependents(namespace.clone(), nameversion.clone())
+            .await
+            .unwrap();
+        let mut indirect_dependent = vec![];
+        for node in all_dependent_nodes {
+            let mut dr = false;
+            for node2 in direct_nodes.clone() {
+                let nv = node2.name.clone() + "/" + &node2.version.clone();
+                if node == nv {
+                    dr = true;
+                    break;
+                }
+            }
+            if !dr {
+                indirect_dependent.push(node);
+            }
+        }
+        let indirect_dependent_count = indirect_dependent.len();
+        let mut deps = vec![];
+        let mut count1 = 0;
+        for item in direct_nodes {
+            let dep = DependentData {
+                crate_name: item.clone().name,
+                version: item.clone().version,
+                relation: "Direct".to_string(),
+            };
+            deps.push(dep);
+            count1 += 1;
+            if count1 == 50 {
+                break;
+            }
+        }
+        let mut count2 = 0;
+        for item in indirect_dependent {
+            let parts: Vec<&str> = item.split('/').collect();
+            let dep = DependentData {
+                crate_name: parts[0].to_string(),
+                version: parts[1].to_string(),
+                relation: "Indirect".to_string(),
+            };
+            count2 += 1;
+            if count2 == 50 {
+                break;
+            }
+            deps.push(dep);
+        }
+
+        let res_deps = DependentInfo {
+            direct_count: getdirect_count,
+            indirect_count: indirect_dependent_count,
+            data: deps,
+        };
+        Ok(res_deps)
+    }
+    async fn get_dependency_from_tg(
+        &self,
+        name: String,
+        version: String,
+        nsfront: String,
+        nsbehind: String,
+    ) -> Result<DependencyInfo, Box<dyn Error>> {
+        let namespace = nsfront.clone() + "/" + &nsbehind.clone();
+        let nameversion = name.clone() + "/" + &version.clone();
+        tracing::info!("{} {}", namespace.clone(), nameversion.clone());
+        let direct_nodes = self
+            .new_get_direct_dependency_nodes(&namespace, &nameversion)
+            .await
+            .unwrap();
+        let getdirect_count = direct_nodes.len();
+        let all_dependency_nodes = self
+            .new_get_all_dependencies(namespace.clone(), nameversion.clone())
+            .await
+            .unwrap();
+        let mut indirect_dependency = vec![];
+        for node in all_dependency_nodes {
+            let mut dr = false;
+            for node2 in direct_nodes.clone() {
+                let nv = node2.name.clone() + "/" + &node2.version.clone();
+                if node == nv {
+                    dr = true;
+                    break;
+                }
+            }
+            if !dr {
+                indirect_dependency.push(node);
+            }
+        }
+        let indirect_dependency_count = indirect_dependency.len();
+        let mut deps = vec![];
+        for item in direct_nodes {
+            let dep_count = self.count_dependencies(item.clone()).await.unwrap();
+            let dep = DependencyCrateInfo {
+                crate_name: item.clone().name,
+                version: item.clone().version,
+                relation: "Direct".to_string(),
+                license: "".to_string(),
+                dependencies: dep_count,
+            };
+            deps.push(dep);
+        }
+        for item in indirect_dependency {
+            let parts: Vec<&str> = item.split('/').collect();
+            let newitem = NameVersion {
+                name: parts[0].to_string(),
+                version: parts[1].to_string(),
+            };
+            let dep_count = self.count_dependencies(newitem.clone()).await.unwrap();
+
+            let dep = DependencyCrateInfo {
+                crate_name: parts[0].to_string(),
+                version: parts[1].to_string(),
+                relation: "Indirect".to_string(),
+                license: "".to_string(),
+                dependencies: dep_count,
+            };
+            deps.push(dep);
+        }
+
+        let res_deps = DependencyInfo {
+            direct_count: getdirect_count,
+            indirect_count: indirect_dependency_count,
+            data: deps,
+        };
+        Ok(res_deps)
+    }
+    async fn get_crates_front_info_from_tg(
+        &self,
+        nname: String,
+        nversion: String,
+        nsfront: String,
+        nsbehind: String,
+    ) -> Result<Crateinfo, Box<dyn Error>> {
+        let namespace = nsfront.clone() + "/" + &nsbehind.clone();
+        let name_and_version = nname.clone() + "/" + &nversion.clone();
+        let mut githuburl = self
+            .get_github_url(namespace.clone(), nname.clone())
+            .await
+            .unwrap();
+        if githuburl == *"null" || githuburl == *"None" {
+            githuburl = "".to_string();
+        }
+        let mut docurl = self
+            .get_doc_url(namespace.clone(), nname.clone())
+            .await
+            .unwrap();
+        if docurl == *"null" || docurl == *"None" {
+            docurl = "".to_string();
+        }
+        let direct_dependency_nodes = self
+            .new_get_direct_dependency_nodes(&namespace, &name_and_version)
+            .await
+            .unwrap();
+        let direct_dependency_count = direct_dependency_nodes.len();
+        tracing::info!(
+            "finish get_direct_dependency_nodes:{}",
+            direct_dependency_count
+        ); //ok
+        let all_dependency_nodes = self
+            .new_get_all_dependencies(namespace.clone(), name_and_version.clone())
+            .await
+            .unwrap();
+        let mut indirect_dependency = vec![];
+        for node in all_dependency_nodes.clone() {
+            let mut dr = false;
+            for node2 in direct_dependency_nodes.clone() {
+                let nv = node2.name.clone() + "/" + &node2.version.clone();
+                if node == nv {
+                    dr = true;
+                    break;
+                }
+            }
+            if !dr {
+                indirect_dependency.push(node);
+            }
+        }
+        let indirect_dependency_count = indirect_dependency.len();
+        //get dependent count
+        let direct_dependent_nodes = self
+            .new_get_direct_dependent_nodes(&namespace, &name_and_version)
+            .await
+            .unwrap();
+        let direct_dependent_count = direct_dependent_nodes.len();
+        tracing::info!(
+            "finish get_direct_dependent_nodes:{}",
+            direct_dependent_count
+        );
         let db_connection_config = db_connection_config_from_env();
         #[allow(unused_variables)]
         let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
@@ -140,15 +363,164 @@ impl DataReaderTrait for DataReader {
                 eprintln!("connection error: {}", e);
             }
         });
-        //println!("enter build graph");
+        tracing::info!("finish connect pg");
         let dbhandler = DBHandler { client };
-        //let rustcve = dbhandler.get_direct_rustsec(&name, &version).await.unwrap();
-        //println!("direct cve count:{}", rustcve.len());
-        /*let mut root = Deptree {
-            name_and_version,
-            cve_count: rustcve.len(),
-            direct_dependency: Vec::new(),
-        };*/
+        let getcves = dbhandler
+            .get_direct_rustsec(&nname, &nversion)
+            .await
+            .unwrap();
+        let get_dependency_cves = dbhandler
+            .get_dependency_rustsec(all_dependency_nodes.clone())
+            .await
+            .unwrap();
+        let getlicense = dbhandler
+            .get_license_by_name(&namespace, &nname)
+            .await
+            .unwrap();
+        let lib_versions = self
+            .new_get_lib_version(namespace.clone(), nname.clone())
+            .await
+            .unwrap();
+        let mut getversions = vec![];
+        for version in lib_versions {
+            getversions.push(version);
+        }
+        getversions.sort_by(|a, b| {
+            let version_a = Version::parse(a);
+            let version_b = Version::parse(b);
+
+            match (version_a, version_b) {
+                (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
+                (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
+                (Err(_), Ok(_)) => Ordering::Greater,
+                (Err(_), Err(_)) => Ordering::Equal,
+            }
+        });
+        let dcy_count = DependencyCount {
+            direct: direct_dependency_count,
+            indirect: indirect_dependency_count,
+        };
+        let dt_count = DependentCount {
+            direct: direct_dependent_count,
+            indirect: 0,
+        };
+        let res = Crateinfo {
+            crate_name: nname.clone(),
+            description: "".to_string(),
+            dependencies: dcy_count,
+            dependents: dt_count,
+            cves: getcves,
+            versions: getversions,
+            license: getlicense[0].clone(),
+            github_url: githuburl,
+            doc_url: docurl,
+            dep_cves: get_dependency_cves,
+        };
+        Ok(res)
+    }
+    #[allow(unused_assignments)]
+    async fn get_version_page_from_tg(
+        &self,
+        nsfront: String,
+        nsbehind: String,
+        nname: String,
+    ) -> Result<Vec<Versionpage>, Box<dyn Error>> {
+        let namespace = nsfront.clone() + "/" + &nsbehind;
+        let all_versions = self
+            .new_get_lib_version(namespace.clone(), nname.clone())
+            .await
+            .unwrap();
+        tracing::info!("finish get all versions");
+        let mut getversions = vec![];
+        for version in all_versions {
+            getversions.push(version);
+        }
+        getversions.sort_by(|a, b| {
+            let version_a = Version::parse(a);
+            let version_b = Version::parse(b);
+
+            match (version_a, version_b) {
+                (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a),
+                (Ok(_), Err(_)) => Ordering::Less,
+                (Err(_), Ok(_)) => Ordering::Greater,
+                (Err(_), Err(_)) => Ordering::Equal,
+            }
+        });
+        let mut every_version = vec![];
+        for version in getversions {
+            let name_and_version = nname.clone() + "/" + &version.clone();
+            //let mut dts_count = 0;
+            /*let all_dts = self
+                .new_get_all_dependents(namespace.clone(), name_and_version.clone())
+                .await
+                .unwrap();
+            dts_count = all_dts.len();
+            if all_dts.len() == 0 {
+                let direct_dts = self
+                    .new_get_direct_dependent_nodes(&namespace, &name_and_version)
+                    .await
+                    .unwrap();
+                dts_count = direct_dts.len();
+            }*/
+            let all_dts = self
+                .new_get_direct_dependent_nodes(&namespace, &name_and_version)
+                .await
+                .unwrap();
+            tracing::info!("finish get all dependents");
+            let _db_cratesio_connection_config = db_cratesio_connection_config_from_env();
+            #[allow(unused_variables)]
+            let (client2, connection2) =
+                tokio_postgres::connect(&_db_cratesio_connection_config, NoTls)
+                    .await
+                    .unwrap();
+            tokio::spawn(async move {
+                if let Err(e) = connection2.await {
+                    eprintln!("connection error: {}", e);
+                }
+            });
+            let dbhandler2 = DBHandler { client: client2 };
+            let res = dbhandler2
+                .get_dump_from_cratesio_pg(nname.clone(), version.clone())
+                .await
+                .unwrap();
+            tracing::info!("finish get dump from pg");
+            if !res.is_empty() {
+                let parts: Vec<&str> = res.split("/").collect();
+                if parts.len() == 2 {
+                    let versionpage = Versionpage {
+                        version,
+                        updated_at: parts[0].to_string(),
+                        downloads: parts[1].to_string(),
+                        dependents: all_dts.len(),
+                    };
+                    every_version.push(versionpage);
+                }
+            }
+        }
+        Ok(every_version)
+    }
+    async fn build_graph(
+        &self,
+        rootnode: &mut Deptree,
+        visited: &mut HashSet<String>,
+    ) -> Result<(), Box<dyn Error>> {
+        let name_and_version = &rootnode.name_and_version;
+        let res = self
+            .get_direct_dependency_nodes(name_and_version)
+            .await
+            .unwrap();
+        tracing::info!("direct dep count:{}", res.len());
+        let db_connection_config = db_connection_config_from_env();
+        #[allow(unused_variables)]
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+            .await
+            .unwrap();
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+        let dbhandler = DBHandler { client };
         for node in res {
             let name = node.name.clone();
             let version = node.version.clone();
@@ -230,9 +602,7 @@ RETURN n.doc_url
         queue.push_back(name_and_version.to_string());
 
         while let Some(current) = queue.pop_front() {
-            // 如果当前库没有被访问过
             if visited.insert(current.clone()) {
-                // 获取当前库的直接依赖
                 for dep in self.get_direct_dependency_nodes(&current).await.unwrap() {
                     let tmp = dep.name.clone() + "/" + &dep.version.clone();
                     queue.push_back(tmp);
@@ -258,27 +628,22 @@ RETURN n.doc_url
             let nameandversion = node.clone().name + "/" + &node.clone().version;
             queue.push_back(nameandversion.clone());
         }
-        //queue.push_back(name_and_version.to_string());
         let mut count = 0;
         while let Some(current) = queue.pop_front() {
-            // 如果当前库没有被访问过
             count += 1;
             if count == 500 {
                 break;
             }
             if visited.insert(current.clone()) {
-                // 获取当前库的直接依赖
                 for dep in self.get_direct_dependency_nodes(&current).await.unwrap() {
                     let tmp = dep.name.clone() + "/" + &dep.version.clone();
                     queue.push_back(tmp);
                 }
             }
         }
-        //visited.remove(&name_and_version);
-
         Ok(visited)
     }
-    async fn get_all_dependents(
+    /*async fn get_all_dependents(
         &self,
         nameversion: NameVersion,
     ) -> Result<HashSet<String>, Box<dyn Error>> {
@@ -288,9 +653,7 @@ RETURN n.doc_url
         queue.push_back(name_and_version.to_string());
 
         while let Some(current) = queue.pop_front() {
-            // 如果当前库没有被访问过
             if visited.insert(current.clone()) {
-                // 获取当前库的直接依赖
                 for dep in self.get_direct_dependent_nodes(&current).await.unwrap() {
                     let tmp = dep.name.clone() + "/" + &dep.version.clone();
                     queue.push_back(tmp);
@@ -300,7 +663,7 @@ RETURN n.doc_url
         visited.remove(&name_and_version);
 
         Ok(visited)
-    }
+    }*/
     async fn new_get_all_dependents(
         &self,
         namespace: String,
@@ -316,14 +679,10 @@ RETURN n.doc_url
             let nameandversion = node.clone().name + "/" + &node.clone().version;
             queue.push_back(nameandversion.clone());
         }
-        //queue.push_back(name_and_version.to_string());
-        //let mut count = 0;
         let len = queue.len();
         if len < 500 {
             while let Some(current) = queue.pop_front() {
-                // 如果当前库没有被访问过
                 if visited.insert(current.clone()) {
-                    // 获取当前库的直接依赖
                     for dep in self.get_direct_dependent_nodes(&current).await.unwrap() {
                         let tmp = dep.name.clone() + "/" + &dep.version.clone();
                         queue.push_back(tmp);
@@ -331,14 +690,9 @@ RETURN n.doc_url
                 }
             }
         }
-        //visited.remove(&name_and_version);
-
         Ok(visited)
     }
     async fn get_all_programs_id(&self) -> Vec<String> {
-        //tracing::info!("start test ping");
-        //self.client.test_ping().await;
-        //tracing::info!("end test ping");
         let query = "
             MATCH (p: program)
             RETURN p 
@@ -351,7 +705,7 @@ RETURN n.doc_url
             let programs_json: Value = serde_json::from_str(&result).unwrap();
 
             let pro = programs_json["p"].clone();
-            //println!("{:#?}", pro);
+
             let program: Program = serde_json::from_value(pro).unwrap();
 
             programs.push(program.id);
@@ -436,7 +790,6 @@ RETURN n.doc_url
             let result_json: Value = serde_json::from_str(&result).unwrap();
 
             let o = result_json["o"].clone();
-            //println!("{:?}", result);
 
             let (version_base, name_version) = if is_lib {
                 let library_version: LibraryVersion = serde_json::from_value(o).unwrap();
@@ -471,7 +824,6 @@ RETURN n.doc_url
         &self,
         name_and_version: &str,
     ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>> {
-        //println!("enter get_direct_dependency_nodes");
         let query = format!(
             "
                 MATCH (n:version {{name_and_version: '{}'}})-[:depends_on]->(m:version)
@@ -481,10 +833,8 @@ RETURN n.doc_url
         );
 
         let results = self.client.exec_query(&query).await?;
-        //println!("query success of get_direct_dependency_nodes");
         let unique_items: HashSet<String> = results.clone().into_iter().collect();
         let mut nodes = vec![];
-        //println!("{:?}", results);
 
         for result in unique_items {
             let result_json: Value = serde_json::from_str(&result).unwrap();
@@ -513,15 +863,13 @@ RETURN m.name_and_version as name_and_version
             nameversion,
         );
         let results1 = self.client.exec_query(&query1).await?;
-        println!("finish get_direct_dep");
+        tracing::info!("finish get_direct_dep");
         let mut res = vec![];
         for node in results1 {
             res.push(node);
         }
         let unique_items: HashSet<String> = res.clone().into_iter().collect();
-        //println!("query success of get_direct_dependency_nodes");
         let mut nodes = vec![];
-        //println!("{:?}", results);
 
         for result in unique_items {
             let result_json: Value = serde_json::from_str(&result).unwrap();
@@ -545,12 +893,12 @@ RETURN m.name_and_version as name_and_version
             .await
             .unwrap();
         for node in nodes.clone() {
-            println!("{} {}", node.clone().name, node.clone().version);
+            tracing::info!("{} {}", node.clone().name, node.clone().version);
             let new_nodes = Box::pin(self.get_indirect_dependency_nodes(node))
                 .await
                 .unwrap();
             for new_node in new_nodes {
-                println!("{} {}", new_node.clone().name, new_node.clone().version);
+                tracing::info!("{} {}", new_node.clone().name, new_node.clone().version);
                 nodes.push(new_node);
             }
         }
@@ -579,20 +927,6 @@ RETURN m.name_and_version as name_and_version
         Ok(programs)
     }
     async fn count_dependencies(&self, nameversion: NameVersion) -> Result<usize, Box<dyn Error>> {
-        /*let name_and_version = nameversion.name + "/" + &nameversion.version;
-        let mut all_nodes = self
-            .get_direct_dependency_nodes(&name_and_version)
-            .await
-            .unwrap();
-        for node in all_nodes.clone() {
-            let nodes = self.get_indirect_dependency_nodes(node).await.unwrap();
-            for indirect_node in nodes {
-                all_nodes.push(indirect_node);
-            }
-        }
-        let node_count = all_nodes.len();
-        Ok(node_count)*/
-
         let all_nodes = self.get_all_dependencies(nameversion).await.unwrap();
         Ok(all_nodes.len())
     }
@@ -611,7 +945,6 @@ RETURN m.name_and_version as name_and_version
         let results = self.client.exec_query(&query).await?;
         let unique_items: HashSet<String> = results.clone().into_iter().collect();
         let mut nodes = vec![];
-        //println!("{:?}", results);
 
         for result in unique_items {
             let result_json: Value = serde_json::from_str(&result).unwrap();
@@ -630,7 +963,6 @@ RETURN m.name_and_version as name_and_version
         namespace: &str,
         nameversion: &str,
     ) -> Result<Vec<crate::NameVersion>, Box<dyn Error>> {
-        //println!("enter get_direct_dependency_nodes");
         let query1 = format!(
             "
                 MATCH (p:program {{namespace: '{}'}})-[:has_type]->(l)-[:has_version]->(lv {{name_and_version:'{}'}})-[:has_dep_version]->(vs:version)<-[:depends_on]-(m:version)
@@ -645,9 +977,8 @@ RETURN m.name_and_version as name_and_version
             res.push(node);
         }
         let unique_items: HashSet<String> = res.clone().into_iter().collect();
-        //println!("query success of get_direct_dependency_nodes");
+
         let mut nodes = vec![];
-        //println!("{:?}", results);
 
         for result in unique_items {
             let result_json: Value = serde_json::from_str(&result).unwrap();
@@ -680,17 +1011,6 @@ RETURN m.name_and_version as name_and_version
         }
         Ok(nodes)
     }
-    /*async fn get_max_version(&self, name: String) -> Result<String, Box<dyn Error>> {
-        let query = format!(
-            "
-                 MATCH (n:program {{name:'{}'}}) RETURN n.max_version LIMIT 1
-                ",
-            name
-        );
-        let results = self.client.exec_query(&query).await?;
-        let max_version = &results[0];
-        Ok(max_version.to_string())
-    }*/
 
     async fn get_lib_version(&self, name: String) -> Result<Vec<String>, Box<dyn Error>> {
         let query = format!(
@@ -698,23 +1018,19 @@ RETURN m.name_and_version as name_and_version
             MATCH (n:library_version {{name: '{}'}}) RETURN n.version LIMIT 100",
             name
         );
-        //let starttime = Instant::now();
+
         let results = self.client.exec_query(&query).await.unwrap();
-        //let endtime = starttime.elapsed();
-        //println!("query need time:{:?}", endtime);
+
         let mut realres = vec![];
-        //let starttime2 = Instant::now();
+
         for res in results {
             let parsed: Value = serde_json::from_str(&res).unwrap();
             if let Some(version) = parsed.get("n.version").and_then(|v| v.as_str()) {
-                //println!("Version: {}", version);
                 realres.push(version.to_string());
             } else {
-                //println!("Version not found");
             }
         }
-        //let endtime2 = starttime2.elapsed();
-        //println!("rest query need time:{:?}", endtime2);
+
         Ok(realres)
     }
     async fn new_get_lib_version(
@@ -729,24 +1045,20 @@ RETURN lv.version",
             namespace,
             name,
         );
-        //let starttime = Instant::now();
+
         let results = self.client.exec_query(&query).await.unwrap();
         let unique_items: HashSet<String> = results.clone().into_iter().collect();
-        //let endtime = starttime.elapsed();
-        //println!("query need time:{:?}", endtime);
+
         let mut realres = vec![];
-        //let starttime2 = Instant::now();
+
         for res in unique_items {
             let parsed: Value = serde_json::from_str(&res).unwrap();
             if let Some(version) = parsed.get("lv.version").and_then(|v| v.as_str()) {
-                //println!("Version: {}", version);
                 realres.push(version.to_string());
             } else {
-                //println!("Version not found");
             }
         }
-        //let endtime2 = starttime2.elapsed();
-        //println!("rest query need time:{:?}", endtime2);
+
         Ok(realres)
     }
     async fn get_app_version(&self, name: String) -> Result<Vec<String>, Box<dyn Error>> {
@@ -760,10 +1072,8 @@ RETURN lv.version",
         for res in results {
             let parsed: Value = serde_json::from_str(&res).unwrap();
             if let Some(version) = parsed.get("n.version").and_then(|v| v.as_str()) {
-                //println!("Version: {}", version);
                 realres.push(version.to_string());
             } else {
-                //println!("Version not found");
             }
         }
         Ok(realres)
@@ -780,24 +1090,20 @@ RETURN av.version",
             namespace,
             name,
         );
-        //let starttime = Instant::now();
+
         let results = self.client.exec_query(&query).await.unwrap();
         let unique_items: HashSet<String> = results.clone().into_iter().collect();
-        //let endtime = starttime.elapsed();
-        //println!("query need time:{:?}", endtime);
+
         let mut realres = vec![];
-        //let starttime2 = Instant::now();
+
         for res in unique_items {
             let parsed: Value = serde_json::from_str(&res).unwrap();
             if let Some(version) = parsed.get("av.version").and_then(|v| v.as_str()) {
-                //println!("Version: {}", version);
                 realres.push(version.to_string());
             } else {
-                //println!("Version not found");
             }
         }
-        //let endtime2 = starttime2.elapsed();
-        //println!("rest query need time:{:?}", endtime2);
+
         Ok(realres)
     }
 }

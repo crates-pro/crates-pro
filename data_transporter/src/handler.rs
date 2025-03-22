@@ -1,16 +1,18 @@
-use std::cmp::Ordering;
 use std::collections::HashSet;
 #[allow(unused_imports)]
 use std::env;
 use std::error::Error;
+//use std::error::Error;
 use std::time::Instant;
 
 use crate::data_reader::{DataReader, DataReaderTrait};
-use crate::db::{db_connection_config_from_env, db_cratesio_connection_config_from_env, DBHandler};
+use crate::db::{db_connection_config_from_env, DBHandler};
 use crate::{get_tugraph_api_handler, NameVersion, Userinfo};
 use crate::{Query, VersionInfo};
-use actix_multipart::Multipart;
+use actix_multipart::{Field, Multipart};
+use actix_web::http::header::ContentDisposition;
 use actix_web::{web, HttpResponse, Responder};
+use futures_util::StreamExt;
 //use model::repo_sync_model;
 //use model::repo_sync_model::CrateType;
 use model::tugraph_model::{Program, UProgram};
@@ -25,7 +27,7 @@ use serde::Serialize;
 use std::io::Cursor;
 use std::io::Read;
 //use std::time::Instant;
-use semver::Version;
+//use semver::Version;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio_postgres::NoTls;
@@ -159,13 +161,13 @@ pub struct Versionpage {
 )]
 pub async fn get_cves() -> impl Responder {
     let _handler = get_tugraph_api_handler().await;
-    //println!("enter get cve");
+
     let db_connection_config = db_connection_config_from_env();
     #[allow(unused_variables)]
     let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
         .await
         .unwrap();
-    //println!("connect client");
+
     tokio::spawn(async move {
         if let Err(e) = connection.await {
             eprintln!("connection error: {}", e);
@@ -173,7 +175,7 @@ pub async fn get_cves() -> impl Responder {
     });
     let dbhd = DBHandler { client };
     let cves = dbhd.get_all_cvelist().await.unwrap();
-    //println!("{:?}", cves);
+
     HttpResponse::Ok().json(cves)
 }
 
@@ -198,11 +200,8 @@ pub async fn get_all_crates() -> impl Responder {
         programs.push(program);
     }
 
-    //let program_ids = { self.reader.get_all_programs_id() }.await;
     tracing::info!("finish get all crates func");
-    //for id in program_ids.clone() {
-    //    tracing::info!("program id: {}", id);
-    //}
+
     HttpResponse::Ok().json(programs) // 返回 JSON 格式
 }
 
@@ -267,7 +266,6 @@ pub async fn get_version_page(
 ) -> impl Responder {
     let handler = get_tugraph_api_handler().await;
     let db_connection_config = db_connection_config_from_env();
-    let _db_cratesio_connection_config = db_cratesio_connection_config_from_env();
     #[allow(unused_variables)]
     let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
         .await
@@ -278,16 +276,6 @@ pub async fn get_version_page(
         }
     });
     let dbhandler = DBHandler { client };
-    #[allow(unused_variables)]
-    let (client2, connection2) = tokio_postgres::connect(&_db_cratesio_connection_config, NoTls)
-        .await
-        .unwrap();
-    tokio::spawn(async move {
-        if let Err(e) = connection2.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
-    let dbhandler2 = DBHandler { client: client2 };
     tracing::info!("finish connect cratespro");
     let res = dbhandler
         .get_version_from_pg(nsfront.clone(), nsbehind.clone(), nname.clone())
@@ -296,55 +284,11 @@ pub async fn get_version_page(
     tracing::info!("finish get version from pg");
     if res.is_empty() {
         tracing::info!("res is empty");
-        let namespace = nsfront.clone() + "/" + &nsbehind;
-        let all_versions = handler
+        let every_version = handler
             .reader
-            .new_get_lib_version(namespace.clone(), nname.clone())
+            .get_version_page_from_tg(nsfront.clone(), nsbehind.clone(), nname.clone())
             .await
             .unwrap();
-        tracing::info!("finish get all versions");
-        let mut getversions = vec![];
-        for version in all_versions {
-            getversions.push(version);
-        }
-        getversions.sort_by(|a, b| {
-            let version_a = Version::parse(a);
-            let version_b = Version::parse(b);
-
-            match (version_a, version_b) {
-                (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
-                (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
-                (Err(_), Ok(_)) => Ordering::Greater,
-                (Err(_), Err(_)) => Ordering::Equal,
-            }
-        });
-        let mut every_version = vec![];
-        for version in getversions {
-            let name_and_version = nname.clone() + "/" + &version.clone();
-            let all_dts = handler
-                .reader
-                .new_get_all_dependents(namespace.clone(), name_and_version.clone())
-                .await
-                .unwrap();
-            tracing::info!("finish get all dependents");
-            let res = dbhandler2
-                .get_dump_from_cratesio_pg(nname.clone(), version.clone())
-                .await
-                .unwrap();
-            tracing::info!("finish get dump from pg");
-            if !res.is_empty() {
-                let parts: Vec<&str> = res.split("/").collect();
-                if parts.len() == 2 {
-                    let versionpage = Versionpage {
-                        version,
-                        dependents: all_dts.len(),
-                        updated_at: parts[0].to_string(),
-                        downloads: parts[1].to_string(),
-                    };
-                    every_version.push(versionpage);
-                }
-            }
-        }
         dbhandler
             .insert_version_into_pg(
                 nsbehind.clone(),
@@ -422,7 +366,7 @@ pub async fn get_graph(
         .await
         .unwrap();
     if res.is_empty() {
-        println!("first time");
+        tracing::info!("first time");
         let nav = nname.clone() + "/" + &nversion;
         let rustcve = dbhandler
             .get_direct_rustsec(&nname, &nversion)
@@ -453,7 +397,7 @@ pub async fn get_graph(
             .unwrap();
         HttpResponse::Ok().json(res)
     } else {
-        println!("second time");
+        tracing::info!("second time");
         let res_tree: Deptree = serde_json::from_str(&res[0]).unwrap();
         HttpResponse::Ok().json(res_tree)
     }
@@ -484,7 +428,7 @@ pub async fn get_direct_dep_for_graph(nname: String, nversion: String) -> impl R
     HttpResponse::Ok().json(res)
 }
 
-pub async fn get_max_version(versions: Vec<String>) -> Result<String, Box<dyn Error>> {
+/*pub async fn get_max_version(versions: Vec<String>) -> Result<String, Box<dyn Error>> {
     let _handler = get_tugraph_api_handler().await;
     let res = versions
         .into_iter()
@@ -518,7 +462,7 @@ pub async fn get_max_version(versions: Vec<String>) -> Result<String, Box<dyn Er
         .unwrap_or_else(|| "0.0.0".to_string());
 
     Ok(res)
-}
+}*/
 
 /// 获取crate主页面
 #[utoipa::path(
@@ -543,34 +487,9 @@ pub async fn new_get_crates_front_info(
     nsbehind: String,
 ) -> impl Responder {
     let handler = get_tugraph_api_handler().await;
-    let mut name_and_version = nname.clone() + "/" + &nversion.clone();
+    let name_and_version = nname.clone() + "/" + &nversion.clone();
     let namespace = nsfront.clone() + "/" + &nsbehind.clone();
-    //println!("{}", name_and_version);
-    if nversion == *"default" {
-        //get max_version
-        println!("enter default");
-        let new_lib_versions = handler
-            .reader
-            .new_get_lib_version(namespace.clone(), nname.clone())
-            .await
-            .unwrap();
-        let new_app_versions = handler
-            .reader
-            .new_get_app_version(namespace.clone(), nname.clone())
-            .await
-            .unwrap();
-        let mut getnewversions = vec![];
-        for version in new_lib_versions {
-            getnewversions.push(version);
-        }
-        for version in new_app_versions {
-            getnewversions.push(version);
-        }
 
-        let maxversion = get_max_version(getnewversions).await.unwrap();
-
-        name_and_version = nname.clone() + "/" + &maxversion.clone();
-    } //get dependency count
     tracing::info!("name_and_version:{}", name_and_version);
     let db_connection_config = db_connection_config_from_env();
     #[allow(unused_variables)]
@@ -592,136 +511,16 @@ pub async fn new_get_crates_front_info(
     tracing::info!("finish query crates from pg");
     if qres.is_empty() {
         tracing::info!("qres is empty");
-        let mut githuburl = handler
+        let res = handler
             .reader
-            .get_github_url(namespace.clone(), nname.clone())
+            .get_crates_front_info_from_tg(
+                nname.clone(),
+                nversion.clone(),
+                nsfront.clone(),
+                nsbehind.clone(),
+            )
             .await
             .unwrap();
-        if githuburl == *"null" || githuburl == *"None" {
-            githuburl = "".to_string();
-        }
-        let mut docurl = handler
-            .reader
-            .get_doc_url(namespace.clone(), nname.clone())
-            .await
-            .unwrap();
-        if docurl == *"null" || docurl == *"None" {
-            docurl = "".to_string();
-        }
-        let direct_dependency_nodes = handler
-            .reader
-            .new_get_direct_dependency_nodes(&namespace, &name_and_version)
-            .await
-            .unwrap();
-        let direct_dependency_count = direct_dependency_nodes.len();
-        tracing::info!(
-            "finish get_direct_dependency_nodes:{}",
-            direct_dependency_count
-        ); //ok
-        let all_dependency_nodes = handler
-            .reader
-            .new_get_all_dependencies(namespace.clone(), name_and_version.clone())
-            .await
-            .unwrap();
-        let mut indirect_dependency = vec![];
-        for node in all_dependency_nodes.clone() {
-            let mut dr = false;
-            for node2 in direct_dependency_nodes.clone() {
-                let nv = node2.name.clone() + "/" + &node2.version.clone();
-                if node == nv {
-                    dr = true;
-                    break;
-                }
-            }
-            if !dr {
-                indirect_dependency.push(node);
-            }
-        }
-        let indirect_dependency_count = indirect_dependency.len();
-        //get dependent count
-        let direct_dependent_nodes = handler
-            .reader
-            .new_get_direct_dependent_nodes(&namespace, &name_and_version)
-            .await
-            .unwrap();
-        let direct_dependent_count = direct_dependent_nodes.len();
-        tracing::info!(
-            "finish get_direct_dependent_nodes:{}",
-            direct_dependent_count
-        );
-        /*let all_dependent_nodes = self
-            .reader
-            .new_get_all_dependents(namespace.clone(), name_and_version.clone())
-            .await
-            .unwrap();
-        let mut indirect_dependent = vec![];
-        for node in all_dependent_nodes {
-            let mut dr = false;
-            for node2 in direct_dependent_nodes.clone() {
-                let nv = node2.name.clone() + "/" + &node2.version.clone();
-                if node == nv {
-                    dr = true;
-                    break;
-                }
-            }
-            if !dr {
-                indirect_dependent.push(node);
-            }
-        }
-        let indirect_dependent_count = indirect_dependent.len();*/
-
-        let getcves = dbhandler
-            .get_direct_rustsec(&nname, &nversion)
-            .await
-            .unwrap();
-        let get_dependency_cves = dbhandler
-            .get_dependency_rustsec(all_dependency_nodes.clone())
-            .await
-            .unwrap();
-        let getlicense = dbhandler
-            .get_license_by_name(&namespace, &nname)
-            .await
-            .unwrap();
-        let lib_versions = handler
-            .reader
-            .new_get_lib_version(namespace.clone(), nname.clone())
-            .await
-            .unwrap();
-        let mut getversions = vec![];
-        for version in lib_versions {
-            getversions.push(version);
-        }
-        getversions.sort_by(|a, b| {
-            let version_a = Version::parse(a);
-            let version_b = Version::parse(b);
-
-            match (version_a, version_b) {
-                (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
-                (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
-                (Err(_), Ok(_)) => Ordering::Greater,
-                (Err(_), Err(_)) => Ordering::Equal,
-            }
-        });
-        let dcy_count = DependencyCount {
-            direct: direct_dependency_count,
-            indirect: indirect_dependency_count,
-        };
-        let dt_count = DependentCount {
-            direct: direct_dependent_count,
-            indirect: 0,
-        };
-        let res = Crateinfo {
-            crate_name: nname.clone(),
-            description: "".to_string(),
-            dependencies: dcy_count,
-            dependents: dt_count,
-            cves: getcves,
-            versions: getversions,
-            license: getlicense[0].clone(),
-            github_url: githuburl,
-            doc_url: docurl,
-            dep_cves: get_dependency_cves,
-        };
         dbhandler
             .insert_crates_info_into_pg(
                 res.clone(),
@@ -737,17 +536,17 @@ pub async fn new_get_crates_front_info(
     }
 }
 
-pub async fn new_get_dependency(
+/*pub async fn new_get_dependency(
     name: String,
     version: String,
     nsfront: String,
     nsbehind: String,
 ) -> impl Responder {
     let handler = get_tugraph_api_handler().await;
-    //let name_and_version = name.clone() + "/" + &version;
+
     let namespace = nsfront.clone() + "/" + &nsbehind.clone();
     let nameversion = name.clone() + "/" + &version.clone();
-    println!("{} {}", namespace.clone(), nameversion.clone());
+    tracing::info!("{} {}", namespace.clone(), nameversion.clone());
     let direct_nodes = handler
         .reader
         .new_get_direct_dependency_nodes(&namespace, &nameversion)
@@ -818,7 +617,8 @@ pub async fn new_get_dependency(
         data: deps,
     };
     HttpResponse::Ok().json(res_deps)
-}
+}*/
+
 ///获取依赖关系
 #[utoipa::path(
     get,
@@ -863,78 +663,16 @@ pub async fn dependency_cache(
         .await
         .unwrap();
     if res.is_empty() {
-        let namespace = nsfront.clone() + "/" + &nsbehind.clone();
-        let nameversion = name.clone() + "/" + &version.clone();
-        println!("{} {}", namespace.clone(), nameversion.clone());
-        let direct_nodes = handler
+        let res_deps = handler
             .reader
-            .new_get_direct_dependency_nodes(&namespace, &nameversion)
+            .get_dependency_from_tg(
+                name.clone(),
+                version.clone(),
+                nsfront.clone(),
+                nsbehind.clone(),
+            )
             .await
             .unwrap();
-        let getdirect_count = direct_nodes.len();
-        let all_dependency_nodes = handler
-            .reader
-            .new_get_all_dependencies(namespace.clone(), nameversion.clone())
-            .await
-            .unwrap();
-        let mut indirect_dependency = vec![];
-        for node in all_dependency_nodes {
-            let mut dr = false;
-            for node2 in direct_nodes.clone() {
-                let nv = node2.name.clone() + "/" + &node2.version.clone();
-                if node == nv {
-                    dr = true;
-                    break;
-                }
-            }
-            if !dr {
-                indirect_dependency.push(node);
-            }
-        }
-        let indirect_dependency_count = indirect_dependency.len();
-        let mut deps = vec![];
-        for item in direct_nodes {
-            let dep_count = handler
-                .reader
-                .count_dependencies(item.clone())
-                .await
-                .unwrap();
-            let dep = DependencyCrateInfo {
-                crate_name: item.clone().name,
-                version: item.clone().version,
-                relation: "Direct".to_string(),
-                license: "".to_string(),
-                dependencies: dep_count,
-            };
-            deps.push(dep);
-        }
-        for item in indirect_dependency {
-            let parts: Vec<&str> = item.split('/').collect();
-            let newitem = NameVersion {
-                name: parts[0].to_string(),
-                version: parts[1].to_string(),
-            };
-            let dep_count = handler
-                .reader
-                .count_dependencies(newitem.clone())
-                .await
-                .unwrap();
-
-            let dep = DependencyCrateInfo {
-                crate_name: parts[0].to_string(),
-                version: parts[1].to_string(),
-                relation: "Indirect".to_string(),
-                license: "".to_string(),
-                dependencies: dep_count,
-            };
-            deps.push(dep);
-        }
-
-        let res_deps = DependencyInfo {
-            direct_count: getdirect_count,
-            indirect_count: indirect_dependency_count,
-            data: deps,
-        };
         dbhandler
             .insert_dependency_into_pg(
                 nsfront.clone(),
@@ -951,14 +689,14 @@ pub async fn dependency_cache(
     }
 }
 
-pub async fn new_get_dependent(
+/*pub async fn new_get_dependent(
     name: String,
     version: String,
     nsfront: String,
     nsbehind: String,
 ) -> impl Responder {
     let handler = get_tugraph_api_handler().await;
-    //let name_and_version = name.clone() + "/" + &version;
+
     let namespace = nsfront.clone() + "/" + &nsbehind.clone();
     let nameversion = name.clone() + "/" + &version.clone();
     let direct_nodes = handler
@@ -967,26 +705,7 @@ pub async fn new_get_dependent(
         .await
         .unwrap();
     let getdirect_count = direct_nodes.len();
-    // let all_dependent_nodes = self
-    //     .reader
-    //     .new_get_all_dependents(namespace.clone(), nameversion.clone())
-    //     .await
-    //     .unwrap();
-    /*let mut indirect_dependent = vec![];
-    for node in all_dependent_nodes {
-        let mut dr = false;
-        for node2 in direct_nodes.clone() {
-            let nv = node2.name.clone() + "/" + &node2.version.clone();
-            if node == nv {
-                dr = true;
-                break;
-            }
-        }
-        if !dr {
-            indirect_dependent.push(node);
-        }
-    }
-    let indirect_dependent_count = indirect_dependent.len();*/
+
     let mut deps = vec![];
     let mut count1 = 0;
     for item in direct_nodes {
@@ -1001,20 +720,6 @@ pub async fn new_get_dependent(
             break;
         }
     }
-    // let mut count2 = 0;
-    /*for item in indirect_dependent {
-        let parts: Vec<&str> = item.split('/').collect();
-        let dep = DependentData {
-            crate_name: parts[0].to_string(),
-            version: parts[1].to_string(),
-            relation: "Indirect".to_string(),
-        };
-        count2 += 1;
-        if count2 == 50 {
-            break;
-        }
-        deps.push(dep);
-    }*/
 
     let res_deps = DependentInfo {
         direct_count: getdirect_count,
@@ -1022,7 +727,7 @@ pub async fn new_get_dependent(
         data: deps,
     };
     HttpResponse::Ok().json(res_deps)
-}
+}*/
 
 /// 获取被依赖关系
 #[utoipa::path(
@@ -1047,8 +752,6 @@ pub async fn dependent_cache(
     nsbehind: String,
 ) -> impl Responder {
     let handler = get_tugraph_api_handler().await;
-    let namespace = nsfront.clone() + "/" + &nsbehind.clone();
-    let nameversion = name.clone() + "/" + &version.clone();
     let db_connection_config = db_connection_config_from_env();
     #[allow(unused_variables)]
     let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
@@ -1070,66 +773,16 @@ pub async fn dependent_cache(
         .await
         .unwrap();
     if res.is_empty() {
-        let direct_nodes = handler
+        let res_deps = handler
             .reader
-            .new_get_direct_dependent_nodes(&namespace, &nameversion)
+            .get_dependent_from_tg(
+                name.clone(),
+                version.clone(),
+                nsfront.clone(),
+                nsbehind.clone(),
+            )
             .await
             .unwrap();
-        let getdirect_count = direct_nodes.len();
-        let all_dependent_nodes = handler
-            .reader
-            .new_get_all_dependents(namespace.clone(), nameversion.clone())
-            .await
-            .unwrap();
-        let mut indirect_dependent = vec![];
-        for node in all_dependent_nodes {
-            let mut dr = false;
-            for node2 in direct_nodes.clone() {
-                let nv = node2.name.clone() + "/" + &node2.version.clone();
-                if node == nv {
-                    dr = true;
-                    break;
-                }
-            }
-            if !dr {
-                indirect_dependent.push(node);
-            }
-        }
-        let indirect_dependent_count = indirect_dependent.len();
-        let mut deps = vec![];
-        let mut count1 = 0;
-        for item in direct_nodes {
-            let dep = DependentData {
-                crate_name: item.clone().name,
-                version: item.clone().version,
-                relation: "Direct".to_string(),
-            };
-            deps.push(dep);
-            count1 += 1;
-            if count1 == 50 {
-                break;
-            }
-        }
-        let mut count2 = 0;
-        for item in indirect_dependent {
-            let parts: Vec<&str> = item.split('/').collect();
-            let dep = DependentData {
-                crate_name: parts[0].to_string(),
-                version: parts[1].to_string(),
-                relation: "Indirect".to_string(),
-            };
-            count2 += 1;
-            if count2 == 50 {
-                break;
-            }
-            deps.push(dep);
-        }
-
-        let res_deps = DependentInfo {
-            direct_count: getdirect_count,
-            indirect_count: indirect_dependent_count,
-            data: deps,
-        };
         dbhandler
             .insert_dependent_into_pg(
                 nsfront.clone(),
@@ -1160,15 +813,9 @@ pub async fn query_crates(q: Query) -> impl Responder {
     let _handler = get_tugraph_api_handler().await;
     //add yj's search module
     let name = q.query;
-    println!("name: {}", name);
     let page = q.pagination.page;
-    println!("page: {}", page);
     let per_page = q.pagination.per_page;
-    println!("per_page: {}", per_page);
-    //
-    //let programs = self.reader.get_program_by_name(&name).await.unwrap();
-    //
-    //
+    tracing::info!("name:{},page:{},per_page:{}", name, page, per_page);
     let db_connection_config = db_connection_config_from_env();
     let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
         .await
@@ -1178,10 +825,6 @@ pub async fn query_crates(q: Query) -> impl Responder {
             eprintln!("connection error: {}", e);
         }
     });
-    /*let start_time1 = Instant::now();
-    let pre_search = search_prepare::SearchPrepare::new(&client).await;
-    pre_search.prepare_tsv().await.unwrap();
-    println!("prepare need time:{:?}", start_time1.elapsed());*/
     let start_time2 = Instant::now();
     let question = name.clone();
     let search_module = SearchModule::new(&client).await;
@@ -1190,7 +833,6 @@ pub async fn query_crates(q: Query) -> impl Responder {
         .await
         .unwrap();
     tracing::trace!("search need time:{:?}", start_time2.elapsed());
-    //
     let mut seen = HashSet::new();
     let uniq_res: Vec<RecommendCrate> = res
         .into_iter()
@@ -1212,16 +854,9 @@ pub async fn query_crates(q: Query) -> impl Responder {
         let parts: Vec<&str> = getnamespace.split('/').collect();
         let nsf = parts[0].to_string();
         let nsb = parts[1].to_string();
-        //println!("{}", uniq_res[i].rank);
-        //let endtime3 = starttime3.elapsed();
-        //println!("get_max_version need time:{:?}", endtime3);
-        /*if let Some(maxversion) = programs[i].clone().max_version {
-            mv.push(maxversion);
-        } else {
-            mv.push("0.0.0".to_string());
-        }*/
+
         mv.push(uniq_res[i].clone().max_version);
-        //println!("maxversion {}", mv[0].clone());
+
         if mv[0].clone() == *"null" {
             mv[0] = "0.0.0".to_string();
         }
@@ -1242,7 +877,7 @@ pub async fn query_crates(q: Query) -> impl Responder {
             items: getitems,
         },
     };
-    //println!("response {:?}", response);
+
     HttpResponse::Ok().json(response)
 }
 //post of upload
@@ -1255,146 +890,32 @@ pub async fn upload_crate(mut payload: Multipart) -> impl Responder {
     let mut file_name: Option<String> = None;
     while let Some(Ok(mut field)) = payload.next().await {
         tracing::info!("enter while");
-        if let Some(content_disposition) = field.content_disposition() {
+        if let Some(content_disposition) = field.content_disposition().cloned() {
             tracing::info!("enter first if");
             if let Some(name) = content_disposition.get_name() {
                 tracing::info!("enter second if");
                 match name {
                     "file" => {
                         tracing::info!("enter match file");
-                        let filename = if let Some(file_name) = content_disposition.get_filename() {
-                            file_name.to_string()
-                        } else {
-                            "default.zip".to_string()
-                        };
-                        tracing::info!("filename:{}", filename.clone());
-                        let sanitized_filename = sanitize(filename.clone());
-                        file_name = Some(filename.clone());
-                        tracing::info!("file_name:{:?}", file_name.clone());
-                        if sanitized_filename.ends_with(".zip") {
-                            tracing::info!("enter file zip");
-                            let zip_filepath = format!("target/zip/upload/{}", sanitized_filename);
-                            let _ = tokio::fs::create_dir_all("target/zip/upload/").await;
-                            let mut f = tokio::fs::File::create(&zip_filepath).await.unwrap();
-                            while let Some(chunk) = field.next().await {
-                                let data = chunk.unwrap();
-                                f.write_all(&data).await.unwrap();
-                            }
-                            let parts: Vec<&str> = sanitized_filename.split('.').collect();
-                            let mut filename = "".to_string();
-                            if parts.len() >= 2 {
-                                filename = parts[0].to_string();
-                                println!("filename without zip: {}", filename);
-                            }
-                            let mut zip_file = tokio::fs::File::open(&zip_filepath).await.unwrap();
-                            let mut buffer = Vec::new();
-                            zip_file.read_to_end(&mut buffer).await.unwrap();
-                            let reader = Cursor::new(buffer.clone());
-                            let mut archive = ZipArchive::new(reader).unwrap();
-                            for i in 0..archive.len() {
-                                let mut file = archive.by_index(i).unwrap();
-                                let outpath = match file.enclosed_name() {
-                                    Some(path) => {
-                                        format!(
-                                            "target/www/uploads/{}/{}",
-                                            filename,
-                                            path.display()
-                                        )
-                                    }
-                                    None => continue,
-                                };
-
-                                if file.name().ends_with('/') {
-                                    // This is a directory, create it
-                                    tokio::fs::create_dir_all(&outpath).await.unwrap();
-                                } else {
-                                    // Ensure the parent directory exists
-                                    if let Some(parent) = std::path::Path::new(&outpath).parent() {
-                                        if !parent.exists() {
-                                            tokio::fs::create_dir_all(&parent).await.unwrap();
-                                        }
-                                    }
-
-                                    // Write the file
-                                    let mut outfile =
-                                        tokio::fs::File::create(&outpath).await.unwrap();
-                                    while let Ok(bytes_read) = file.read(&mut buffer) {
-                                        if bytes_read == 0 {
-                                            break;
-                                        }
-                                        outfile.write_all(&buffer[..bytes_read]).await.unwrap();
-                                    }
-                                }
-                            }
-                            tracing::info!("finish match file");
-                            //send message
-                            /*let send_url = format!("target/www/uploads/{}", filename);
-                            let sent_payload = repo_sync_model::Model {
-                                id: 0,
-                                crate_name: filename,
-                                github_url: None,
-                                mega_url: send_url,
-                                crate_type: CrateType::Lib,
-                                status: model::repo_sync_model::RepoSyncStatus::Syncing,
-                                err_message: None,
-                            };
-                            let kafka_user_import_topic =
-                                env::var("KAFKA_USER_IMPORT_TOPIC").unwrap();
-                            let import_driver = ImportDriver::new(false).await;
-                            let _ = import_driver
-                                .user_import_handler
-                                .send_message(
-                                    &kafka_user_import_topic,
-                                    "",
-                                    &serde_json::to_string(&sent_payload).unwrap(),
-                                )
-                                .await;
-                            break;*/
-                        } else {
-                            tracing::info!("enter else");
-                            let filepath =
-                                format!("/home/rust/output/www/uploads/{}", sanitized_filename);
-                            let mut f = tokio::fs::File::create(&filepath).await.unwrap();
-
-                            while let Some(chunk) = field.next().await {
-                                let data = chunk.unwrap();
-                                f.write_all(&data).await.unwrap();
-                            }
-                            break;
-                        }
+                        file_name = process_file_of_upload_crate(&content_disposition, &mut field)
+                            .await
+                            .unwrap();
                         // analyze
                     }
                     "githubLink" => {
-                        let mut url_data = Vec::new();
-
-                        // 读取字段的内容
-                        while let Some(chunk) = field.next().await {
-                            let data = chunk.unwrap();
-                            url_data.extend_from_slice(&data);
-                        }
-                        github_link = Some(String::from_utf8(url_data).unwrap_or_default());
+                        github_link = process_githublink_of_upload_crate(&mut field)
+                            .await
+                            .unwrap();
                     }
                     "uploadTime" => {
                         tracing::info!("enter match uploadtime");
-                        let mut time_data = Vec::new();
-
-                        while let Some(chunk) = field.next().await {
-                            let data = chunk.unwrap();
-                            time_data.extend_from_slice(&data);
-                        }
-                        upload_time = Some(String::from_utf8(time_data).unwrap_or_default());
-                        tracing::info!("uploadtime:{:?}", upload_time);
+                        upload_time = process_uploadtime_of_upload_crate(&mut field)
+                            .await
+                            .unwrap();
                     }
                     "user_email" => {
                         tracing::info!("enter match user_email");
-                        let mut email_data = Vec::new();
-
-                        while let Some(chunk) = field.next().await {
-                            let data = chunk.unwrap();
-                            email_data.extend_from_slice(&data);
-                        }
-                        user_email = Some(String::from_utf8(email_data).unwrap_or_default());
-                        tracing::info!("user_email:{:?}", user_email);
+                        user_email = process_useremail_of_upload_crate(&mut field).await.unwrap();
                     }
                     _ => {
                         tracing::info!("enter match nothing");
@@ -1403,6 +924,17 @@ pub async fn upload_crate(mut payload: Multipart) -> impl Responder {
             }
         }
     }
+    let _ = process_insertintopg_of_upload_crate(file_name, upload_time, github_link, user_email)
+        .await
+        .unwrap();
+    HttpResponse::Ok().json(())
+}
+pub async fn process_insertintopg_of_upload_crate(
+    file_name: Option<String>,
+    upload_time: Option<String>,
+    github_link: Option<String>,
+    user_email: Option<String>,
+) -> Result<(), Box<dyn Error>> {
     if let Some(filename) = file_name {
         tracing::info!("enter 1/2 if let");
         let db_connection_config = db_connection_config_from_env();
@@ -1457,7 +989,130 @@ pub async fn upload_crate(mut payload: Multipart) -> impl Responder {
             }
         }
     }
-    HttpResponse::Ok().json(())
+    Ok(())
+}
+#[allow(unused_assignments)]
+pub async fn process_useremail_of_upload_crate(
+    field: &mut Field,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let mut user_email: Option<String> = None;
+    let mut email_data = Vec::new();
+
+    while let Some(chunk) = field.next().await {
+        let data = chunk.unwrap();
+        email_data.extend_from_slice(&data);
+    }
+    user_email = Some(String::from_utf8(email_data).unwrap_or_default());
+    tracing::info!("user_email:{:?}", user_email);
+    Ok(user_email)
+}
+#[allow(unused_assignments)]
+pub async fn process_uploadtime_of_upload_crate(
+    field: &mut Field,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let mut upload_time: Option<String> = None;
+    let mut time_data = Vec::new();
+
+    while let Some(chunk) = field.next().await {
+        let data = chunk.unwrap();
+        time_data.extend_from_slice(&data);
+    }
+    upload_time = Some(String::from_utf8(time_data).unwrap_or_default());
+    tracing::info!("uploadtime:{:?}", upload_time);
+    Ok(upload_time)
+}
+#[allow(unused_assignments)]
+pub async fn process_githublink_of_upload_crate(
+    field: &mut Field,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let mut github_link: Option<String> = None;
+    let mut url_data = Vec::new();
+    while let Some(chunk) = field.next().await {
+        let data = chunk.unwrap();
+        url_data.extend_from_slice(&data);
+    }
+    github_link = Some(String::from_utf8(url_data).unwrap_or_default());
+    Ok(github_link)
+}
+#[allow(unused_assignments)]
+pub async fn process_file_of_upload_crate(
+    content_disposition: &ContentDisposition,
+    field: &mut Field,
+) -> Result<Option<String>, Box<dyn Error>> {
+    tracing::info!("enter match file");
+    let mut file_name: Option<String> = None;
+    let filename = if let Some(file_name) = content_disposition.get_filename() {
+        file_name.to_string()
+    } else {
+        "default.zip".to_string()
+    };
+    tracing::info!("filename:{}", filename.clone());
+    let sanitized_filename = sanitize(filename.clone());
+    file_name = Some(filename.clone());
+    tracing::info!("file_name:{:?}", file_name.clone());
+    if sanitized_filename.ends_with(".zip") {
+        tracing::info!("enter file zip");
+        let zip_filepath = format!("target/zip/upload/{}", sanitized_filename);
+        let _ = tokio::fs::create_dir_all("target/zip/upload/").await;
+        let mut f = tokio::fs::File::create(&zip_filepath).await.unwrap();
+        while let Some(chunk) = field.next().await {
+            let data = chunk.unwrap();
+            f.write_all(&data).await.unwrap();
+        }
+        let parts: Vec<&str> = sanitized_filename.split('.').collect();
+        let mut filename = "".to_string();
+        if parts.len() >= 2 {
+            filename = parts[0].to_string();
+            tracing::info!("filename without zip: {}", filename);
+        }
+        let mut zip_file = tokio::fs::File::open(&zip_filepath).await.unwrap();
+        let mut buffer = Vec::new();
+        zip_file.read_to_end(&mut buffer).await.unwrap();
+        let reader = Cursor::new(buffer.clone());
+        let mut archive = ZipArchive::new(reader).unwrap();
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).unwrap();
+            let outpath = match file.enclosed_name() {
+                Some(path) => {
+                    format!("target/www/uploads/{}/{}", filename, path.display())
+                }
+                None => continue,
+            };
+
+            if file.name().ends_with('/') {
+                // This is a directory, create it
+                tokio::fs::create_dir_all(&outpath).await.unwrap();
+            } else {
+                // Ensure the parent directory exists
+                if let Some(parent) = std::path::Path::new(&outpath).parent() {
+                    if !parent.exists() {
+                        tokio::fs::create_dir_all(&parent).await.unwrap();
+                    }
+                }
+
+                // Write the file
+                let mut outfile = tokio::fs::File::create(&outpath).await.unwrap();
+                while let Ok(bytes_read) = file.read(&mut buffer) {
+                    if bytes_read == 0 {
+                        break;
+                    }
+                    outfile.write_all(&buffer[..bytes_read]).await.unwrap();
+                }
+            }
+        }
+        tracing::info!("finish match file");
+        //send message
+    } else {
+        tracing::info!("enter else");
+        let filepath = format!("/home/rust/output/www/uploads/{}", sanitized_filename);
+        let mut f = tokio::fs::File::create(&filepath).await.unwrap();
+
+        while let Some(chunk) = field.next().await {
+            let data = chunk.unwrap();
+            f.write_all(&data).await.unwrap();
+        }
+    }
+    Ok(file_name)
 }
 //post of log in
 pub async fn submituserinfo(info: Userinfo) -> impl Responder {
