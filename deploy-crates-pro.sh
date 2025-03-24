@@ -30,21 +30,25 @@ docker image rm $STAGE1_IMAGE
 docker build --target crates_pro -t $CRATESPRO_MAIN_IMAGE \
     -f $LATEST_SRC_PATH/images/crates-pro.Dockerfile \
     --build-arg BASE_IMAGE=$STAGE2_IMAGE \
+    --build-arg http_proxy --build-arg https_proxy \
     --ulimit nofile=65535:65535 \
     $LATEST_SRC_PATH
 docker build --target analyze -t $CRATESPRO_ANALYZE_IMAGE \
     -f $LATEST_SRC_PATH/images/crates-pro.Dockerfile \
     --build-arg BASE_IMAGE=$STAGE2_IMAGE \
+    --build-arg http_proxy --build-arg https_proxy \
     --ulimit nofile=65535:65535 \
     $LATEST_SRC_PATH
 docker build --target data_transport -t $CRATESPRO_DATA_TRANSPORT_IMAGE \
     -f $LATEST_SRC_PATH/images/crates-pro.Dockerfile \
     --build-arg BASE_IMAGE=$STAGE2_IMAGE \
+    --build-arg http_proxy --build-arg https_proxy \
     --ulimit nofile=65535:65535 \
     $LATEST_SRC_PATH
 docker build --target repo_import -t $CRATESPRO_REPO_IMPORT_IMAGE \
     -f $LATEST_SRC_PATH/images/crates-pro.Dockerfile \
     --build-arg BASE_IMAGE=$STAGE2_IMAGE \
+    --build-arg http_proxy --build-arg https_proxy \
     --ulimit nofile=65535:65535 \
     $LATEST_SRC_PATH
 docker image rm $STAGE2_IMAGE
