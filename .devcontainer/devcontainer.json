@@ -11,7 +11,8 @@
     "workspaceFolder": "/workspace",
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
     "mounts": [
-        "source=/home/rust/workspace/crates-pro-infra,target=/home/rust/workspace/crates-pro-infra,type=bind",
+        "source=/home/rust/workspace/crates-pro-infra,target=/var/crates-pro-infra,type=bind",
+        "source=${localWorkspaceFolder},target=/var/crates-pro-infra/project/crates-pro,type=bind",
         // Add mounts for snapshot taking
         "source=/home/rust/src/crates-pro-control,target=/home/rust/src/crates-pro-control,type=bind",
         "source=/mnt/devops/snapshots,target=/mnt/devops/snapshots,type=bind",
