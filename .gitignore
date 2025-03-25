@@ -21,3 +21,6 @@ Cargo.lock
 
 # Mac
 .DS_Store
+
+# Temp files for Docker image creation
+/build/

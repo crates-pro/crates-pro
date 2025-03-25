@@ -1,22 +1,44 @@
-rust_library(
-    name = "analysis",
+load("@prelude//rust:cargo_package.bzl", "cargo")
+
+filegroup(
+    name = "analysis-0.1.0.crate",
     srcs = [
+        ### Library source
         "src/lib.rs",
         "src/kafka_handler.rs",
-        "src/utils.rs"
+        "src/utils.rs",
+        ### Workers source
+        "src/bin/analysis_tool_worker.rs",
     ],
-    crate_root = "src/lib.rs",
+)
+
+pkg_deps = [
+    "//project/crates-pro:data_transporter",
+    "//project/crates-pro:model",
+    "//third-party:rdkafka",
+    "//third-party:serde",
+    "//third-party:serde_json",
+    "//third-party:tempfile",
+    "//third-party:tokio",
+    "//third-party:tokio-postgres",
+    "//third-party:tracing",
+    "//third-party:url",
+]
+
+cargo.rust_library(
+    name = "analysis",
+    srcs = [":analysis-0.1.0.crate"],
+    crate_root = "analysis-0.1.0.crate/src/lib.rs",
     edition = "2021",
-    deps = [
-        "//project/crates-pro:model",
-        "//third-party:rdkafka",
-        "//third-party:serde",
-        "//third-party:serde_json",
-        "//third-party:tempfile",
-        "//third-party:tokio",
-        "//third-party:tracing",
-        "//third-party:url",
-        
-    ],
+    deps = pkg_deps,
+    visibility = ["PUBLIC"],
+)
+
+cargo.rust_binary(
+    name = "analysis_tool_worker",
+    srcs = [":analysis-0.1.0.crate"],
+    crate_root = "analysis-0.1.0.crate/src/bin/analysis_tool_worker.rs",
+    edition = "2021",
+    deps = [":analysis"] + pkg_deps,
     visibility = ["PUBLIC"],
 )
