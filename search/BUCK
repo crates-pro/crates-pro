@@ -8,7 +8,7 @@ rust_library(
         "src/search_prepare.rs"
     ],
     crate_root = "src/lib.rs",
-    edition = "2021",
+    edition = "2024",
     deps = [
         "//third-party:pgvector",
         "//third-party:reqwest",

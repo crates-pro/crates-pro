@@ -29,7 +29,7 @@ cargo.rust_library(
     name = "analysis",
     srcs = [":analysis-0.1.0.crate"],
     crate_root = "analysis-0.1.0.crate/src/lib.rs",
-    edition = "2021",
+    edition = "2024",
     deps = pkg_deps,
     visibility = ["PUBLIC"],
 )
@@ -38,7 +38,7 @@ cargo.rust_binary(
     name = "sensleak_worker",
     srcs = [":analysis-0.1.0.crate"],
     crate_root = "analysis-0.1.0.crate/sensleak_worker/main.rs",
-    edition = "2021",
+    edition = "2024",
     deps = [":analysis"] + pkg_deps,
     visibility = ["PUBLIC"],
 )
