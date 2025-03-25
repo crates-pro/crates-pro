@@ -21,7 +21,7 @@ rust_library(
     name = "plugin2",
     srcs = [":plugin2-0.1.0.crate"],
     crate_root = "plugin2-0.1.0.crate/src/lib.rs",
-    edition = "2021",
+    edition = "2024",
     deps = pkg_deps,
     rustc_flags = [
         "-Lnative=$(location //third-party:libtugraph-sys-build-script-run[out_dir])/build/output",
