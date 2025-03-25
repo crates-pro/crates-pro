@@ -16,11 +16,11 @@ USER $USERNAME
 
 WORKDIR /workdir
 
-# Copy artifacts of tool 'sensleak-rs'
+# Copy artifacts for tool 'sensleak-rs'
 COPY ./scan ./scan
 COPY ./gitleaks.toml ./gitleaks.toml
 
-# Copy artifacts of worker (analysis-tool-worker)
+# Copy artifacts for worker (analysis-tool-worker)
 COPY ./analysis_tool_worker ./analysis_tool_worker
 COPY ./.env ./.env
 

@@ -17,10 +17,10 @@ ANALYSIS_TOOL_WORKER_IMAGE=localhost:30500/analysis-tool-worker:local-$TIMESTAMP
 mkdir -p $BUILD_DIR
 rm -rf $BUILD_DIR/*
 cd $INFRA_PATH
-# Copy artifacts of tool 'sensleak-rs'
+# Copy artifacts for tool 'sensleak-rs'
 cp "$(buck2 build //project/sensleak-rs:scan --show-simple-output)" $BUILD_DIR/scan
 cp $INFRA_PATH/project/sensleak-rs/gitleaks.toml $BUILD_DIR/gitleaks.toml
-# Copy artifacts of worker (analysis-tool-worker)
+# Copy artifacts for worker (analysis-tool-worker)
 cp "$(buck2 build //project/crates-pro/analysis:analysis_tool_worker --show-simple-output)" $BUILD_DIR/analysis_tool_worker
 cp /workspace/.env $BUILD_DIR/.env
 cd /workspace
