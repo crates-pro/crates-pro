@@ -8,7 +8,7 @@ filegroup(
         "src/kafka_handler.rs",
         "src/utils.rs",
         ### Workers source
-        "sensleak_worker/main.rs",
+        "src/bin/analysis_tool_worker.rs",
     ],
 )
 
@@ -35,9 +35,9 @@ cargo.rust_library(
 )
 
 cargo.rust_binary(
-    name = "sensleak_worker",
+    name = "analysis_tool_worker",
     srcs = [":analysis-0.1.0.crate"],
-    crate_root = "analysis-0.1.0.crate/sensleak_worker/main.rs",
+    crate_root = "analysis-0.1.0.crate/src/bin/analysis_tool_worker.rs",
     edition = "2021",
     deps = [":analysis"] + pkg_deps,
     visibility = ["PUBLIC"],
