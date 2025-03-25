@@ -1,10 +1,9 @@
 [package]
 name = "analysis"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
-data_transporter = { workspace = true }
 model = { workspace = true }
 
 # third-party
@@ -12,7 +11,6 @@ rdkafka = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
-tokio-postgres = { workspace = true, features = ["with-chrono-0_4"] }
+tokio = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }

@@ -9,7 +9,7 @@ rust_library(
         "src/version_info.rs",
     ],
     crate_root = "src/lib.rs",
-    edition = "2024",
+    edition = "2021",
     deps = [
         "//project/crates-pro:model",
         "//third-party:bincode",

@@ -1,12 +1,12 @@
 # Use the TuGraph compile environment as the base image, specifically 'tugraph/tugraph-compile-centos8', to avoid
 # compatibility issues. It has a newer version of GLIBC (2.28) than 'tugraph/tugraph-compile-ubuntu18.04' (2.27).
-FROM tugraph/tugraph-compile-centos8:1.3.5
+FROM tugraph/tugraph-compile-centos8:1.3.4
 
 # Install dependencies
 RUN dnf update -y \
     && dnf group install -y "Development Tools" \
     && dnf install -y glibc-langpack-en sudo tzdata
-RUN dnf install -y clang cmake curl cyrus-sasl-devel git net-tools tree
+RUN dnf install -y clang cmake curl git net-tools tree
 
 # Install Docker
 ARG DOCKER_GID
@@ -29,13 +29,9 @@ RUN useradd -m -s /bin/bash -u $USER_UID $USERNAME \
     && usermod -aG docker $USERNAME
 USER $USERNAME
 
-# Install Rust with nightly-2025-01-15 toolchain (as in NativeLink `MODULE.bazel`), set environment variable
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain nightly-2025-01-15 -y
+# Install Rust, set environment variable
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/home/$USERNAME/.cargo/bin:${PATH}"
-
-# Install Buck2
-RUN rustup install nightly-2024-11-22 \
-    && cargo +nightly-2024-11-22 install --git https://github.com/facebook/buck2.git --rev f1b6518 buck2
 
 # Create and set permissions for workspace directory
 USER root

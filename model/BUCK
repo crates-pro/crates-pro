@@ -7,7 +7,7 @@ rust_library(
         "src/tugraph_model.rs",
     ],
     crate_root = "src/lib.rs",
-    edition = "2024",
+    edition = "2021",
     deps = [
         "//third-party:chrono",
         "//third-party:sea-orm",
