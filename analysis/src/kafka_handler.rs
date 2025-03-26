@@ -1,40 +1,61 @@
-use model::general_model::VersionWithTag;
-use rdkafka::consumer::{BaseConsumer, Consumer};
+//use rdkafka::consumer::BaseConsumer;
+//use std::time::Duration;
+//use model::general_model::VersionWithTag;
+use model::repo_sync_model;
+use rdkafka::consumer::{Consumer, StreamConsumer};
+use rdkafka::error::KafkaError;
 use rdkafka::{ClientConfig, Message};
-use std::time::Duration;
+//use std::time::Duration;
 
 pub struct KafkaReader {
-    consumer: BaseConsumer,
+    consumer: StreamConsumer,
 }
 
 impl KafkaReader {
-    pub fn new(broker: &str, group_id: &str) -> Self {
-        let consumer: BaseConsumer = ClientConfig::new()
-            .set("bootstrap.servers", broker)
+    pub fn new(broker: &str, group_id: &str, topic: &str) -> Self {
+        let consumer: StreamConsumer = ClientConfig::new()
             .set("group.id", group_id)
+            .set("bootstrap.servers", broker)
+            .set("enable.partition.eof", "false")
+            .set("session.timeout.ms", "10000")
+            .set("heartbeat.interval.ms", "1500")
+            .set("max.poll.interval.ms", "3000000")
+            .set("enable.auto.commit", "true")
             .set("auto.offset.reset", "earliest")
             .create()
             .expect("Consumer creation failed");
+        consumer
+            .subscribe(&[topic])
+            .expect("Can't subscribe to specified topic");
         KafkaReader { consumer }
     }
 
-    pub fn read_single_message(&self, topic: &str) -> Option<VersionWithTag> {
-        self.consumer
-            .subscribe(&[topic])
-            .expect("Subscription failed");
+    pub async fn read_single_message(&self) -> Result<repo_sync_model::MessageModel, KafkaError> {
+        tracing::info!("enter read_single_message");
+        tracing::info!("enter read_single_message loop");
 
-        loop {
-            match self.consumer.poll(Duration::from_secs(1)) {
-                Some(Ok(message)) => {
-                    if let Some(payload) = message.payload() {
-                        match serde_json::from_slice::<VersionWithTag>(payload) {
-                            Ok(version_with_tag) => return Some(version_with_tag),
-                            Err(e) => eprintln!("Failed to deserialize message: {:?}", e),
+        match self.consumer.recv().await {
+            Ok(message) => {
+                tracing::info!("enter get message");
+                if let Some(payload) = message.payload() {
+                    tracing::info!("enter message if");
+                    match serde_json::from_slice::<repo_sync_model::MessageModel>(payload) {
+                        Ok(version_with_tag) => {
+                            tracing::info!("enter message match");
+                            return Ok(version_with_tag);
+                        }
+                        Err(e) => {
+                            tracing::info!("Failed to deserialize message: {:?}", e);
+                            return Err(KafkaError::NoMessageReceived);
                         }
                     }
+                } else {
+                    return Err(KafkaError::NoMessageReceived);
                 }
-                Some(Err(e)) => eprintln!("Kafka error: {:?}", e),
-                None => return None,
+            }
+            Err(e) => {
+                tracing::info!("Error receiving message: {}", e);
+                return Err(KafkaError::NoMessageReceived);
             }
         }
     }

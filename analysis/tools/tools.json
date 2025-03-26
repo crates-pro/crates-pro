@@ -2,9 +2,9 @@
     "tools": [
         {
             "name": "senseleak",
-            "binary_path": "build/sensleak-rs/scan",
+            "binary_path": "/var/crates/infer/infer/scan",
             "run": [
-                "{binary_path} --repo={code_path} -v --pretty --report={output_path}"
+                "./{binary_path} --repo={code_path} -v --pretty --report={output_path}"
             ]
         }
     ]

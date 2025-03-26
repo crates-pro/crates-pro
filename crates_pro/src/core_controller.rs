@@ -3,13 +3,15 @@
 //! parse them, and store it into tugraph, and notify
 //! other processes.
 
-use analysis::analyse_once;
+//use analysis::analyse_once;
 #[allow(unused_imports)]
 use data_transporter::{run_api_server, Transporter};
 use repo_import::ImportDriver;
 
 use crate::cli::CratesProCli;
 use futures_util::future::FutureExt;
+//use std::process::Command;
+//use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 #[allow(unused_imports)]
 use std::{env, fs, sync::Arc, time::Duration};
@@ -116,6 +118,7 @@ impl CoreController {
         let analyze_task = tokio::spawn(async move {
             loop {
                 if analysis {
+                    tracing::info!("enter analysis");
                     let mut state = state_clone2.lock().await;
                     while state.is_packaging {
                         drop(state);
@@ -125,14 +128,14 @@ impl CoreController {
                     drop(state);
                     //println!("Analyzing crate...");
 
-                    let output_dir_path = "/home/rust/output/analysis";
+                    //let output_dir_path = "target/senseleak-res/";
 
                     /*match fs::create_dir(output_dir_path) {
                         Ok(_) => {}
                         Err(_) => {}
                     }*/
 
-                    let _ = analyse_once(output_dir_path).await;
+                    //let _ = analyse_once(output_dir_path).await;
 
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }

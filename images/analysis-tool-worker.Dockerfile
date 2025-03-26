@@ -1,5 +1,10 @@
 FROM almalinux:8.10-20250307
 
+# Install tools and dependencies
+RUN dnf update -y \
+    && dnf install -y git \
+    && dnf clean all
+
 # Create and switch to user
 ARG USERNAME="rust"
 ARG USER_UID="1000"
@@ -16,13 +21,18 @@ USER $USERNAME
 
 WORKDIR /workdir
 
-# Copy artifacts for tool 'sensleak-rs'
-COPY ./scan ./scan
-COPY ./gitleaks.toml ./gitleaks.toml
-
-# Copy artifacts for worker (analysis-tool-worker)
+# Copy artifacts for analysis-tool-worker
 COPY ./analysis_tool_worker ./analysis_tool_worker
+COPY ./tools/ /var/tools/
 COPY ./.env ./.env
+
+# Copy artifacts for tool 'sensleak-rs'
+COPY ./scan /var/tools/sensleak/scan
+COPY ./gitleaks.toml /var/tools/sensleak/gitleaks.toml
+
+USER root
+RUN chown -R $USERNAME:$USERNAME /var/tools
+USER $USERNAME
 
 ENV RUST_BACKTRACE=1
 CMD ["./analysis_tool_worker"]
