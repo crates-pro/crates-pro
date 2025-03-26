@@ -33,11 +33,11 @@ pub async fn analyse_once(
     kafka_reader: &KafkaReader,
     output_path: &str,
 ) -> Result<(), Box<dyn Error>> {
-    tracing::info!("enter analyse_once");
+    //tracing::info!("enter analyse_once");
     let config_path = Path::new("/var/tools/tools.json");
     let config: Config =
         serde_json::from_str(&fs::read_to_string(config_path)?).expect("Failed to parse config");
-    tracing::info!("finish serde tools");
+    //tracing::info!("finish serde tools");
     let tools = config.tools;
 
     /*println!(
@@ -46,7 +46,7 @@ pub async fn analyse_once(
         consumer_group_id.clone(),
         analysis_topic.clone()
     );*/
-    tracing::info!("finish set kafka_reader");
+    //tracing::info!("finish set kafka_reader");
     let message = kafka_reader.read_single_message().await.unwrap();
     tracing::info!("Analysis receive {:?}", message);
     tracing::info!(

@@ -17,9 +17,9 @@ use crate::utils::{
 //use git::hard_reset_to_head;
 use git2::{ObjectType, Oid, Repository};
 use model::{repo_sync_model, tugraph_model::*};
-use rdkafka::Message;
 use rdkafka::error::KafkaError;
 use rdkafka::message::BorrowedMessage;
+use rdkafka::Message;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -139,6 +139,7 @@ impl ImportDriver {
         Err(KafkaError::NoMessageReceived)
     }
     #[allow(clippy::let_unit_value)]
+    #[allow(unused_variables)]
     pub async fn import_from_mq_for_a_message(&mut self) -> Result<(), ()> {
         tracing::info!("Try to import from a message!");
         // //tracing::debug
@@ -324,7 +325,7 @@ impl ImportDriver {
             }
             //}
         } //changes
-        //self.context.write_tugraph_import_files();
+          //self.context.write_tugraph_import_files();
         tracing::info!("Finish to import from a message!");
         Ok(())
     }
