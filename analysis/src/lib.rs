@@ -27,6 +27,8 @@ struct Config {
     tools: Vec<ToolConfig>,
 }
 #[allow(unused_variables)]
+#[allow(clippy::needless_borrows_for_generic_args)]
+#[allow(clippy::let_unit_value)]
 /// Input: a message with version
 /// output: a file
 pub async fn analyse_once(
