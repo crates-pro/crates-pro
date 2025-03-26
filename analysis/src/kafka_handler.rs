@@ -29,7 +29,7 @@ impl KafkaReader {
             .expect("Can't subscribe to specified topic");
         KafkaReader { consumer }
     }
-
+    #[allow(clippy::needless_return)]
     pub async fn read_single_message(&self) -> Result<repo_sync_model::MessageModel, KafkaError> {
         tracing::info!("enter read_single_message");
         tracing::info!("enter read_single_message loop");
@@ -42,20 +42,20 @@ impl KafkaReader {
                     match serde_json::from_slice::<repo_sync_model::MessageModel>(payload) {
                         Ok(version_with_tag) => {
                             tracing::info!("enter message match");
-                            Ok(version_with_tag);
+                            return Ok(version_with_tag);
                         }
                         Err(e) => {
                             tracing::info!("Failed to deserialize message: {:?}", e);
-                            Err(KafkaError::NoMessageReceived);
+                            return Err(KafkaError::NoMessageReceived);
                         }
                     }
                 } else {
-                    Err(KafkaError::NoMessageReceived);
+                    return Err(KafkaError::NoMessageReceived);
                 }
             }
             Err(e) => {
                 tracing::info!("Error receiving message: {}", e);
-                Err(KafkaError::NoMessageReceived);
+                return Err(KafkaError::NoMessageReceived);
             }
         }
     }
