@@ -42,20 +42,20 @@ impl KafkaReader {
                     match serde_json::from_slice::<repo_sync_model::MessageModel>(payload) {
                         Ok(version_with_tag) => {
                             tracing::info!("enter message match");
-                            return Ok(version_with_tag);
+                            Ok(version_with_tag);
                         }
                         Err(e) => {
                             tracing::info!("Failed to deserialize message: {:?}", e);
-                            return Err(KafkaError::NoMessageReceived);
+                            Err(KafkaError::NoMessageReceived);
                         }
                     }
                 } else {
-                    return Err(KafkaError::NoMessageReceived);
+                    Err(KafkaError::NoMessageReceived);
                 }
             }
             Err(e) => {
                 tracing::info!("Error receiving message: {}", e);
-                return Err(KafkaError::NoMessageReceived);
+                Err(KafkaError::NoMessageReceived);
             }
         }
     }
