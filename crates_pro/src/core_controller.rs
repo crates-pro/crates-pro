@@ -126,16 +126,6 @@ impl CoreController {
                         state = state_clone2.lock().await;
                     }
                     drop(state);
-                    //println!("Analyzing crate...");
-
-                    //let output_dir_path = "target/senseleak-res/";
-
-                    /*match fs::create_dir(output_dir_path) {
-                        Ok(_) => {}
-                        Err(_) => {}
-                    }*/
-
-                    //let _ = analyse_once(output_dir_path).await;
 
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
