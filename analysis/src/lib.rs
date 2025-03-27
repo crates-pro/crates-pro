@@ -4,14 +4,11 @@ mod utils;
 use kafka_handler::KafkaReader;
 use serde::Deserialize;
 use std::error::Error;
-//use std::fs::File;
-use tokio::io::{AsyncReadExt, BufReader};
-use tokio_postgres::NoTls;
-//use std::fmt::format;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-//use tempfile::tempdir;
+use tokio::io::{AsyncReadExt, BufReader};
+use tokio_postgres::NoTls;
 
 use data_transporter::db::{db_connection_config_from_env, DBHandler};
 #[allow(dead_code)]
@@ -35,20 +32,12 @@ pub async fn analyse_once(
     kafka_reader: &KafkaReader,
     output_path: &str,
 ) -> Result<(), Box<dyn Error>> {
-    //tracing::info!("enter analyse_once");
     let config_path = Path::new("/var/tools/tools.json");
     let config: Config =
         serde_json::from_str(&fs::read_to_string(config_path)?).expect("Failed to parse config");
-    //tracing::info!("finish serde tools");
+
     let tools = config.tools;
 
-    /*println!(
-        "{},{},{}",
-        kafka_broker.clone(),
-        consumer_group_id.clone(),
-        analysis_topic.clone()
-    );*/
-    //tracing::info!("finish set kafka_reader");
     let message = kafka_reader.read_single_message().await.unwrap();
     tracing::info!("Analysis receive {:?}", message);
     tracing::info!(
@@ -59,32 +48,10 @@ pub async fn analyse_once(
     let namespace = utils::extract_namespace(&message.db_model.mega_url).await?;
 
     tracing::info!("analyze namespace:{}", namespace.clone());
-    /*let tmp_dir = tempdir()?;
-    let repo_path = tmp_dir.path().join("repo");
-
-    // Clone the repository
-    let clone_status = Command::new("git")
-        .args(["clone", &message.git_url, repo_path.to_str().unwrap()])
-        .status()?;
-
-    if !clone_status.success() {
-        return Err(format!("Failed to clone repository: {}", &message.git_url).into());
-    }
-
-    // Checkout the specific tag
-    let checkout_status = Command::new("git")
-        .arg("-C")
-        .arg(repo_path.to_str().unwrap())
-        .args(["checkout", &message.tag])
-        .status()?;
-
-    if !checkout_status.success() {
-        return Err(format!("Failed to checkout tag: {}", &message.tag).into());
-    }*/
 
     let repo_path = PathBuf::from("/var/target/new_crates_file").join(&namespace);
     tracing::info!("code_path:{:?}", repo_path.clone());
-    //let _ = init_git(repo_path.to_str().unwrap()).unwrap();
+
     for tool in &tools {
         for command in &tool.run {
             let output_file = PathBuf::from(output_path)
@@ -99,13 +66,7 @@ pub async fn analyse_once(
                 let _ = tokio::fs::create_dir_all(&output_dir).await;
             }
             let f = tokio::fs::File::create(&output_file).await.unwrap();
-            /*let run_command = command
-                .replace("{binary_path}", &tool.binary_path)
-                .replace("{code_path}", repo_path.to_str().unwrap())
-                .replace("{output_path}", output_file.to_str().unwrap());
-            tracing::info!("Executing: {}", run_command);
-            let output = Command::new("sh").arg("-c").arg(&run_command).output()?;*/
-            //println!("binary_path:{}", tool.binary_path);
+
             let gitleaks = PathBuf::from("/var/tools/sensleak/gitleaks.toml");
             let mut cmd = Command::new("/var/tools/sensleak/scan");
             cmd.args(&[
@@ -176,28 +137,6 @@ fn init_git(repo_path: &str) -> Result<(), ()> {
             .output()
             .expect("Failed to execute git add");
         if !add_output.status.success() {
-            let error_msg = String::from_utf8_lossy(&add_output.stderr);
-            println!("git add failed: {}", error_msg);
-        }
-        let email_output = Command::new("git")
-            .arg("config")
-            .arg("--global")
-            .arg("user.email")
-            .arg("1649209217@qq.com")
-            .output()
-            .expect("Failed to set config user.email");
-        if !email_output.status.success() {
-            let error_msg = String::from_utf8_lossy(&add_output.stderr);
-            println!("git add failed: {}", error_msg);
-        }
-        let name_output = Command::new("git")
-            .arg("config")
-            .arg("--global")
-            .arg("user.name")
-            .arg("hongwangliu-nju")
-            .output()
-            .expect("Failed to set config user.name");
-        if !name_output.status.success() {
             let error_msg = String::from_utf8_lossy(&add_output.stderr);
             println!("git add failed: {}", error_msg);
         }

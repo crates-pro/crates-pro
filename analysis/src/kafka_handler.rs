@@ -1,11 +1,7 @@
-//use rdkafka::consumer::BaseConsumer;
-//use std::time::Duration;
-//use model::general_model::VersionWithTag;
 use model::repo_sync_model;
 use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::error::KafkaError;
 use rdkafka::{ClientConfig, Message};
-//use std::time::Duration;
 
 pub struct KafkaReader {
     consumer: StreamConsumer,

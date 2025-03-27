@@ -28,7 +28,6 @@ pub(crate) async fn extract_namespace(url_str: &str) -> Result<String, String> {
 
     let segments: Vec<&str> = url.split("/").collect();
     tracing::info!("finish get segments");
-    //println!("{:?}", segments);
 
     // github URLs is of the format "/user/repo"
     if segments.len() < 2 {

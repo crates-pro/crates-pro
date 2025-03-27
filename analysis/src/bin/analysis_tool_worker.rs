@@ -1,8 +1,6 @@
 use analysis::analyse_once;
-//use analysis::kafka_handler;
 use analysis::kafka_handler::KafkaReader;
 use std::fs::File;
-//use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, thread};
 use tracing_subscriber::EnvFilter;
@@ -22,10 +20,6 @@ async fn main() {
         .init();
 
     tracing::info!("Starting with log file: {}", log_path);
-    //let should_reset_kafka_offset = env::var("SHOULD_RESET_KAFKA_OFFSET").unwrap().eq("1");
-    /*if should_reset_kafka_offset {
-        reset_kafka_offset().await.unwrap();
-    }*/
     let kafka_broker = env::var("KAFKA_BROKER").unwrap();
     let consumer_group_id = env::var("KAFKA_CONSUMER_GROUP_ID").unwrap();
     let analysis_topic = env::var("KAFKA_IMPORT_TOPIC").unwrap();
@@ -40,10 +34,6 @@ async fn main() {
         tracing::info!("analysis_tool_worker");
         let output_dir_path = "/var/target/senseleak-res/";
 
-        /*match fs::create_dir(output_dir_path) {
-            Ok(_) => {}
-            Err(_) => {}
-        }*/
         #[allow(clippy::let_unit_value)]
         let _ = analyse_once(&kafka_reader, output_dir_path).await;
         thread::sleep(Duration::from_secs(0));
