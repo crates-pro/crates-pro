@@ -14,9 +14,9 @@ BUILD_DIR=/workspace/build
 IMAGES_DIR=/workspace/images
 TIMESTAMP=$(date +%Y%m%d-%H%M)
 CRATESPRO_MAIN_IMAGE=localhost:30500/crates-pro:local-$TIMESTAMP
-CRATESPRO_ANALYZE_IMAGE=localhost:30500/crates-pro-analyze:local-$TIMESTAMP
-CRATESPRO_DATA_TRANSPORT_IMAGE=localhost:30500/crates-pro-data-transport:local-$TIMESTAMP
-CRATESPRO_REPO_IMPORT_IMAGE=localhost:30500/crates-pro-repo-import:local-$TIMESTAMP
+CRATESPRO_ANALYZE_IMAGE=localhost:30500/cratespro-analyze:local-$TIMESTAMP
+CRATESPRO_DATA_TRANSPORT_IMAGE=localhost:30500/cratespro-datatransport:local-$TIMESTAMP
+CRATESPRO_REPO_IMPORT_IMAGE=localhost:30500/cratespro-repoimport:local-$TIMESTAMP
 
 ### Step 1: Compile, then copy artifacts to $BUILD_DIR
 mkdir -p $BUILD_DIR

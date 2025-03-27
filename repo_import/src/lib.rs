@@ -139,6 +139,7 @@ impl ImportDriver {
         Err(KafkaError::NoMessageReceived)
     }
     #[allow(clippy::let_unit_value)]
+    #[allow(unused_variables)]
     pub async fn import_from_mq_for_a_message(&mut self) -> Result<(), ()> {
         tracing::info!("Try to import from a message!");
         // //tracing::debug
@@ -261,17 +262,23 @@ impl ImportDriver {
                 .await
                 .unwrap();
 
-            if matches!(kind, MessageKind::UserUpload) {
-                for ver in new_versions {
-                    self.sender_handler
-                        .send_message(
-                            &kafka_analysis_topic,
-                            "",
-                            &serde_json::to_string(&ver).unwrap(),
-                        )
-                        .await;
-                }
+            //if matches!(kind, MessageKind::UserUpload) {
+            for ver in new_versions {
+                self.sender_handler
+                    .send_message(
+                        &kafka_analysis_topic,
+                        "",
+                        &serde_json::to_string(&ver).unwrap(),
+                    )
+                    .await;
+                tracing::info!(
+                    "send message successfully:{},{},{}",
+                    ver.name,
+                    ver.version,
+                    ver.git_url
+                );
             }
+            //}
         } else {
             tracing::info!("dir {} already exist", path.to_str().unwrap().to_string());
             let insert_time = Instant::now();
@@ -300,17 +307,23 @@ impl ImportDriver {
                 .parse_a_local_repo_and_return_new_versions(path, mega_url_suffix)
                 .await
                 .unwrap();
-            if matches!(kind, MessageKind::UserUpload) {
-                for ver in new_versions {
-                    self.sender_handler
-                        .send_message(
-                            &kafka_analysis_topic,
-                            "",
-                            &serde_json::to_string(&ver).unwrap(),
-                        )
-                        .await;
-                }
+            //if matches!(kind, MessageKind::UserUpload) {
+            for ver in new_versions {
+                self.sender_handler
+                    .send_message(
+                        &kafka_analysis_topic,
+                        "",
+                        &serde_json::to_string(&ver).unwrap(),
+                    )
+                    .await;
+                tracing::info!(
+                    "send message successfully:{},{},{}",
+                    ver.name,
+                    ver.version,
+                    ver.git_url
+                );
             }
+            //}
         } //changes
           //self.context.write_tugraph_import_files();
         tracing::info!("Finish to import from a message!");

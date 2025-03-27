@@ -1406,4 +1406,21 @@ impl DBHandler {
         }
         Ok(res)
     }
+    pub async fn insert_sensleak_result_into_pg(
+        &self,
+        id: String,
+        result: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.client
+            .execute(
+                "INSERT INTO senseleak_res(
+                        id,res) VALUES ($1, $2)
+                        ON CONFLICT (id)
+                        DO UPDATE SET res=$2;",
+                &[&id, &result],
+            )
+            .await
+            .unwrap();
+        Ok(())
+    }
 }

@@ -1,9 +1,10 @@
-use url::Url;
+//use url::Url;
 
 /// An auxiliary function
 ///
 /// Extracts namespace e.g. "tokio-rs/tokio" from the git url https://www.github.com/tokio-rs/tokio
 pub(crate) async fn extract_namespace(url_str: &str) -> Result<String, String> {
+    tracing::info!("enter extract_namespace");
     /// auxiliary function
     fn remove_dot_git_suffix(input: &str) -> String {
         let input = if input.ends_with('/') {
@@ -20,16 +21,13 @@ pub(crate) async fn extract_namespace(url_str: &str) -> Result<String, String> {
         input
     }
 
-    let url = Url::parse(&remove_dot_git_suffix(url_str))
-        .map_err(|e| format!("Failed to parse URL {}: {}", url_str, e))?;
+    let url = remove_dot_git_suffix(url_str);
 
+    tracing::info!("finish get url:{:?}", url);
     // /tokio-rs/tokio
-    let path_segments = url
-        .path_segments()
-        .ok_or("Cannot extract path segments from URL")?;
 
-    let segments: Vec<&str> = path_segments.collect();
-    //println!("{:?}", segments);
+    let segments: Vec<&str> = url.split("/").collect();
+    tracing::info!("finish get segments");
 
     // github URLs is of the format "/user/repo"
     if segments.len() < 2 {

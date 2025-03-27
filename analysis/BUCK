@@ -15,6 +15,7 @@ filegroup(
 pkg_deps = [
     "//project/crates-pro:data_transporter",
     "//project/crates-pro:model",
+    "//third-party:dotenvy",
     "//third-party:rdkafka",
     "//third-party:serde",
     "//third-party:serde_json",
@@ -23,6 +24,7 @@ pkg_deps = [
     "//third-party:tokio-postgres",
     "//third-party:tracing",
     "//third-party:url",
+    "//third-party:tracing-subscriber",
 ]
 
 cargo.rust_library(

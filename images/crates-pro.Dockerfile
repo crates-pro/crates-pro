@@ -15,6 +15,21 @@ RUN curl -O https://downloads.apache.org/kafka/${KAFKA_VERSION}/kafka_${SCALA_VE
     mv /opt/kafka_${SCALA_VERSION}-${KAFKA_VERSION} $KAFKA_HOME && \
     rm kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz
 
+# Create and switch to user
+ARG USERNAME="rust"
+ARG USER_UID="1000"
+RUN useradd -m -s /bin/bash -u $USER_UID $USERNAME \
+    && mkdir -p /etc/sudoers.d \
+    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+    && chmod 0440 /etc/sudoers.d/$USERNAME
+USER $USERNAME
+
+# Create and set permissions for directories
+USER root
+RUN mkdir -p /workdir && chown $USERNAME:$USERNAME /workdir
+RUN chown -R $USERNAME:$USERNAME $KAFKA_HOME
+USER $USERNAME
+
 WORKDIR /workdir
 
 # Download resources required by `//third-party/vendor/utoipa-swagger-ui-9.0.0-patch1/src/lib.rs`

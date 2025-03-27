@@ -13,6 +13,7 @@
     "mounts": [
         "source=/home/rust/workspace/crates-pro-infra,target=/var/crates-pro-infra,type=bind",
         "source=${localWorkspaceFolder},target=/var/crates-pro-infra/project/crates-pro,type=bind",
+        "source=/mnt/crates/freighter/crates,target=/var/crates,type=bind",
         // Add mounts for snapshot taking
         "source=/home/rust/src/crates-pro-control,target=/home/rust/src/crates-pro-control,type=bind",
         "source=/mnt/devops/snapshots,target=/mnt/devops/snapshots,type=bind",

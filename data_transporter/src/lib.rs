@@ -1,6 +1,6 @@
 mod data_packer;
 mod data_reader;
-mod db;
+pub mod db;
 mod handler;
 mod transporter;
 

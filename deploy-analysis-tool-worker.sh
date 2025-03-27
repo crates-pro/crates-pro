@@ -3,13 +3,14 @@ set -euxo pipefail
 
 # source
 INFRA_PATH=/var/crates-pro-infra
+WORKSPACE_PATH=/workspace
 # deployment
 NAMESPACE=analysis-tool-worker
 DEPLOYMENT=analysis-tool-worker
 KAFKA_HOST=172.17.0.1:30092
 # build
-BUILD_DIR=/workspace/build
-IMAGES_DIR=/workspace/images
+BUILD_DIR=$WORKSPACE_PATH/build
+IMAGES_DIR=$WORKSPACE_PATH/images
 TIMESTAMP=$(date +%Y%m%d-%H%M)
 ANALYSIS_TOOL_WORKER_IMAGE=localhost:30500/analysis-tool-worker:local-$TIMESTAMP
 
@@ -22,8 +23,9 @@ cp "$(buck2 build //project/sensleak-rs:scan --show-simple-output)" $BUILD_DIR/s
 cp $INFRA_PATH/project/sensleak-rs/gitleaks.toml $BUILD_DIR/gitleaks.toml
 # Copy artifacts for worker (analysis-tool-worker)
 cp "$(buck2 build //project/crates-pro/analysis:analysis_tool_worker --show-simple-output)" $BUILD_DIR/analysis_tool_worker
-cp /workspace/.env $BUILD_DIR/.env
-cd /workspace
+cp -r $WORKSPACE_PATH/analysis/tools/ $BUILD_DIR/tools/
+cp $WORKSPACE_PATH/.env $BUILD_DIR/.env
+cd $WORKSPACE_PATH
 
 ### Step 2: Build Docker images
 docker build -t $ANALYSIS_TOOL_WORKER_IMAGE -f $IMAGES_DIR/analysis-tool-worker.Dockerfile $BUILD_DIR
