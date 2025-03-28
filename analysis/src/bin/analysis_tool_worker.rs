@@ -1,9 +1,13 @@
 use analysis::analyse_once;
 use analysis::kafka_handler::KafkaReader;
-use std::fs::File;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::{env, thread};
+use std::{
+    env,
+    fs::File,
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use tracing_subscriber::EnvFilter;
+
 #[tokio::main]
 async fn main() {
     println!("Starting the program. Press Ctrl+C to stop.");

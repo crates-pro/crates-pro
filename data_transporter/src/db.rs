@@ -1423,4 +1423,25 @@ impl DBHandler {
             .unwrap();
         Ok(())
     }
+    #[allow(clippy::len_zero)]
+    pub async fn get_senseleak_from_pg(
+        &self,
+        id: String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let rows = self
+            .client
+            .query("SELECT * FROM senseleak_res WHERE id=$1", &[&id])
+            .await
+            .unwrap();
+        let mut tmp_res = vec![];
+        for row in rows {
+            let s_res: String = row.get("res");
+            tmp_res.push(s_res);
+        }
+        let mut real_res = "[]".to_string();
+        if tmp_res.len() != 0 {
+            real_res = tmp_res[0].clone();
+        }
+        Ok(real_res)
+    }
 }

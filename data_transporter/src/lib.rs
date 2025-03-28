@@ -265,6 +265,11 @@ pub async fn run_api_server() -> std::io::Result<()> {
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 handler::new_get_crates_front_info(cratename,version,nsfront,nsbehind).await
             }))
+            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/senseleak", 
+            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
+                let (nsfront,nsbehind,_cratename,_versionn) = path.into_inner();
+                handler::get_senseleak(nsfront, nsbehind).await
+            }))
             .route("/api/graph/{cratename}/{version}/direct", 
             web::get().to(|path: web::Path<(String,String)>|async move{
                 let (cratename, version) = path.into_inner();

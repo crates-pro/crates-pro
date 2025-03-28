@@ -21,7 +21,7 @@ cd $INFRA_PATH
 # Copy artifacts for tool 'sensleak-rs'
 cp "$(buck2 build //project/sensleak-rs:scan --show-simple-output)" $BUILD_DIR/scan
 cp $INFRA_PATH/project/sensleak-rs/gitleaks.toml $BUILD_DIR/gitleaks.toml
-# Copy artifacts for worker (analysis-tool-worker)
+# Copy artifacts for analysis-tool-worker
 cp "$(buck2 build //project/crates-pro/analysis:analysis_tool_worker --show-simple-output)" $BUILD_DIR/analysis_tool_worker
 cp -r $WORKSPACE_PATH/analysis/tools/ $BUILD_DIR/tools/
 cp $WORKSPACE_PATH/.env $BUILD_DIR/.env

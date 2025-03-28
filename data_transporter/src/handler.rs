@@ -148,6 +148,11 @@ pub struct Versionpage {
     pub downloads: String,
     pub dependents: usize,
 }
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct SenseleakRes {
+    pub exist: bool,
+    pub res: String,
+}
 
 /// 获取cve信息
 #[utoipa::path(
@@ -1164,4 +1169,25 @@ pub async fn query_upload_crate(email: String) -> impl Responder {
         real_res.push(row);
     }
     HttpResponse::Ok().json(real_res)
+}
+pub async fn get_senseleak(nsfront: String, nsbehind: String) -> impl Responder {
+    let db_connection_config = db_connection_config_from_env();
+    #[allow(unused_variables)]
+    let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+        .await
+        .unwrap();
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+    let dbhandler = DBHandler { client };
+    let id = nsfront.clone() + "/" + &nsbehind;
+    let res = dbhandler.get_senseleak_from_pg(id).await.unwrap();
+    let mut exist = true;
+    if res.clone() == *"[]" {
+        exist = false;
+    }
+    let return_val = SenseleakRes { exist, res };
+    HttpResponse::Ok().json(return_val)
 }
