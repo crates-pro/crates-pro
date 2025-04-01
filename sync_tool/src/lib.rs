@@ -1,4 +1,4 @@
-use entity::{sea_orm_active_enums::CrateTypeEnum, repo_sync_result};
+use entity::{repo_sync_result, sea_orm_active_enums::CrateTypeEnum};
 use sea_orm::{
     ActiveValue::NotSet, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel,
     QueryFilter, Set,
@@ -6,6 +6,7 @@ use sea_orm::{
 
 pub mod command;
 pub mod crate_to_repo;
+pub mod github_sync;
 pub mod handle_repo;
 pub mod incremental_update;
 pub mod kafka;
