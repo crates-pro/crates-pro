@@ -23,4 +23,5 @@ pub enum Commands {
     Incremental,
     /// Sync Crate to Repo
     Sync,
+    GithubSync
 }

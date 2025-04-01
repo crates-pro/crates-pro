@@ -73,7 +73,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Programs::Table)
                     .if_not_exists()
-                    .col(pk_auto(Programs::Id))
+                    .col(pk_uuid(Programs::Id))
                     .col(string(Programs::Name))
                     .col(text(Programs::Description))
                     .col(string(Programs::Namespace))
@@ -93,7 +93,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(ProgramVersions::Table)
                     .if_not_exists()
-                    .col(pk_auto(ProgramVersions::Id))
+                    .col(pk_uuid(ProgramVersions::Id))
                     .col(string(ProgramVersions::Name))
                     .col(string(ProgramVersions::Version))
                     .col(text_null(ProgramVersions::Documentation))
@@ -123,7 +123,23 @@ impl MigrationTrait for Migration {
         Ok(())
     }
 
-    async fn down(&self, _: &SchemaManager) -> Result<(), DbErr> {
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx-repo_sync_result_crate_name")
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(RepoSyncResult::Table).to_owned())
+            .await?;
+        manager
+            .drop_type(Type::drop().if_exists().name(CrateTypeEnum).to_owned())
+            .await?;
+        manager
+            .drop_type(Type::drop().if_exists().name(SyncStatusEnum).to_owned())
+            .await?;
         Ok(())
     }
 }

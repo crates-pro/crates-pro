@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 entity = { workspace = true }
+database = { workspace = true }
 kafka_model = { path = "kafka_model" }
 
 # third-party (第三方依赖, 不写具体版本号, 具体版本只在根目录 Cargo.toml 中出现)
@@ -35,6 +36,12 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 url = { workspace = true }
 walkdir = { workspace = true }
+reqwest = { workspace = true, features = ["json"]}
+uuid = { workspace = true, features = [
+    "v4",                # Lets you generate random UUIDs
+    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+] }
 
 [[bin]]
 name = "sync_tool"   # 设置编译后的二进制文件名称
