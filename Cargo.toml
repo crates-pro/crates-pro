@@ -3,6 +3,9 @@ members = [
   "analysis",
   "crates_pro",
   "data_transporter",
+  "database",
+  "database/entity",
+  "database/migration",
   "model",             # internal info struct,such as `crate info` `library info` `app info`
   "repo_import",       # extract repo and import data into tugraph
   "search",
@@ -21,6 +24,9 @@ repo_import = { path = "repo_import" }
 search = { path = "search" }
 sync_tool = { path = "sync_tool" }
 tudriver = { path = "tudriver" }
+database = { path = "database" }
+migration = { path = "database/migration" }
+entity = { path = "database/entity" }
 
 # third-party (所有第三方依赖, 按字母表排序, 均保留1个小数点)
 actix-multipart = "0.7"

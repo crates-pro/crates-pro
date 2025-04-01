@@ -20,7 +20,7 @@ use tar::Archive;
 use url::Url;
 use walkdir::{DirEntry, WalkDir};
 
-use entity::{db_enums::RepoSyncStatus, repo_sync_status};
+use entity::{sea_orm_active_enums::SyncStatusEnum, repo_sync_result};
 
 use crate::{
     kafka::{self},
@@ -67,7 +67,7 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
             let repo_path = &crate_path.join(crate_name);
 
             let record = crate::get_record(&conn, crate_name).await;
-            if record.status == Unchanged(RepoSyncStatus::Succeed) {
+            if record.status == Unchanged(SyncStatusEnum::Succeed) {
                 tracing::info!("skipping:{:?}", record.crate_name);
                 writeln!(log_file, "skipping: {:?}", record.crate_name).unwrap();
                 continue;
@@ -347,7 +347,7 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
         conn: &DatabaseConnection,
         crate_name: &str,
         repo_path: &Path,
-        mut record: repo_sync_status::ActiveModel,
+        mut record: repo_sync_result::ActiveModel,
         version: &String,
         producer: &FutureProducer,
     ) {
@@ -366,16 +366,16 @@ pub async fn convert_crate_to_repo(workspace: PathBuf) {
         record.mega_url = Set(url.path().to_owned());
 
         if push_res.status.success() {
-            record.status = Set(RepoSyncStatus::Succeed);
+            record.status = Set(SyncStatusEnum::Succeed);
             record.err_message = Set(None);
         } else {
-            record.status = Set(RepoSyncStatus::Failed);
+            record.status = Set(SyncStatusEnum::Failed);
             record.err_message = Set(Some(String::from_utf8_lossy(&push_res.stderr).to_string()));
         }
         record.updated_at = Set(chrono::Utc::now().naive_utc());
         record.version = Set(version.to_string());
         let res = record.save(conn).await.unwrap();
-        let db_model: repo_sync_status::Model = res.try_into().unwrap();
+        let db_model: repo_sync_result::Model = res.try_into().unwrap();
         let kafka_message_model = message_model::MessageModel::new(
             db_model,                              // 数据库 Model
             message_model::MessageKind::Mega,      // 设置 message_kind 为 Mega

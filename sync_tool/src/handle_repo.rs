@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::process::Command;
 
-use entity::db_enums::RepoSyncStatus;
-use entity::repo_sync_status;
+use entity::sea_orm_active_enums::SyncStatusEnum;
+use entity::repo_sync_result;
 use regex::Regex;
 use sea_orm::ActiveModelTrait;
 use sea_orm::Set;
@@ -32,7 +32,7 @@ pub async fn add_and_push_to_remote(workspace: PathBuf) {
 
             let crate_name = entry.file_name().to_str().unwrap().to_owned();
             let mut record = crate::get_record(&conn, &crate_name).await;
-            if record.status == Unchanged(RepoSyncStatus::Succeed) {
+            if record.status == Unchanged(SyncStatusEnum::Succeed) {
                 tracing::info!("skipping:{:?}", record.crate_name);
                 // let kafka_payload: repo_sync_status::Model = record.try_into().unwrap();
                 // kafka::producer::send_message(
@@ -91,17 +91,17 @@ pub async fn add_and_push_to_remote(workspace: PathBuf) {
                         .unwrap();
 
                     if push_res.status.success() {
-                        record.status = Set(RepoSyncStatus::Succeed);
+                        record.status = Set(SyncStatusEnum::Succeed);
                         record.err_message = Set(None);
                     } else {
-                        record.status = Set(RepoSyncStatus::Failed);
+                        record.status = Set(SyncStatusEnum::Failed);
                         record.err_message =
                             Set(Some(String::from_utf8_lossy(&push_res.stderr).to_string()));
                     }
                     record.updated_at = Set(chrono::Utc::now().naive_utc());
                     let res = record.save(&conn).await.unwrap();
 
-                    let kafka_payload: repo_sync_status::Model = res.try_into().unwrap();
+                    let kafka_payload: repo_sync_result::Model = res.try_into().unwrap();
                     kafka::producer::send_message(
                         &producer,
                         &env::var("KAFKA_TOPIC_NEW").unwrap(),

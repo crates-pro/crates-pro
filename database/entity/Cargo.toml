@@ -1,0 +1,13 @@
+[package]
+name = "entity"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "entity"
+path = "src/mod.rs"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sea-orm = { workspace = true, features = ["sqlx-postgres"] }

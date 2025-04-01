@@ -3,11 +3,11 @@ use sea_orm::prelude::StringLen;
 use sea_orm::{DeriveActiveEnum, EnumIter};
 use serde::{Deserialize, Serialize};
 
-use entity::repo_sync_status;
+use entity::repo_sync_result;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageModel {
-    pub db_model: repo_sync_status::Model, // 包装数据库 Model
+    pub db_model: repo_sync_result::Model, // 包装数据库 Model
     pub message_kind: MessageKind,
     pub source_of_data: SourceOfData,
     pub timestamp: DateTime<Utc>, // 消息发送时的时间戳
@@ -17,7 +17,7 @@ pub struct MessageModel {
 // 手动实现数据库 Model 的特性
 impl MessageModel {
     pub fn new(
-        db_model: repo_sync_status::Model,
+        db_model: repo_sync_result::Model,
         message_kind: MessageKind,
         source_of_data: SourceOfData,
         timestamp: DateTime<Utc>,
@@ -37,7 +37,7 @@ use std::ops::Deref;
 // 通过 Deref 转发数据库 Model 的特性
 // 可以直接访问 crate_name：message_model.crate_name，而不用每次写成 message_model.inner.crate_name。
 impl Deref for MessageModel {
-    type Target = repo_sync_status::Model;
+    type Target = repo_sync_result::Model;
 
     fn deref(&self) -> &Self::Target {
         &self.db_model
