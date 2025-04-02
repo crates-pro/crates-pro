@@ -10,6 +10,10 @@ on: [ push, pull_request ]
 
 name: Base GitHub Action for Check, Test and Lints
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
 
   cargo-check:

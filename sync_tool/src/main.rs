@@ -36,7 +36,7 @@ async fn main() {
             sync_crate_to_repo::convert_crate_to_repo(args.workspace).await;
         }
         Commands::GithubSync => {
-            github_sync::start_sync(&context).await.unwrap();
+            github_sync::start_graphql_sync(&context).await.unwrap();
         }
     }
 }
