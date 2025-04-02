@@ -89,6 +89,31 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx-programs_github_url")
+                    .unique()
+                    .table(Programs::Table)
+                    .col(Programs::GithubUrl)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(GithubSyncStatus::Table)
+                    .if_not_exists()
+                    .col(pk_auto(GithubSyncStatus::Id))
+                    .col(string(GithubSyncStatus::StartDate))
+                    .col(string(GithubSyncStatus::EndDate))
+                    .col(boolean(GithubSyncStatus::SyncResult))
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
             .create_table(
                 Table::create()
                     .table(ProgramVersions::Table)
@@ -135,6 +160,9 @@ impl MigrationTrait for Migration {
             .drop_table(Table::drop().table(RepoSyncResult::Table).to_owned())
             .await?;
         manager
+            .drop_table(Table::drop().table(GithubSyncStatus::Table).to_owned())
+            .await?;
+        manager
             .drop_type(Type::drop().if_exists().name(CrateTypeEnum).to_owned())
             .await?;
         manager
@@ -173,6 +201,15 @@ enum Programs {
     ProgramType,
     Downloads,
     Cratesio,
+}
+
+#[derive(DeriveIden)]
+enum GithubSyncStatus {
+    Table,
+    Id,
+    StartDate,
+    EndDate,
+    SyncResult,
 }
 
 #[derive(DeriveIden)]

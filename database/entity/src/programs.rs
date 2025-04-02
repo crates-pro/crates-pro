@@ -13,7 +13,7 @@ pub struct Model {
     pub description: String,
     pub namespace: String,
     pub max_version: String,
-    #[sea_orm(column_type = "Text")]
+    #[sea_orm(column_type = "Text", unique)]
     pub github_url: String,
     #[sea_orm(column_type = "Text")]
     pub mega_url: String,

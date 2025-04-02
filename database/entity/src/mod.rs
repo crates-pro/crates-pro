@@ -2,6 +2,7 @@
 
 pub mod prelude;
 
+pub mod github_sync_status;
 pub mod program_dependencies;
 pub mod program_versions;
 pub mod programs;
