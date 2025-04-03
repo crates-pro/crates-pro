@@ -2,9 +2,12 @@
 
 pub mod prelude;
 
+pub mod contributor_location;
 pub mod github_sync_status;
+pub mod github_user;
 pub mod program_dependencies;
 pub mod program_versions;
 pub mod programs;
 pub mod repo_sync_result;
+pub mod repository_contributor;
 pub mod sea_orm_active_enums;

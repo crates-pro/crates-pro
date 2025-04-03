@@ -6,7 +6,6 @@ use sea_orm::{
 
 pub mod command;
 pub mod crate_to_repo;
-pub mod github_sync;
 pub mod handle_repo;
 pub mod incremental_update;
 pub mod kafka;

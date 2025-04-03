@@ -1,15 +1,11 @@
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-pub struct GitHubSearchResponse {
-    pub items: Vec<Repository>,
-}
-#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Repository {
     pub name: String,
     pub url: String,
-    pub created_at: String,
+    pub _created_at: String,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

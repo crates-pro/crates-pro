@@ -1,0 +1,32 @@
+[package]
+name = "github-handler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+database = { workspace = true }
+entity = { workspace = true }
+model = { workspace = true }
+
+tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread"]}
+reqwest = { workspace = true, features = ["json"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+dotenvy = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+chrono = { workspace = true, features = ["serde"] }
+url = { workspace = true }
+regex = { workspace = true }
+once_cell = { workspace = true }
+sea-orm = { workspace = true, features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+    "macros",
+] }
+uuid = { workspace = true, features = [
+    "v4",                # Lets you generate random UUIDs
+    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+] }
