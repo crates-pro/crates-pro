@@ -6,11 +6,12 @@ members = [
   "database",
   "database/entity",
   "database/migration",
-  "model",             # internal info struct,such as `crate info` `library info` `app info`
-  "repo_import",       # extract repo and import data into tugraph
+  "github-handler",
+  "model",              # internal info struct,such as `crate info` `library info` `app info`
+  "repo_import",        # extract repo and import data into tugraph
   "search",
   "sync_tool",
-  "tudriver",          # tugraph client, deal with the quary from router
+  "tudriver",           # tugraph client, deal with the quary from router
 ]
 
 resolver = "2" # use resolver of version 2
@@ -27,6 +28,7 @@ tudriver = { path = "tudriver" }
 database = { path = "database" }
 migration = { path = "database/migration" }
 entity = { path = "database/entity" }
+github-handler = { path = "github-handler"}
 
 # third-party (所有第三方依赖, 按字母表排序, 均保留1个小数点)
 actix-multipart = "0.7"

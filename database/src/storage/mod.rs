@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use init::database_connection;
-use program_storage::ProgramStorage;
+use github_handler_storage::GithubHanlderStorage;
 
 pub mod init;
-pub mod program_storage;
+pub mod github_handler_storage;
 
 #[derive(Clone)]
 pub struct Context {
@@ -18,20 +18,20 @@ impl Context {
         }
     }
 
-    pub fn program_storage(&self) -> ProgramStorage {
-        self.services.program_storage.clone()
+    pub fn github_handler_stg(&self) -> GithubHanlderStorage {
+        self.services.github_handler_storage.clone()
     }
 }
 #[derive(Clone)]
 pub struct Service {
-    program_storage: ProgramStorage,
+    github_handler_storage: GithubHanlderStorage,
 }
 
 impl Service {
     async fn new(db_url: &str) -> Self {
         let connection = Arc::new(database_connection(db_url).await.unwrap());
         Self {
-            program_storage: ProgramStorage::new(connection.clone()).await,
+            github_handler_storage: GithubHanlderStorage::new(connection.clone()).await,
         }
     }
 
