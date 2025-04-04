@@ -18,3 +18,4 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sea-orm = { workspace = true, features = ["sqlx-postgres"] }
 chrono = { workspace = true }
+futures = { workspace = true }

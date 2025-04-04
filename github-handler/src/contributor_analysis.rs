@@ -145,7 +145,7 @@ async fn analyze_contributor_locations(
 ) -> Result<(), BoxError> {
     info!("分析仓库 {}/{} 的贡献者地理位置", owner, repo);
 
-    let base_dir = Path::new("/Users/Yetianxing/github_source");
+    let base_dir = Path::new("/mnt/r2cn/github_source");
     if !base_dir.exists() {
         fs::create_dir_all(base_dir)?;
         info!("创建根目录: {:?}", base_dir);
@@ -178,8 +178,6 @@ async fn analyze_contributor_locations(
                 "core.askpass=echo", // 不使用交互式密码提示
                 "--depth",
                 "1", // 浅克隆，只获取最近的提交
-                "--timeout",
-                "30", // 设置超时时间
                 &format!("https://github.com/{}/{}.git", owner, repo),
                 &target_path,
             ])

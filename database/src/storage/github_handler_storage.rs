@@ -5,6 +5,7 @@ use entity::{
     programs::{self},
     repository_contributor,
 };
+use futures::Stream;
 use model::github::{ContributorAnalysis, GitHubUser};
 use sea_orm::{
     sea_query::OnConflict, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
@@ -57,6 +58,12 @@ impl GithubHanlderStorage {
             .await
             .unwrap();
         Ok(())
+    }
+
+    pub async fn query_programs_stream(
+        &self,
+    ) -> Result<impl Stream<Item = Result<programs::Model, DbErr>> + Send + '_, DbErr> {
+        programs::Entity::find().stream(self.get_connection()).await
     }
 
     pub async fn save_github_sync_status(
