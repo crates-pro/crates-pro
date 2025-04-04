@@ -1,7 +1,9 @@
 use clap::{Parser, Subcommand};
+use config::get_github_token;
 use contributor_analysis::analyze_git_contributors;
 use database::storage::Context;
-
+use futures::TryStreamExt;
+use regex::Regex;
 use tracing::{error, info, warn};
 
 // 导入模块
@@ -34,7 +36,8 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    SyncUrl,
+    GithubSync,
+    AnalyzeAll,
     /// 分析仓库贡献者
     Analyze {
         /// 仓库所有者
@@ -142,6 +145,35 @@ async fn query_top_contributors(context: Context, owner: &str, repo: &str) -> Re
     Ok(())
 }
 
+async fn sync_all_repos(context: Context) -> Result<(), BoxError> {
+    let stg = context.github_handler_stg();
+    let url_stream = stg.query_programs_stream().await.unwrap();
+
+    // 并发处理 Stream
+    url_stream
+        .try_for_each_concurrent(5, |model| {
+            let context = context.clone();
+            async move {
+                process_item(model.github_url, context).await;
+                Ok(())
+            }
+        })
+        .await?;
+    Ok(())
+}
+
+async fn process_item(url: String, context: Context) {
+    let re = Regex::new(r"github\.com/([^/]+)/([^/]+)").unwrap();
+    if let Some(captures) = re.captures(&url) {
+        let owner = &captures[1];
+        let repo = &captures[2];
+        let _ = analyze_git_contributors(context.clone(), owner, repo).await;
+        tracing::info!("Owner: {}, Repo: {}", owner, repo);
+    } else {
+        tracing::error!("URL 格式不正确: {}", url);
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), BoxError> {
     // 加载.env文件
@@ -156,7 +188,8 @@ async fn main() -> Result<(), BoxError> {
     // 连接数据库
     info!("连接数据库...");
     let db_url = get_database_url();
-    let context = Context::new(&db_url).await;
+    let token = get_github_token();
+    let context = Context::new(&db_url, &token).await;
 
     // 处理子命令
     match cli.command {
@@ -168,10 +201,12 @@ async fn main() -> Result<(), BoxError> {
             query_top_contributors(context, &owner, &repo).await?;
         }
 
-        Some(Commands::SyncUrl) => {
+        Some(Commands::GithubSync) => {
             let github_client = GitHubApiClient::new();
             github_client.start_graphql_sync(&context).await?;
         }
+
+        Some(Commands::AnalyzeAll) => sync_all_repos(context).await?,
 
         None => {
             // 如果没有提供子命令，但提供了owner和repo参数

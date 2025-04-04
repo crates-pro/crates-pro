@@ -1,10 +1,10 @@
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use entity::{contributor_location, github_user};
 use sea_orm::ActiveValue::{NotSet, Set};
 use serde::{Deserialize, Serialize};
 
 // GitHub用户信息结构
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct GitHubUser {
     pub id: i64,
     pub login: String,
@@ -17,8 +17,8 @@ pub struct GitHubUser {
     pub public_repos: Option<i32>,
     pub followers: Option<i32>,
     pub following: Option<i32>,
-    pub created_at: NaiveDateTime,
-    pub updated_at: NaiveDateTime,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 // 转换函数，用于将GitHub API返回的用户转换为数据库模型
@@ -39,8 +39,8 @@ impl From<GitHubUser> for github_user::ActiveModel {
             public_repos: Set(user.public_repos),
             followers: Set(user.followers),
             following: Set(user.following),
-            created_at: Set(user.created_at),
-            updated_at: Set(user.updated_at),
+            created_at: Set(user.created_at.naive_utc()),
+            updated_at: Set(user.updated_at.naive_utc()),
             inserted_at: Set(now),
             updated_at_local: Set(now),
         }

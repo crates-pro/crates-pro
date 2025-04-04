@@ -9,12 +9,14 @@ pub mod github_handler_storage;
 #[derive(Clone)]
 pub struct Context {
     pub services: Arc<Service>,
+    pub github_token: String,
 }
 
 impl Context {
-    pub async fn new(db_url: &str) -> Self {
+    pub async fn new(db_url: &str, github_token: &str) -> Self {
         Context {
             services: Service::shared(db_url).await,
+            github_token: github_token.to_owned()
         }
     }
 

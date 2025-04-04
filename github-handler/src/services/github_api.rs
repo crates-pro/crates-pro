@@ -1,5 +1,3 @@
-use std::env;
-
 use chrono::{Duration, NaiveDate};
 use database::storage::Context;
 use entity::{github_sync_status, programs};
@@ -61,7 +59,6 @@ impl GitHubApiClient {
             .send()
             .await?
             .error_for_status()?;
-
         let user: GitHubUser = response.json().await?;
 
         Ok(user)
@@ -279,7 +276,6 @@ impl GitHubApiClient {
             }
         }
         const GITHUB_API_URL: &str = "https://api.github.com/graphql";
-        let github_token = env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN Not Set");
 
         let client = reqwest::Client::new();
         let mut cursor: Option<String> = None;
@@ -312,10 +308,9 @@ impl GitHubApiClient {
                 "variables": variables
             });
 
-            tracing::info!("req body:{}", request_body);
             let response = client
                 .post(GITHUB_API_URL)
-                .header("Authorization", github_token.to_string())
+                .header("Authorization", format!("token {}", context.github_token))
                 .header("User-Agent", "Rust-GraphQL-Client")
                 .json(&request_body)
                 .send()
@@ -327,6 +322,7 @@ impl GitHubApiClient {
                         .text()
                         .await
                         .unwrap_or_else(|_| "Failed to read response body".to_string());
+                    tracing::info!("response body:{}", body);
                     if status.is_success() {
                         match serde_json::from_str::<GraphQLResponse>(&body) {
                             Ok(parsed) => Some(parsed),
