@@ -466,26 +466,26 @@ pub(crate) async fn analyze_git_contributors(
     }
 
     // 查询并显示贡献者统计
-    match context
-        .github_handler_stg()
-        .query_top_contributors(&repository_id)
-        .await
-    {
-        Ok(top_contributors) => {
-            info!("仓库 {}/{} 的贡献者统计:", owner, repo);
-            for (i, contributor) in top_contributors.iter().enumerate().take(10) {
-                info!(
-                    "  {}. {} - {} 次提交",
-                    i + 1,
-                    contributor.login,
-                    contributor.contributions
-                );
-            }
-        }
-        Err(e) => {
-            error!("查询贡献者统计失败: {}", e);
-        }
-    }
+    // match context
+    //     .github_handler_stg()
+    //     .query_top_contributors(&repository_id)
+    //     .await
+    // {
+    //     Ok(top_contributors) => {
+    //         info!("仓库 {}/{} 的贡献者统计:", owner, repo);
+    //         for (i, contributor) in top_contributors.iter().enumerate().take(10) {
+    //             info!(
+    //                 "  {}. {} - {} 次提交",
+    //                 i + 1,
+    //                 contributor.login,
+    //                 contributor.contributions
+    //             );
+    //         }
+    //     }
+    //     Err(e) => {
+    //         error!("查询贡献者统计失败: {}", e);
+    //     }
+    // }
 
     // 分析贡献者国别 - 传递已获取的用户信息
     analyze_contributor_locations(
