@@ -133,9 +133,8 @@ impl GithubHanlderStorage {
         // 直接查询github_url字段
         let programs = programs::Entity::find()
             .filter(
-                programs::Column::GithubUrl
-                    .contains(format!("{}/{}", owner, repo))
-                    .or(programs::Column::GithubUrl.contains(format!("{}/{}.git", owner, repo))),
+                programs::Column::GithubUrl.eq(format!("https://github.com/{}/{}", owner, repo))
+                .or(programs::Column::GithubUrl.eq(format!("https://github.com/{}/{}.git", owner, repo)))
             )
             .all(self.get_connection())
             .await?;
