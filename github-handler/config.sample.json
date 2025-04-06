@@ -1,0 +1,12 @@
+{
+  "github": {
+    "tokens": [
+      "YOUR_GITHUB_TOKEN_1",
+      "YOUR_GITHUB_TOKEN_2",
+      "YOUR_GITHUB_TOKEN_3"
+    ]
+  },
+  "database": {
+    "url": "postgresql://mega:mega@localhost:30432/cratespro"
+  }
+}

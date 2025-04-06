@@ -10,7 +10,7 @@ use std::{
 };
 
 use chrono::Utc;
-use entity::{db_enums::RepoSyncStatus, repo_sync_status};
+use entity::{sea_orm_active_enums::SyncStatusEnum, repo_sync_result};
 use flate2::bufread::GzDecoder;
 use git2::{Repository, Signature};
 use kafka_model::message_model;
@@ -49,7 +49,7 @@ pub async fn incremental_update() {
             let crate_name = crate_name.as_str();
             let repo_path = &crate_path.join(crate_name);
 
-            let record: repo_sync_status::ActiveModel = crate::get_record(&conn, crate_name).await;
+            let record: repo_sync_result::ActiveModel = crate::get_record(&conn, crate_name).await;
 
             let crate_versions: Vec<PathBuf> = get_sorted_crate_versions(crate_path, crate_name);
             let latest_version = crate_versions
@@ -64,7 +64,7 @@ pub async fn incremental_update() {
 
             let semver_latest_version =
                 Version::parse(&latest_version).expect("Failed to parse latest version");
-            if record.status == Unchanged(RepoSyncStatus::Succeed) {
+            if record.status == Unchanged(SyncStatusEnum::Succeed) {
                 if let Ok(record_version) = Version::parse(record.version.as_ref()) {
                     if record_version >= semver_latest_version {
                         tracing::info!("skipping:{:?}", record.crate_name);
@@ -140,7 +140,7 @@ pub async fn incremental_update() {
         crate_path: &Path,
         repo_path: &Path,
         crate_name: &str,
-        record: &repo_sync_status::ActiveModel,
+        record: &repo_sync_result::ActiveModel,
     ) {
         let version = &crate_v
             .file_name()
@@ -343,7 +343,7 @@ pub async fn incremental_update() {
         conn: &DatabaseConnection,
         crate_name: &str,
         repo_path: &Path,
-        mut record: repo_sync_status::ActiveModel,
+        mut record: repo_sync_result::ActiveModel,
         version: &String,
         producer: &FutureProducer,
     ) {
@@ -361,16 +361,16 @@ pub async fn incremental_update() {
         record.mega_url = Set(url.path().to_owned());
 
         if push_res.status.success() {
-            record.status = Set(RepoSyncStatus::Succeed);
+            record.status = Set(SyncStatusEnum::Succeed);
             record.err_message = Set(None);
         } else {
-            record.status = Set(RepoSyncStatus::Failed);
+            record.status = Set(SyncStatusEnum::Failed);
             record.err_message = Set(Some(String::from_utf8_lossy(&push_res.stderr).to_string()));
         }
         record.updated_at = Set(chrono::Utc::now().naive_utc());
         record.version = Set(version.to_string());
         let res = record.save(conn).await.unwrap();
-        let db_model: repo_sync_status::Model = res.try_into().unwrap();
+        let db_model: repo_sync_result::Model = res.try_into().unwrap();
         let kafka_message_model = message_model::MessageModel::new(
             db_model,                              // 数据库 Model
             message_model::MessageKind::Mega,      // 设置 message_kind 为 Mega

@@ -31,6 +31,13 @@ Git even has a `-s` command line option to append this automatically to your com
 $ git commit -S -s -m 'This is my commit message'
 ```
 
+## Check the code
+
+Before submit your code, please make sure it can compile and pass clippy checking.
+```bash
+$ cargo clippy --workspace --all-targets --all-features -- -D warnings
+```
+
 ## Rebase the branch
 
 If you have a local git environment and meet the criteria below, one option is to rebase the branch and add your Signed-off-by lines in the new commits. Please note that if others have already begun work based upon the commits in this branch, this solution will rewrite history and may cause serious issues for collaborators (described in the git documentation under "The Perils of Rebasing").

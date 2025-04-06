@@ -6,7 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-entity = { path = "storage/entity" }
+entity = { workspace = true }
+database = { workspace = true }
 kafka_model = { path = "kafka_model" }
 
 # third-party (第三方依赖, 不写具体版本号, 具体版本只在根目录 Cargo.toml 中出现)
@@ -35,6 +36,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 url = { workspace = true }
 walkdir = { workspace = true }
+reqwest = { workspace = true, features = ["json"]}
 
 [[bin]]
 name = "sync_tool"   # 设置编译后的二进制文件名称
