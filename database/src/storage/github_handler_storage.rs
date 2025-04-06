@@ -294,7 +294,7 @@ impl GithubHanlderStorage {
         let stats_query = "
                 SELECT 
                     COUNT(*) as total_contributors,
-                    SUM(CASE WHEN is_from_china THEN 1 ELSE 0 END) as china_contributors
+                    COALESCE(SUM(CASE WHEN is_from_china THEN 1 ELSE 0 END), 0) as china_contributors
                 FROM contributor_location
                 WHERE repository_id = $1
             ";
