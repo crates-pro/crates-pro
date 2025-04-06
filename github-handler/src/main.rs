@@ -153,7 +153,7 @@ async fn sync_all_repos(context: Context) -> Result<(), BoxError> {
 
     // 并发处理 Stream
     url_stream
-        .try_for_each_concurrent(5, |model| {
+        .try_for_each_concurrent(8, |model| {
             let context = context.clone();
             async move {
                 process_item(model.github_url, context).await;
@@ -235,7 +235,7 @@ mod test {
     async fn test_stream_concurrent() {
         let data = [1, 2, 3, 4, 5, 6, 7];
         stream::iter(data)
-            .map(|x| Ok::<i32, Box<dyn Error>>(x))
+            .map(Ok::<i32, Box<dyn Error>>)
             .try_for_each_concurrent(3, |item| async move {
                 println!("Start: {}", item);
                 sleep(Duration::from_millis(1000)).await;
