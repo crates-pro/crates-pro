@@ -152,7 +152,11 @@ async fn analyze_contributor_locations(
     }
 
     // 构建目标路径: /mnt/crates/github_source/{owner}/{repo}
-    let target_dir = base_dir.join(format!("{}/{}", owner, repo));
+    let target_dir = if owner.len() < 5 {
+        base_dir.join(format!("{}/{}", owner, repo))
+    } else {
+        base_dir.join(format!("{}/{}/{}", &owner[..2], &owner[2..4], repo))
+    };
     let target_path = target_dir.to_string_lossy();
 
     // 检查目录是否已存在

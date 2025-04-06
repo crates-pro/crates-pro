@@ -36,7 +36,9 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// 拉取GitHub仓库地址到数据库
     GithubSync,
+    /// 分析所有拉取的仓库地址
     AnalyzeAll,
     /// 分析仓库贡献者
     Analyze {
@@ -220,4 +222,28 @@ async fn main() -> Result<(), BoxError> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use futures::stream::TryStreamExt;
+    use futures::{stream, StreamExt};
+    use std::error::Error;
+    use std::time::Duration;
+    use tokio::time::sleep;
+    #[tokio::test]
+    async fn test_stream_concurrent() {
+        let data = [1, 2, 3, 4, 5, 6, 7];
+        stream::iter(data)
+            .map(|x| Ok::<i32, Box<dyn Error>>(x))
+            .try_for_each_concurrent(3, |item| async move {
+                println!("Start: {}", item);
+                sleep(Duration::from_millis(1000)).await;
+                println!("End: {}", item);
+                Ok(())
+            })
+            .await
+            .unwrap();
+        println!("All done");
+    }
 }
