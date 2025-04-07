@@ -144,15 +144,14 @@ async fn analyze_contributor_locations(
     email_to_user_id: &HashMap<String, i32>,
 ) -> Result<(), BoxError> {
     info!("分析仓库 {}/{} 的贡献者地理位置", owner, repo);
-
-    let base_dir = Path::new("/mnt/r2cn/github_source");
+    let base_dir = context.base_dir.clone();
     if !base_dir.exists() {
-        fs::create_dir_all(base_dir)?;
+        fs::create_dir_all(&base_dir)?;
         info!("创建根目录: {:?}", base_dir);
     }
 
     // 构建目标路径: /mnt/crates/github_source/{owner}/{repo}
-    let target_dir = if owner.len() < 5 {
+    let target_dir = if owner.len() < 4 {
         base_dir.join(format!("{}/{}", owner, repo))
     } else {
         base_dir.join(format!("{}/{}/{}", &owner[..2], &owner[2..4], repo))
@@ -180,8 +179,6 @@ async fn analyze_contributor_locations(
                 "http.lowSpeedTime=10", // 如果速度低于限制持续10秒则失败
                 "--config",
                 "core.askpass=echo", // 不使用交互式密码提示
-                "--depth",
-                "1", // 浅克隆，只获取最近的提交
                 &format!("https://github.com/{}/{}.git", owner, repo),
                 &target_path,
             ])
@@ -198,25 +195,25 @@ async fn analyze_contributor_locations(
             }
             _ => {}
         }
-    } else {
-        info!("更新已存在的仓库: {}", target_path);
+    } else if is_shallow_repo(&target_dir) {
+        info!("更新之前clone的shallow仓库: {}", target_path);
+
+        let mut args = vec![
+            "-c",
+            "credential.helper=reject",
+            "-c",
+            "http.lowSpeedLimit=1000",
+            "-c",
+            "http.lowSpeedTime=10",
+            "-c",
+            "core.askpass=echo",
+            "fetch",
+        ];
+        args.push("--unshallow");
         let status = Command::new("git")
             .current_dir(&target_dir)
-            .args([
-                "-c",
-                "credential.helper=reject",
-                "-c",
-                "http.lowSpeedLimit=1000",
-                "-c",
-                "http.lowSpeedTime=10",
-                "-c",
-                "core.askpass=echo",
-                "pull",
-                "--timeout",
-                "30",
-            ])
+            .args(args)
             .status();
-
         if let Err(e) = status {
             warn!("更新仓库失败: {}，可能需要认证，继续分析当前代码", e);
         }
@@ -266,10 +263,10 @@ async fn analyze_contributor_locations(
             Some(id) => *id,
             None => match context
                 .github_handler_stg()
-                .get_user_id_by_name(&user.login)
+                .get_user_by_name(&user.login)
                 .await
             {
-                Ok(Some(id)) => id,
+                Ok(Some(model)) => model.id,
                 _ => {
                     warn!("未找到用户 {} 的ID", user.login);
                     continue;
@@ -319,42 +316,42 @@ async fn analyze_contributor_locations(
     );
 
     // 查询中国贡献者统计
-    match context
-        .github_handler_stg()
-        .get_repository_china_contributor_stats(repository_id)
-        .await
-    {
-        Ok(stats) => {
-            info!(
-                "仓库 {}/{} 的中国贡献者统计: {}人中有{}人来自中国 ({:.1}%)",
-                owner,
-                repo,
-                stats.total_contributors,
-                stats.china_contributors,
-                stats.china_percentage
-            );
+    // match context
+    //     .github_handler_stg()
+    //     .get_repository_china_contributor_stats(repository_id)
+    //     .await
+    // {
+    //     Ok(stats) => {
+    //         info!(
+    //             "仓库 {}/{} 的中国贡献者统计: {}人中有{}人来自中国 ({:.1}%)",
+    //             owner,
+    //             repo,
+    //             stats.total_contributors,
+    //             stats.china_contributors,
+    //             stats.china_percentage
+    //         );
 
-            if !stats.china_contributors_details.is_empty() {
-                info!("中国贡献者TOP列表:");
-                for (i, contributor) in stats.china_contributors_details.iter().enumerate().take(5)
-                {
-                    let name_display = contributor
-                        .name
-                        .clone()
-                        .unwrap_or_else(|| contributor.login.clone());
-                    info!(
-                        "  {}. {} - {} 次提交",
-                        i + 1,
-                        name_display,
-                        contributor.contributions
-                    );
-                }
-            }
-        }
-        Err(e) => {
-            error!("获取中国贡献者统计失败: {}", e);
-        }
-    }
+    //         if !stats.china_contributors_details.is_empty() {
+    //             info!("中国贡献者TOP列表:");
+    //             for (i, contributor) in stats.china_contributors_details.iter().enumerate().take(5)
+    //             {
+    //                 let name_display = contributor
+    //                     .name
+    //                     .clone()
+    //                     .unwrap_or_else(|| contributor.login.clone());
+    //                 info!(
+    //                     "  {}. {} - {} 次提交",
+    //                     i + 1,
+    //                     name_display,
+    //                     contributor.contributions
+    //                 );
+    //             }
+    //         }
+    //     }
+    //     Err(e) => {
+    //         error!("获取中国贡献者统计失败: {}", e);
+    //     }
+    // }
 
     Ok(())
 }
@@ -382,23 +379,23 @@ pub(crate) async fn analyze_git_contributors(
 
     // 查询是否存在贡献者位置信息
     // 用于判断是否需要重新分析
-    match context
-        .github_handler_stg()
-        .has_contributor_location(&repository_id)
-        .await
-    {
-        Ok(true) => {
-            info!("仓库 {}/{} 已存在贡献者位置信息，跳过所有操作", owner, repo);
-            return Ok(());
-        }
-        Ok(false) => {
-            info!("仓库 {}/{} 没有贡献者位置信息，开始分析", owner, repo);
-        }
-        Err(e) => {
-            error!("查询仓库 {}/{} 的贡献者位置信息时出错: {}", owner, repo, e);
-            return Err(e.into());
-        }
-    }
+    // match context
+    //     .github_handler_stg()
+    //     .has_contributor_location(&repository_id)
+    //     .await
+    // {
+    //     Ok(true) => {
+    //         info!("仓库 {}/{} 已存在贡献者位置信息，跳过所有操作", owner, repo);
+    //         return Ok(());
+    //     }
+    //     Ok(false) => {
+    //         info!("仓库 {}/{} 没有贡献者位置信息，开始分析", owner, repo);
+    //     }
+    //     Err(e) => {
+    //         error!("查询仓库 {}/{} 的贡献者位置信息时出错: {}", owner, repo, e);
+    //         return Err(e.into());
+    //     }
+    // }
 
     // 创建GitHub API客户端
     let github_client = GitHubApiClient::new();
@@ -407,8 +404,6 @@ pub(crate) async fn analyze_git_contributors(
     let contributors = github_client
         .get_all_repository_contributors(owner, repo)
         .await?;
-
-    info!("获取到 {} 个贡献者，开始存储到数据库", contributors.len());
 
     // 使用HashMap存储邮箱到用户ID的映射，用于后续分析
     let mut email_to_user_id = HashMap::new();
@@ -500,4 +495,14 @@ pub(crate) async fn analyze_git_contributors(
     .await?;
 
     Ok(())
+}
+
+fn is_shallow_repo(path: &Path) -> bool {
+    let output = Command::new("git")
+        .args(["rev-parse", "--is-shallow-repository"])
+        .current_dir(path)
+        .output()
+        .expect("Failed to run git");
+
+    String::from_utf8_lossy(&output.stdout).trim() == "true"
 }

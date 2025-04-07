@@ -8,7 +8,11 @@ database = { workspace = true }
 entity = { workspace = true }
 model = { workspace = true }
 
-tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread"]}
+tokio = { workspace = true, features = [
+    "macros",
+    "process",
+    "rt-multi-thread",
+] }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -31,3 +35,6 @@ uuid = { workspace = true, features = [
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ] }
 futures = { workspace = true }
+
+[dev-dependencies]
+walkdir = { workspace = true }

@@ -8,5 +8,6 @@
   },
   "database": {
     "url": "postgresql://mega:mega@localhost:30432/cratespro"
-  }
+  },
+  "repo_path": "/mnt/github_source"
 }

@@ -9,7 +9,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 // GitHub API URL
 const GITHUB_API_URL: &str = "https://api.github.com";
@@ -91,7 +91,7 @@ impl GitHubApiClient {
             let response = match self.authorized_request(&url).send().await {
                 Ok(resp) => resp,
                 Err(e) => {
-                    warn!("获取提交页面 {} 失败: {}", page, e);
+                    error!("获取提交页面 {} 失败: {}", page, e);
                     break;
                 }
             };
@@ -231,26 +231,17 @@ impl GitHubApiClient {
     pub async fn start_graphql_sync(&self, context: &Context) -> Result<(), Error> {
         let mut date = NaiveDate::parse_from_str("2011-01-01", "%Y-%m-%d").unwrap();
         let end_date = NaiveDate::parse_from_str("2025-04-01", "%Y-%m-%d").unwrap();
-        let threshold_date = NaiveDate::parse_from_str("2015-01-01", "%Y-%m-%d").unwrap();
+        // let threshold_date = NaiveDate::parse_from_str("2015-01-01", "%Y-%m-%d").unwrap();
 
-        // let mut date = start_date;
         while date <= end_date {
-            let next_date = if date < threshold_date {
-                date + Duration::days(60)
-            } else {
-                date + Duration::days(1)
-            };
+            let next_date = date + Duration::days(1);
 
-            tracing::info!(
-                "Syncing date: {} to {}",
-                date.format("%Y-%m-%d"),
-                next_date.format("%Y-%m-%d")
-            );
+            tracing::info!("Syncing date: {}", date.format("%Y-%m-%d"));
 
             self.sync_with_date(
                 context,
                 &date.format("%Y-%m-%d").to_string(),
-                &next_date.format("%Y-%m-%d").to_string(),
+                &date.format("%Y-%m-%d").to_string(),
             )
             .await?;
             date = next_date;
@@ -280,7 +271,7 @@ impl GitHubApiClient {
         let client = reqwest::Client::new();
         let mut cursor: Option<String> = None;
 
-        loop {
+        let page_success = loop {
             let query = r#"
         query ($query: String!, $cursor: String) {
             search(query: $query, type: REPOSITORY, first: 100, after: $cursor) {
@@ -362,25 +353,28 @@ impl GitHubApiClient {
                         if data.search.page_info.has_next_page {
                             cursor = data.search.page_info.end_cursor;
                         } else {
-                            break;
+                            // 没有下一页 正常退出
+                            break true;
                         }
                     }
-                    None => break,
+                    None => break false,
                 }
             } else {
-                break;
+                break false;
             }
+        };
+        if page_success {
+            context
+                .github_handler_stg()
+                .save_github_sync_status(github_sync_status::ActiveModel {
+                    id: NotSet,
+                    start_date: Set(start_date.to_owned()),
+                    end_date: Set(end_date.to_owned()),
+                    sync_result: Set(true),
+                })
+                .await
+                .unwrap();
         }
-        context
-            .github_handler_stg()
-            .save_github_sync_status(github_sync_status::ActiveModel {
-                id: NotSet,
-                start_date: Set(start_date.to_owned()),
-                end_date: Set(end_date.to_owned()),
-                sync_result: Set(true),
-            })
-            .await
-            .unwrap();
         Ok(())
     }
 }
@@ -398,6 +392,7 @@ async fn convert_to_model(item: Repository, save_models: &mut Vec<programs::Acti
         program_type: Set("".to_owned()),
         downloads: Set(0),
         cratesio: Set("".to_owned()),
+        ..Default::default()
     };
     save_models.push(model);
 }

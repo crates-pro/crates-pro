@@ -1,19 +1,21 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
-use config::get_github_token;
 use contributor_analysis::analyze_git_contributors;
 use database::storage::Context;
+use entity::programs;
 use futures::TryStreamExt;
 use regex::Regex;
+use sea_orm::{ActiveValue::Set, IntoActiveModel};
 use tracing::{error, info, warn};
+
+use crate::services::github_api::GitHubApiClient;
 
 // 导入模块
 mod config;
 mod contributor_analysis;
 // mod entities;
 mod services;
-
-use crate::config::get_database_url;
-use crate::services::github_api::GitHubApiClient;
 
 // CLI 参数结构
 #[derive(Parser, Debug)]
@@ -156,7 +158,9 @@ async fn sync_all_repos(context: Context) -> Result<(), BoxError> {
         .try_for_each_concurrent(8, |model| {
             let context = context.clone();
             async move {
-                process_item(model.github_url, context).await;
+                if !model.github_analyzed {
+                    process_item(&model, context).await;
+                }
                 Ok(())
             }
         })
@@ -164,15 +168,20 @@ async fn sync_all_repos(context: Context) -> Result<(), BoxError> {
     Ok(())
 }
 
-async fn process_item(url: String, context: Context) {
+async fn process_item(model: &programs::Model, context: Context) {
     let re = Regex::new(r"github\.com/([^/]+)/([^/]+)").unwrap();
-    if let Some(captures) = re.captures(&url) {
+    if let Some(captures) = re.captures(&model.github_url) {
         let owner = &captures[1];
         let repo = &captures[2];
-        let _ = analyze_git_contributors(context.clone(), owner, repo).await;
+        let res = analyze_git_contributors(context.clone(), owner, repo).await;
+        if res.is_ok() {
+            let mut a_model = model.clone().into_active_model();
+            a_model.github_analyzed = Set(true);
+            context.github_handler_stg().update_program(a_model).await.unwrap();
+        }
         tracing::info!("Owner: {}, Repo: {}", owner, repo);
     } else {
-        tracing::error!("URL 格式不正确: {}", url);
+        tracing::error!("URL 格式不正确: {}", model.github_url);
     }
 }
 
@@ -189,9 +198,13 @@ async fn main() -> Result<(), BoxError> {
 
     // 连接数据库
     info!("连接数据库...");
-    let db_url = get_database_url();
-    let token = get_github_token();
-    let context = Context::new(&db_url, &token).await;
+    let config = config::load_config().unwrap();
+    let context = Context::new(
+        &config.database.url,
+        &config.github.tokens[0],
+        PathBuf::from(config.repopath),
+    )
+    .await;
 
     // 处理子命令
     match cli.command {
@@ -229,8 +242,12 @@ mod test {
     use futures::stream::TryStreamExt;
     use futures::{stream, StreamExt};
     use std::error::Error;
+    use std::fs;
+    use std::path::PathBuf;
     use std::time::Duration;
     use tokio::time::sleep;
+    use walkdir::WalkDir;
+
     #[tokio::test]
     async fn test_stream_concurrent() {
         let data = [1, 2, 3, 4, 5, 6, 7];
@@ -245,5 +262,55 @@ mod test {
             .await
             .unwrap();
         println!("All done");
+    }
+
+    #[test]
+    fn move_histiry() {
+        let config = crate::config::load_config().unwrap();
+        let base_dir = PathBuf::from(config.repopath);
+        for entry in WalkDir::new(&base_dir)
+            .min_depth(1)
+            .max_depth(2) // Only go two levels: source/owner/repo
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_dir())
+        {
+            let path = entry.path().to_path_buf();
+
+            // We are interested in paths like source/owner/repo
+            if path.parent() == Some(&base_dir) {
+                // This is an owner directory: source/owner
+                let owner_name = match path.file_name().and_then(|s| s.to_str()) {
+                    Some(name) => name,
+                    None => continue,
+                };
+
+                if owner_name.len() < 4 {
+                    println!("Skipping short owner: {}", owner_name);
+                    continue;
+                }
+
+                let ow = &owner_name[0..2];
+                let ne = &owner_name[2..4];
+                let nested_path = base_dir.join(ow).join(ne);
+                fs::create_dir_all(&nested_path).unwrap();
+
+                for repo_entry in fs::read_dir(&path).unwrap() {
+                    let repo = repo_entry.unwrap();
+                    let repo_name = repo.file_name();
+                    let new_path = nested_path.join(&repo_name);
+
+                    if new_path.exists() {
+                        println!("跳过：目标路径已存在: {}", new_path.display());
+                    } else {
+                        println!("Moving {} -> {}", repo.path().display(), new_path.display());
+                        fs::rename(repo.path(), new_path).unwrap();
+                    }
+                }
+
+                // Remove the old owner directory
+                fs::remove_dir_all(path).unwrap();
+            }
+        }
     }
 }

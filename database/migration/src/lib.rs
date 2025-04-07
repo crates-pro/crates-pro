@@ -2,6 +2,7 @@ pub use sea_orm_migration::prelude::*;
 
 mod m20250331_093145_init_crates_pro;
 mod m20250401_100000_add_performance_indices;
+mod m20250407_094050_alter_programs;
 
 pub struct Migrator;
 
@@ -11,6 +12,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20250331_093145_init_crates_pro::Migration),
             Box::new(m20250401_100000_add_performance_indices::Migration),
+            Box::new(m20250407_094050_alter_programs::Migration),
         ]
     }
 }

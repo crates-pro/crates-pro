@@ -24,6 +24,7 @@ pub struct Model {
     pub downloads: i64,
     #[sea_orm(column_type = "Text")]
     pub cratesio: String,
+    pub github_analyzed: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
