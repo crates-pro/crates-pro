@@ -47,6 +47,26 @@ impl From<GitHubUser> for github_user::ActiveModel {
     }
 }
 
+impl From<github_user::Model> for GitHubUser {
+    fn from(value: github_user::Model) -> Self {
+        Self {
+            id: value.github_id,
+            login: value.login,
+            avatar_url: value.avatar_url,
+            name: value.name,
+            email: value.email,
+            company: value.company,
+            location:value.location,
+            bio: value.bio,
+            public_repos: value.public_repos,
+            followers: value.followers,
+            following: value.following,
+            created_at: DateTime::<Utc>::from_naive_utc_and_offset(value.created_at, Utc),
+            updated_at: DateTime::<Utc>::from_naive_utc_and_offset(value.updated_at, Utc),
+        }
+    }
+}
+
 // 贡献者信息结构
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Contributor {

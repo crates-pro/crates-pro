@@ -11,7 +11,8 @@ use tracing::{error, info, warn};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub github: GithubConfig,
-    pub database: Option<DatabaseConfig>,
+    pub database: DatabaseConfig,
+    pub repopath: String,
 }
 
 // GitHub配置
@@ -71,11 +72,15 @@ pub fn load_config() -> Option<Config> {
             info!("共加载了{}个GitHub令牌", tokens.len());
         }
 
-        let database_url = env::var("DATABASE_URL").ok().filter(|s| !s.is_empty());
+        let database_url = env::var("DATABASE_URL")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap();
 
         let config = Config {
             github: GithubConfig { tokens },
-            database: database_url.map(|url| DatabaseConfig { url }),
+            database: DatabaseConfig { url: database_url },
+            repopath: String::default(),
         };
 
         // 保存到全局配置实例
@@ -154,31 +159,4 @@ pub fn get_github_token() -> String {
         warn!("配置加载失败，无法获取GitHub令牌");
         String::new()
     }
-}
-
-/// 获取数据库连接URL
-pub fn get_database_url() -> String {
-    // 尝试获取配置
-    let config = {
-        let config_guard = CONFIG.lock().unwrap();
-        if config_guard.is_none() {
-            // 如果配置不存在，尝试加载
-            drop(config_guard);
-            load_config();
-            CONFIG.lock().unwrap().clone()
-        } else {
-            config_guard.clone()
-        }
-    };
-
-    // 从配置中获取数据库URL
-    if let Some(config) = config {
-        if let Some(db_config) = config.database {
-            return db_config.url;
-        }
-    }
-
-    // 回退到环境变量
-    env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgresql://mega:mega@localhost:30432/cratespro".to_string())
 }

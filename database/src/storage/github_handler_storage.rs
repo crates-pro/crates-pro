@@ -9,7 +9,7 @@ use futures::Stream;
 use model::github::{ContributorAnalysis, GitHubUser};
 use sea_orm::{
     sea_query::OnConflict, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
-    DatabaseConnection, DbErr, EntityTrait, QueryFilter, Statement,
+    DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder, Statement,
 };
 use tracing::{info, warn};
 
@@ -47,12 +47,12 @@ impl GithubHanlderStorage {
     }
 
     pub async fn save_programs(&self, models: Vec<programs::ActiveModel>) -> Result<(), DbErr> {
-        let on_conflict = OnConflict::column(programs::Column::GithubUrl)
-            .do_nothing()
-            .to_owned();
-
         programs::Entity::insert_many(models)
-            .on_conflict(on_conflict)
+            .on_conflict(
+                OnConflict::column(programs::Column::GithubUrl)
+                    .do_nothing()
+                    .to_owned(),
+            )
             .do_nothing()
             .exec(self.get_connection())
             .await
@@ -60,10 +60,20 @@ impl GithubHanlderStorage {
         Ok(())
     }
 
+    pub async fn update_program(
+        &self,
+        model: programs::ActiveModel,
+    ) -> Result<programs::Model, DbErr> {
+        model.update(self.get_connection()).await
+    }
+
     pub async fn query_programs_stream(
         &self,
     ) -> Result<impl Stream<Item = Result<programs::Model, DbErr>> + Send + '_, DbErr> {
-        programs::Entity::find().stream(self.get_connection()).await
+        programs::Entity::find()
+            .order_by_asc(programs::Column::Id)
+            .stream(self.get_connection())
+            .await
     }
 
     pub async fn save_github_sync_status(
@@ -111,15 +121,15 @@ impl GithubHanlderStorage {
     }
 
     // 根据用户名查找用户ID
-    pub async fn get_user_id_by_name(&self, login: &str) -> Result<Option<i32>, DbErr> {
-        info!("通过登录名查找用户ID: {}", login);
+    pub async fn get_user_by_name(&self, login: &str) -> Result<Option<github_user::Model>, DbErr> {
+        info!("通过登录名查找用户: {}", login);
 
         let user = github_user::Entity::find()
             .filter(github_user::Column::Login.eq(login))
             .one(self.get_connection())
             .await?;
 
-        Ok(user.map(|u| u.id))
+        Ok(user)
     }
 
     // 根据仓库所有者和名称获取仓库ID
@@ -133,8 +143,7 @@ impl GithubHanlderStorage {
         // 直接查询github_url字段
         let programs = programs::Entity::find()
             .filter(
-                programs::Column::GithubUrl.eq(format!("https://github.com/{}/{}", owner, repo))
-                .or(programs::Column::GithubUrl.eq(format!("https://github.com/{}/{}.git", owner, repo)))
+                programs::Column::GithubUrl.eq(format!("https://github.com/{}/{}", owner, repo)),
             )
             .all(self.get_connection())
             .await?;
@@ -211,6 +220,25 @@ impl GithubHanlderStorage {
         Ok(())
     }
 
+    pub async fn query_contributors_by_repo_id(
+        &self,
+        repository_id: &str,
+    ) -> Result<Vec<github_user::Model>, DbErr> {
+        let user_ids: Vec<i32> = repository_contributor::Entity::find()
+            .filter(repository_contributor::Column::RepositoryId.eq(repository_id))
+            .all(self.get_connection())
+            .await?
+            .iter()
+            .map(|m| m.user_id)
+            .collect();
+
+        let users = github_user::Entity::find()
+            .filter(github_user::Column::Id.is_in(user_ids))
+            .all(self.get_connection())
+            .await?;
+        Ok(users)
+    }
+
     // 查询仓库的顶级贡献者
     pub async fn query_top_contributors(
         &self,
@@ -273,10 +301,21 @@ impl GithubHanlderStorage {
         );
 
         // 通过conversion trait转换
-        let mut cl = contributor_location::ActiveModel::from(analysis);
-        cl.user_id = Set(user_id);
-        cl.repository_id = Set(repository_id.to_owned());
-        cl.insert(self.get_connection()).await?;
+        let mut model = contributor_location::ActiveModel::from(analysis);
+        model.user_id = Set(user_id);
+        model.repository_id = Set(repository_id.to_owned());
+        contributor_location::Entity::insert(model).on_conflict(
+            OnConflict::columns([
+                contributor_location::Column::RepositoryId,
+                contributor_location::Column::UserId,
+            ])
+            .update_columns([
+                contributor_location::Column::IsFromChina,
+                contributor_location::Column::CommonTimezone,
+                contributor_location::Column::AnalyzedAt,
+            ])
+            .to_owned(),
+        ).exec(self.get_connection()).await.unwrap();
 
         info!("贡献者位置信息已存储");
         Ok(())
