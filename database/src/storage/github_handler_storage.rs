@@ -11,7 +11,7 @@ use sea_orm::{
     sea_query::OnConflict, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
     DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder, Statement,
 };
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 // 贡献者详情返回结果
 #[derive(Debug, Clone)]
@@ -98,7 +98,7 @@ impl GithubHanlderStorage {
 
     // 存储GitHub用户
     pub async fn store_user(&self, user: &GitHubUser) -> Result<i32, DbErr> {
-        info!("存储GitHub用户: {}", user.login);
+        debug!("存储GitHub用户: {}", user.login);
 
         // 查询用户是否已存在
         let existing_user = github_user::Entity::find()
@@ -113,7 +113,7 @@ impl GithubHanlderStorage {
         }
 
         // 用户不存在，创建新用户
-        info!("创建新用户: {}", user.login);
+        debug!("创建新用户: {}", user.login);
         let user_model = github_user::ActiveModel::from(user.clone());
         let res = user_model.insert(self.get_connection()).await?;
 
@@ -122,7 +122,7 @@ impl GithubHanlderStorage {
 
     // 根据用户名查找用户ID
     pub async fn get_user_by_name(&self, login: &str) -> Result<Option<github_user::Model>, DbErr> {
-        info!("通过登录名查找用户: {}", login);
+        debug!("通过登录名查找用户: {}", login);
 
         let user = github_user::Entity::find()
             .filter(github_user::Column::Login.eq(login))
@@ -138,7 +138,7 @@ impl GithubHanlderStorage {
         owner: &str,
         repo: &str,
     ) -> Result<Option<String>, DbErr> {
-        info!("获取仓库ID: {}/{}", owner, repo);
+        debug!("获取仓库ID: {}/{}", owner, repo);
 
         // 直接查询github_url字段
         let programs = programs::Entity::find()
@@ -149,7 +149,7 @@ impl GithubHanlderStorage {
             .await?;
 
         if !programs.is_empty() {
-            info!("找到仓库 {}/{}, ID: {}", owner, repo, programs[0].id);
+            debug!("找到仓库 {}/{}, ID: {}", owner, repo, programs[0].id);
             return Ok(Some(programs[0].id.to_string()));
         }
 
@@ -175,7 +175,7 @@ impl GithubHanlderStorage {
         user_id: i32,
         contributions: i32,
     ) -> Result<(), DbErr> {
-        info!(
+        debug!(
             "存储贡献者关系: 仓库ID={}, 用户ID={}, 提交数={}",
             repository_id, user_id, contributions
         );
@@ -214,7 +214,7 @@ impl GithubHanlderStorage {
             };
 
             contributor.insert(self.get_connection()).await?;
-            info!("创建新的贡献者记录");
+            debug!("创建新的贡献者记录");
         }
 
         Ok(())
@@ -295,7 +295,7 @@ impl GithubHanlderStorage {
         user_id: i32,
         analysis: &ContributorAnalysis,
     ) -> Result<(), DbErr> {
-        info!(
+        debug!(
             "存储贡献者位置信息: 仓库ID={}, 用户ID={}",
             repository_id, user_id
         );
@@ -321,7 +321,7 @@ impl GithubHanlderStorage {
             .await
             .unwrap();
 
-        info!("贡献者位置信息已存储");
+        debug!("贡献者位置信息已存储");
         Ok(())
     }
 
@@ -330,7 +330,7 @@ impl GithubHanlderStorage {
         &self,
         repository_id: &str,
     ) -> Result<ChinaContributorStats, DbErr> {
-        info!("获取仓库 ID={} 的中国贡献者统计", repository_id);
+        debug!("获取仓库 ID={} 的中国贡献者统计", repository_id);
 
         // 查询中国贡献者统计
         let stats_query = "
