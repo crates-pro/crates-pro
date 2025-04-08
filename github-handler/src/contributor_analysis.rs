@@ -171,6 +171,8 @@ async fn analyze_contributor_locations(
         let status = Command::new("git")
             .args([
                 "clone",
+                "--filter=blob:none", // 只clone 提交历史
+                "--no-checkout",
                 "--config",
                 "credential.helper=reject", // 拒绝认证请求，不会提示输入
                 "--config",
@@ -198,7 +200,7 @@ async fn analyze_contributor_locations(
     } else if is_shallow_repo(&target_dir) {
         info!("更新之前clone的shallow仓库: {}", target_path);
 
-        let mut args = vec![
+        let args = vec![
             "-c",
             "credential.helper=reject",
             "-c",
@@ -208,8 +210,9 @@ async fn analyze_contributor_locations(
             "-c",
             "core.askpass=echo",
             "fetch",
+            "--filter=blob:none", // 只clone 提交历史
+            "--unshallow",
         ];
-        args.push("--unshallow");
         let status = Command::new("git")
             .current_dir(&target_dir)
             .args(args)
