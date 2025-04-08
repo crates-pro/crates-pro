@@ -304,18 +304,22 @@ impl GithubHanlderStorage {
         let mut model = contributor_location::ActiveModel::from(analysis);
         model.user_id = Set(user_id);
         model.repository_id = Set(repository_id.to_owned());
-        contributor_location::Entity::insert(model).on_conflict(
-            OnConflict::columns([
-                contributor_location::Column::RepositoryId,
-                contributor_location::Column::UserId,
-            ])
-            .update_columns([
-                contributor_location::Column::IsFromChina,
-                contributor_location::Column::CommonTimezone,
-                contributor_location::Column::AnalyzedAt,
-            ])
-            .to_owned(),
-        ).exec(self.get_connection()).await.unwrap();
+        contributor_location::Entity::insert(model)
+            .on_conflict(
+                OnConflict::columns([
+                    contributor_location::Column::RepositoryId,
+                    contributor_location::Column::UserId,
+                ])
+                .update_columns([
+                    contributor_location::Column::IsFromChina,
+                    contributor_location::Column::CommonTimezone,
+                    contributor_location::Column::AnalyzedAt,
+                ])
+                .to_owned(),
+            )
+            .exec(self.get_connection())
+            .await
+            .unwrap();
 
         info!("贡献者位置信息已存储");
         Ok(())
