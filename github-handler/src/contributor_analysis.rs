@@ -4,7 +4,6 @@ use model::github::{Contributor, ContributorAnalysis, GitHubUser};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 use std::time::Duration;
 use tokio::process::Command as TokioCommand;
 use tracing::{debug, error, info, warn};
@@ -168,7 +167,7 @@ async fn analyze_contributor_locations(
         }
 
         info!("克隆仓库到指定目录: {}", target_path);
-        let status = Command::new("git")
+        let status = TokioCommand::new("git")
             .args([
                 "clone",
                 "--filter=blob:none", // 只clone 提交历史
@@ -184,7 +183,7 @@ async fn analyze_contributor_locations(
                 &format!("https://github.com/{}/{}.git", owner, repo),
                 &target_path,
             ])
-            .status();
+            .status().await;
 
         match status {
             Ok(status) if !status.success() => {
@@ -213,10 +212,10 @@ async fn analyze_contributor_locations(
             "--filter=blob:none", // 只clone 提交历史
             "--unshallow",
         ];
-        let status = Command::new("git")
+        let status = TokioCommand::new("git")
             .current_dir(&target_dir)
             .args(args)
-            .status();
+            .status().await;
         if let Err(e) = status {
             warn!("更新仓库失败: {}，可能需要认证，继续分析当前代码", e);
         }
@@ -501,7 +500,7 @@ pub(crate) async fn analyze_git_contributors(
 }
 
 fn is_shallow_repo(path: &Path) -> bool {
-    let output = Command::new("git")
+    let output = std::process::Command::new("git")
         .args(["rev-parse", "--is-shallow-repository"])
         .current_dir(path)
         .output()

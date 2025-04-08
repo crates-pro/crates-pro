@@ -7,7 +7,6 @@ use sea_orm::{
     prelude::Uuid,
     ActiveValue::{NotSet, Set},
 };
-use serde::Deserialize;
 use serde_json::json;
 use tracing::{debug, error, info, warn};
 
@@ -15,9 +14,10 @@ use tracing::{debug, error, info, warn};
 const GITHUB_API_URL: &str = "https://api.github.com";
 
 // 使用main中定义的函数获取GitHub令牌
-use crate::{config::get_github_token, services::model::GraphQLResponse};
-
-use super::model::Repository;
+use crate::{
+    config::get_github_token,
+    services::model::{CommitData, GraphQLResponse, Repository},
+};
 
 // GitHub API客户端
 pub struct GitHubApiClient {
@@ -131,31 +131,6 @@ impl GitHubApiClient {
                 .and_then(|h| h.to_str().ok())
                 .map(|link| link.contains("rel=\"next\""))
                 .unwrap_or(false);
-
-            // 解析提交数据
-            #[derive(Debug, Deserialize)]
-            struct CommitAuthor {
-                login: String,
-                id: i64,
-                avatar_url: String,
-            }
-
-            #[derive(Debug, Deserialize)]
-            struct CommitInfo {
-                _author: Option<String>,
-                email: Option<String>,
-            }
-
-            #[derive(Debug, Deserialize)]
-            struct CommitDetail {
-                author: Option<CommitInfo>,
-            }
-
-            #[derive(Debug, Deserialize)]
-            struct CommitData {
-                author: Option<CommitAuthor>,
-                commit: CommitDetail,
-            }
 
             let commits: Vec<CommitData> = match response.json().await {
                 Ok(c) => c,

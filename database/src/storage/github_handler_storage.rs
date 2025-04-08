@@ -154,15 +154,15 @@ impl GithubHanlderStorage {
         }
 
         // 如果没有找到，尝试直接通过名称匹配
-        let programs_by_name = programs::Entity::find()
-            .filter(programs::Column::Name.eq(repo))
-            .all(self.get_connection())
-            .await?;
+        // let programs_by_name = programs::Entity::find()
+        //     .filter(programs::Column::Name.eq(repo))
+        //     .all(self.get_connection())
+        //     .await?;
 
-        if !programs_by_name.is_empty() {
-            info!("通过名称找到仓库 {}, ID: {}", repo, programs_by_name[0].id);
-            return Ok(Some(programs_by_name[0].id.to_string()));
-        }
+        // if !programs_by_name.is_empty() {
+        //     info!("通过名称找到仓库 {}, ID: {}", repo, programs_by_name[0].id);
+        //     return Ok(Some(programs_by_name[0].id.to_string()));
+        // }
 
         warn!("未找到仓库 {}/{}", owner, repo);
         Ok(None)
