@@ -1,8 +1,9 @@
 use chrono::{Duration, NaiveDate};
 use database::storage::Context;
 use entity::{github_sync_status, programs};
+use futures::{stream, StreamExt};
 use model::github::{Contributor, GitHubUser};
-use reqwest::{header, Client, Error};
+use reqwest::{header, Client, Error, Response};
 use sea_orm::{
     prelude::Uuid,
     ActiveValue::{NotSet, Set},
@@ -49,6 +50,41 @@ impl GitHubApiClient {
         builder.header(header::USER_AGENT, "github-handler")
     }
 
+    // api 限流检查
+    pub fn github_api_limit_check(
+        &self,
+        response: &Response,
+        page: i32,
+    ) -> Result<(), anyhow::Error> {
+        if !response.status().is_success() {
+            error!("获取Contributor {} 失败: HTTP {}", page, response.status());
+            // 如果是速率限制，打印详细信息
+            if response.status() == reqwest::StatusCode::FORBIDDEN {
+                if let Some(remain) = response.headers().get("x-ratelimit-remaining") {
+                    error!(
+                        "GitHub API速率限制剩余: {}",
+                        remain.to_str().unwrap_or("未知")
+                    );
+                }
+                if let Some(reset) = response.headers().get("x-ratelimit-reset") {
+                    let reset_time = reset.to_str().unwrap_or("0").parse::<i64>().unwrap_or(0);
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64;
+                    let wait_time = reset_time - now;
+                    error!(
+                        "GitHub API速率限制重置时间: {} (还需等待约{}秒)",
+                        reset_time,
+                        if wait_time > 0 { wait_time } else { 0 }
+                    );
+                }
+            }
+            return Err(anyhow::anyhow!("GitHub API 限制"));
+        }
+        Ok(())
+    }
+
     // 获取GitHub用户详细信息
     pub async fn get_user_details(&self, username: &str) -> Result<GitHubUser, reqwest::Error> {
         let url = format!("{}/users/{}", GITHUB_API_URL, username);
@@ -64,8 +100,113 @@ impl GitHubApiClient {
         Ok(user)
     }
 
-    // 获取所有仓库贡献者（通过Commits API）
     pub async fn get_all_repository_contributors(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Vec<Contributor>, Box<dyn std::error::Error + Send + Sync>> {
+        debug!("通过Contributor API获取所有仓库贡献者: {}/{}", owner, repo);
+
+        // 使用HashMap统计每个贡献者的提交次数
+        let mut contributors = vec![];
+        let mut page = 1;
+        let per_page = 100; // GitHub允许的最大值
+
+        let max_pages = 100;
+
+        while page <= max_pages {
+            let url = format!(
+                "{}/repos/{}/{}/contributors?page={}&per_page={}",
+                GITHUB_API_URL, owner, repo, page, per_page
+            );
+
+            debug!("请求Contributor API: {} (第{}页)", url, page);
+
+            let response = match self.authorized_request(&url).send().await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    error!("获取Contributor {} 失败: {}", page, e);
+                    break;
+                }
+            };
+
+            self.github_api_limit_check(&response, page)?;
+
+            // 提取分页信息
+            let has_next_page = response
+                .headers()
+                .get("link")
+                .and_then(|h| h.to_str().ok())
+                .map(|link| link.contains("rel=\"next\""))
+                .unwrap_or(false);
+
+            let mut page_contributors: Vec<Contributor> = match response.json().await {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!("解析提交数据失败: {}", e);
+                    break;
+                }
+            };
+
+            if page_contributors.is_empty() {
+                debug!("没有更多提交数据");
+                break;
+            }
+
+            contributors.append(&mut page_contributors);
+
+            // 如果没有下一页，退出循环
+            if !has_next_page {
+                break;
+            }
+            page += 1;
+        }
+
+        info!("通过Contributors API找到 {} 名贡献者", contributors.len());
+
+        Ok(contributors)
+    }
+
+    pub async fn get_user_email_from_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        login: &str,
+    ) -> Result<String, anyhow::Error> {
+        let url = format!(
+            "{}/repos/{}/{}/commits?page=1&per_page=1&author={}",
+            GITHUB_API_URL, owner, repo, login
+        );
+
+        let response = self.authorized_request(&url).send().await.map_err(|e| {
+            error!("获取提交页面失败: {}", e);
+            anyhow::anyhow!("获取提交页面失败: {}", e)
+        })?;
+
+        self.github_api_limit_check(&response, 1)?;
+
+        let commits: Vec<CommitData> = response.json().await.map_err(|e| {
+            error!("解析提交数据失败: {}", e);
+            anyhow::anyhow!("解析提交数据失败: {}", e)
+        })?;
+
+        if commits.is_empty() {
+            return Err(anyhow::anyhow!("无法根据 login 获取commit 信息"));
+        }
+        let email = commits
+            .first()
+            .unwrap()
+            .commit
+            .author
+            .as_ref()
+            .and_then(|a| a.email.clone())
+            .unwrap();
+        Ok(email)
+    }
+
+    // 获取所有仓库贡献者（通过Commits API）
+    #[allow(dead_code)]
+    pub async fn get_all_repository_contributors_by_commits(
         &self,
         owner: &str,
         repo: &str,
@@ -98,11 +239,11 @@ impl GitHubApiClient {
 
             // 检查状态码
             if !response.status().is_success() {
-                warn!("获取提交页面 {} 失败: HTTP {}", page, response.status());
+                error!("获取提交页面 {} 失败: HTTP {}", page, response.status());
                 // 如果是速率限制，打印详细信息
                 if response.status() == reqwest::StatusCode::FORBIDDEN {
                     if let Some(remain) = response.headers().get("x-ratelimit-remaining") {
-                        warn!(
+                        error!(
                             "GitHub API速率限制剩余: {}",
                             remain.to_str().unwrap_or("未知")
                         );
@@ -114,7 +255,7 @@ impl GitHubApiClient {
                             .unwrap_or_default()
                             .as_secs() as i64;
                         let wait_time = reset_time - now;
-                        warn!(
+                        error!(
                             "GitHub API速率限制重置时间: {} (还需等待约{}秒)",
                             reset_time,
                             if wait_time > 0 { wait_time } else { 0 }
@@ -204,23 +345,38 @@ impl GitHubApiClient {
     }
 
     pub async fn start_graphql_sync(&self, context: &Context) -> Result<(), Error> {
-        let mut date = NaiveDate::parse_from_str("2011-01-01", "%Y-%m-%d").unwrap();
+        let date = NaiveDate::parse_from_str("2011-01-01", "%Y-%m-%d").unwrap();
         let end_date = NaiveDate::parse_from_str("2025-04-01", "%Y-%m-%d").unwrap();
         // let threshold_date = NaiveDate::parse_from_str("2015-01-01", "%Y-%m-%d").unwrap();
 
-        while date <= end_date {
-            let next_date = date + Duration::days(1);
+        let dates: Vec<NaiveDate> = {
+            let mut d = date;
+            let mut v = Vec::new();
+            while d <= end_date {
+                v.push(d);
+                d += Duration::days(1);
+            }
+            v
+        };
 
-            tracing::info!("Syncing date: {}", date.format("%Y-%m-%d"));
-
-            self.sync_with_date(
-                context,
-                &date.format("%Y-%m-%d").to_string(),
-                &date.format("%Y-%m-%d").to_string(),
-            )
-            .await?;
-            date = next_date;
-        }
+        stream::iter(dates)
+            .for_each_concurrent(4, |date| {
+                let context = context.clone();
+                async move {
+                    tracing::info!("Syncing date: {}", date.format("%Y-%m-%d"));
+                    if let Err(err) = self
+                        .sync_with_date(
+                            &context,
+                            &date.format("%Y-%m-%d").to_string(),
+                            &date.format("%Y-%m-%d").to_string(),
+                        )
+                        .await
+                    {
+                        tracing::error!("Failed to sync {}: {:?}", date, err);
+                    }
+                }
+            })
+            .await;
 
         Ok(())
     }

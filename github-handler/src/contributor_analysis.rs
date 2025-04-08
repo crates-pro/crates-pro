@@ -1,10 +1,9 @@
 use chrono::{DateTime, FixedOffset};
 use database::storage::Context;
-use model::github::{Contributor, ContributorAnalysis, GitHubUser};
+use model::github::{ContributorAnalysis, GitHubUser};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::time::Duration;
 use tokio::process::Command as TokioCommand;
 use tracing::{debug, error, info, warn};
 
@@ -138,15 +137,14 @@ async fn analyze_contributor_locations(
     owner: &str,
     repo: &str,
     repository_id: &str,
-    contributors: &[Contributor],
     github_users: &[GitHubUser],
     email_to_user_id: &HashMap<String, i32>,
 ) -> Result<(), BoxError> {
-    info!("分析仓库 {}/{} 的贡献者地理位置", owner, repo);
+    debug!("分析仓库 {}/{} 的贡献者地理位置", owner, repo);
     let base_dir = context.base_dir.clone();
     if !base_dir.exists() {
         fs::create_dir_all(&base_dir)?;
-        info!("创建根目录: {:?}", base_dir);
+        debug!("创建根目录: {:?}", base_dir);
     }
 
     // 构建目标路径: /mnt/crates/github_source/{owner}/{repo}
@@ -166,7 +164,7 @@ async fn analyze_contributor_locations(
             }
         }
 
-        info!("克隆仓库到指定目录: {}", target_path);
+        debug!("克隆仓库到指定目录: {}", target_path);
         let status = TokioCommand::new("git")
             .args([
                 "clone",
@@ -183,7 +181,8 @@ async fn analyze_contributor_locations(
                 &format!("https://github.com/{}/{}.git", owner, repo),
                 &target_path,
             ])
-            .status().await;
+            .status()
+            .await;
 
         match status {
             Ok(status) if !status.success() => {
@@ -215,13 +214,14 @@ async fn analyze_contributor_locations(
         let status = TokioCommand::new("git")
             .current_dir(&target_dir)
             .args(args)
-            .status().await;
+            .status()
+            .await;
         if let Err(e) = status {
             warn!("更新仓库失败: {}，可能需要认证，继续分析当前代码", e);
         }
     }
 
-    info!("开始分析 {} 个贡献者的时区信息", github_users.len());
+    debug!("开始分析 {} 个贡献者的时区信息", github_users.len());
 
     let mut china_contributors = 0;
     let mut non_china_contributors = 0;
@@ -232,19 +232,8 @@ async fn analyze_contributor_locations(
         let email = match &user.email {
             Some(email) => email.clone(),
             None => {
-                // 查找对应的contributor是否有邮箱
-                let contributor_email = contributors
-                    .iter()
-                    .find(|c| c.login == user.login)
-                    .and_then(|c| c.email.clone());
-
-                match contributor_email {
-                    Some(email) => email,
-                    None => {
-                        warn!("用户 {} 没有邮箱信息，使用登录名作为替代", user.login);
-                        format!("{}@github.com", user.login)
-                    }
-                }
+                error!("用户 {} 没有邮箱信息", user.login);
+                continue;
             }
         };
 
@@ -364,7 +353,7 @@ pub(crate) async fn analyze_git_contributors(
     owner: &str,
     repo: &str,
 ) -> Result<(), BoxError> {
-    info!("分析仓库贡献者: {}/{}", owner, repo);
+    debug!("分析仓库贡献者: {}/{}", owner, repo);
 
     // 获取仓库ID
     let repository_id = match context
@@ -378,26 +367,6 @@ pub(crate) async fn analyze_git_contributors(
             return Ok(());
         }
     };
-
-    // 查询是否存在贡献者位置信息
-    // 用于判断是否需要重新分析
-    // match context
-    //     .github_handler_stg()
-    //     .has_contributor_location(&repository_id)
-    //     .await
-    // {
-    //     Ok(true) => {
-    //         info!("仓库 {}/{} 已存在贡献者位置信息，跳过所有操作", owner, repo);
-    //         return Ok(());
-    //     }
-    //     Ok(false) => {
-    //         info!("仓库 {}/{} 没有贡献者位置信息，开始分析", owner, repo);
-    //     }
-    //     Err(e) => {
-    //         error!("查询仓库 {}/{} 的贡献者位置信息时出错: {}", owner, repo, e);
-    //         return Err(e.into());
-    //     }
-    // }
 
     // 创建GitHub API客户端
     let github_client = GitHubApiClient::new();
@@ -414,33 +383,48 @@ pub(crate) async fn analyze_git_contributors(
 
     // 存储贡献者信息
     for contributor in &contributors {
-        // 获取并存储用户详细信息
-        let mut user = match github_client.get_user_details(&contributor.login).await {
-            Ok(user) => user,
-            Err(e) => {
-                warn!("获取用户 {} 详情失败: {}", contributor.login, e);
-                continue;
-            }
-        };
+        let (user, user_id) = match context
+            .github_handler_stg()
+            .get_user_by_name(&contributor.login)
+            .await
+            .unwrap()
+        {
+            Some(user) => (user.clone().into(), user.id),
+            None => {
+                // 获取并存储用户详细信息
+                let mut user = match github_client.get_user_details(&contributor.login).await {
+                    Ok(user) => user,
+                    Err(e) => {
+                        warn!("获取用户 {} 详情失败: {}", contributor.login, e);
+                        continue;
+                    }
+                };
 
-        // 如果API返回的用户没有邮箱但贡献信息中有，则使用贡献中的邮箱
-        if user.email.is_none() && contributor.email.is_some() {
-            user.email = contributor.email.clone();
-        }
+                // 如果API返回的用户没有邮箱但贡献信息中有，则使用贡献中的邮箱
+                if user.email.is_none() {
+                    // 从commit 获取email
+                    let email = github_client
+                        .get_user_email_from_commits(owner, repo, &contributor.login)
+                        .await?;
+                    user.email = Some(email);
+                }
 
-        // 存储用户到数据库
-        let user_id = match context.github_handler_stg().store_user(&user).await {
-            Ok(id) => id,
-            Err(e) => {
-                error!("存储用户 {} 失败: {}", user.login, e);
-                continue;
+                // 存储用户到数据库
+                let user_id = match context.github_handler_stg().store_user(&user).await {
+                    Ok(id) => id,
+                    Err(e) => {
+                        error!("存储用户 {} 失败: {}", user.login, e);
+                        continue;
+                    }
+                };
+                (user, user_id)
             }
         };
 
         // 保存邮箱到用户ID的映射
         if let Some(email) = &user.email {
             email_to_user_id.insert(email.clone(), user_id);
-            info!("记录邮箱映射: {} -> ID {}", email, user_id);
+            debug!("记录邮箱映射: {} -> ID {}", email, user_id);
         }
 
         // 保存用户信息用于后续分析
@@ -457,9 +441,6 @@ pub(crate) async fn analyze_git_contributors(
                 owner, repo, user.login, e
             );
         }
-
-        // 等待一小段时间，避免触发GitHub API限制
-        tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
     // 查询并显示贡献者统计
@@ -490,7 +471,6 @@ pub(crate) async fn analyze_git_contributors(
         owner,
         repo,
         &repository_id,
-        &contributors,
         &github_users,
         &email_to_user_id,
     )

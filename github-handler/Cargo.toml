@@ -35,6 +35,7 @@ uuid = { workspace = true, features = [
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ] }
 futures = { workspace = true }
+anyhow = { workspace = true }
 
 [dev-dependencies]
 walkdir = { workspace = true }
