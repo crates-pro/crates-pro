@@ -8,6 +8,7 @@ use entity::{
 use futures::Stream;
 use model::github::ContributorAnalysis;
 use sea_orm::{
+    prelude::Uuid,
     sea_query::{self, OnConflict},
     ActiveModelTrait,
     ActiveValue::Set,
@@ -456,5 +457,71 @@ impl GithubHanlderStorage {
                 Ok(false)
             }
         }
+    }
+    pub async fn query_all_crates(&self) -> Result<Vec<(String, String)>, DbErr> {
+        let query = "SELECT name,repository FROM crates;";
+        let result = self
+            .get_connection()
+            .query_all(Statement::from_sql_and_values(
+                self.get_connection().get_database_backend(),
+                query,
+                [],
+            ))
+            .await?;
+        let mut all_crates = Vec::new();
+        for row in result {
+            let name: Option<String> = row.try_get("", "name")?;
+            if name.is_none() {
+                continue;
+            }
+            let name = name.unwrap();
+            let repo: Option<String> = row.try_get("", "repository")?;
+            if repo.is_none() {
+                continue;
+            }
+            let repo = repo.unwrap();
+            all_crates.push((name.clone(), repo.clone()));
+        }
+        Ok(all_crates)
+    }
+    pub async fn query_programs_by_name(&self, name: &str) -> Result<Vec<(Uuid, String)>, DbErr> {
+        let query = "SELECT id,github_url FROM programs WHERE name = $1;";
+        let result = self
+            .get_connection()
+            .query_all(Statement::from_sql_and_values(
+                self.get_connection().get_database_backend(),
+                query,
+                [name.into()],
+            ))
+            .await?;
+        let mut all_programs = Vec::new();
+        for row in result {
+            let id: Option<Uuid> = row.try_get("", "id")?;
+            if id.is_none() {
+                continue;
+            }
+            let id = id.unwrap();
+            let github_url: Option<String> = row.try_get("", "github_url")?;
+            if github_url.is_none() {
+                continue;
+            }
+            let github_url = github_url.unwrap();
+            all_programs.push((id, github_url));
+        }
+        Ok(all_programs)
+    }
+    pub async fn update_in_cratesio(&self, id: Uuid) -> Result<(), DbErr> {
+        //debug!("更新程序 crates.io 状态: 程序ID={}", id);
+
+        programs::Entity::update(programs::ActiveModel {
+            id: Set(id),
+            in_cratesio: Set(true),
+            ..Default::default()
+        })
+        .exec(self.get_connection())
+        .await?;
+
+        debug!("程序 crates.io 状态已更新");
+        Ok(())
     }
 }

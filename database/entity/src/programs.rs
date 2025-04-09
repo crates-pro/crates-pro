@@ -26,6 +26,7 @@ pub struct Model {
     pub cratesio: String,
     pub github_analyzed: bool,
     pub repo_created_at: Option<DateTime>,
+    pub in_cratesio: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

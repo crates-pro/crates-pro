@@ -59,6 +59,9 @@ enum Commands {
         /// 仓库名称
         repo: String,
     },
+
+    ///更新in_cratesio
+    UpdateCratesioStatus,
 }
 
 // 定义错误类型
@@ -167,6 +170,22 @@ async fn sync_all_repos(context: Context) -> Result<(), BoxError> {
         .await?;
     Ok(())
 }
+async fn find_cratesio_in_programs(context: Context) -> Result<(), BoxError> {
+    let all_crates = context.github_handler_stg().query_all_crates().await?;
+    for (name, repo) in all_crates {
+        let all_programs = context
+            .github_handler_stg()
+            .query_programs_by_name(&name)
+            .await?;
+        for (id, github_url) in all_programs {
+            if github_url == repo {
+                context.github_handler_stg().update_in_cratesio(id).await?;
+                break;
+            }
+        }
+    }
+    Ok(())
+}
 
 async fn process_item(model: &programs::Model, context: Context) {
     let re = Regex::new(r"github\.com/([^/]+)/([^/]+)").unwrap();
@@ -177,7 +196,11 @@ async fn process_item(model: &programs::Model, context: Context) {
         if res.is_ok() {
             let mut a_model = model.clone().into_active_model();
             a_model.github_analyzed = Set(true);
-            context.github_handler_stg().update_program(a_model).await.unwrap();
+            context
+                .github_handler_stg()
+                .update_program(a_model)
+                .await
+                .unwrap();
         }
     } else {
         tracing::error!("URL 格式不正确: {}", model.github_url);
@@ -220,7 +243,13 @@ async fn main() -> Result<(), BoxError> {
             github_client.start_graphql_sync(&context).await?;
         }
 
-        Some(Commands::AnalyzeAll) => sync_all_repos(context).await?,
+        Some(Commands::AnalyzeAll) => {
+            sync_all_repos(context).await?;
+        }
+
+        Some(Commands::UpdateCratesioStatus) => {
+            find_cratesio_in_programs(context).await?;
+        }
 
         None => {
             // 如果没有提供子命令，但提供了owner和repo参数
