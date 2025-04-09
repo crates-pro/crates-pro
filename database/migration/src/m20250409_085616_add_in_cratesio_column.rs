@@ -11,39 +11,22 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(Programs::Table)
                     .add_column_if_not_exists(
-                        ColumnDef::new(Alias::new("github_analyzed"))
+                        ColumnDef::new(Alias::new("in_cratesio"))
                             .boolean()
                             .not_null()
                             .default(false),
                     )
-                    .add_column_if_not_exists(
-                        ColumnDef::new(Alias::new("repo_created_at")).date_time(),
-                    )
                     .to_owned(),
             )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(GithubUser::Table)
-                    .add_column_if_not_exists(ColumnDef::new(Alias::new("commit_email")).string())
-                    .to_owned(),
-            )
-            .await?;
-
-        Ok(())
+            .await
     }
 
     async fn down(&self, _: &SchemaManager) -> Result<(), DbErr> {
         Ok(())
     }
 }
-#[derive(DeriveIden)]
-enum Programs {
-    Table,
-}
 
 #[derive(DeriveIden)]
-enum GithubUser {
+enum Programs {
     Table,
 }
