@@ -19,6 +19,14 @@ pub struct GitHubUser {
     pub following: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(rename = "type")]
+    pub user_type: String,
+}
+
+impl GitHubUser {
+    pub fn is_bot(&self) -> bool{
+        self.user_type == "Bot"
+    }
 }
 
 // 转换函数，用于将GitHub API返回的用户转换为数据库模型
@@ -43,6 +51,7 @@ impl From<GitHubUser> for github_user::ActiveModel {
             updated_at: Set(user.updated_at.naive_utc()),
             inserted_at: Set(now),
             updated_at_local: Set(now),
+            commit_email: NotSet
         }
     }
 }
@@ -61,12 +70,32 @@ impl From<github_user::Model> for GitHubUser {
             public_repos: value.public_repos,
             followers: value.followers,
             following: value.following,
+            user_type: "User".to_owned(),
             created_at: DateTime::<Utc>::from_naive_utc_and_offset(value.created_at, Utc),
             updated_at: DateTime::<Utc>::from_naive_utc_and_offset(value.updated_at, Utc),
         }
     }
 }
 
+pub struct AnalyzedUser {
+    pub user_id: i32,
+    pub github_id: i64,
+    pub login: String,
+    pub profile_email: Option<String>,
+    pub commit_email: Option<String>
+}
+
+impl From<github_user::Model> for AnalyzedUser { 
+    fn from(value: github_user::Model) -> Self { 
+        Self {
+            user_id: value.id,
+            github_id: value.github_id,
+            login: value.login,
+            profile_email: value.email,
+            commit_email: value.commit_email,
+        }
+    }
+}
 // 贡献者信息结构
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Contributor {
@@ -80,7 +109,6 @@ pub struct Contributor {
 // 贡献者分析结果
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ContributorAnalysis {
-    pub email: Option<String>,
     pub from_china: bool,
     pub common_timezone: String,
 }
@@ -99,3 +127,67 @@ impl From<&ContributorAnalysis> for contributor_location::ActiveModel {
         }
     }
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Repository {
+    pub name: String,
+    pub url: String,
+    pub created_at: String,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphQLResponse {
+    pub data: Option<SearchData>,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchData {
+    pub search: SearchResult,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResult {
+    pub edges: Vec<Edge>,
+    pub page_info: PageInfo,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Edge {
+    pub node: Repository,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageInfo {
+    pub end_cursor: Option<String>,
+    pub has_next_page: bool,
+}
+
+// 解析提交数据
+#[derive(Debug, Deserialize)]
+pub struct CommitAuthor {
+    pub login: String,
+    pub id: i64,
+    pub avatar_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CommitInfo {
+    pub _author: Option<String>,
+    pub email: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CommitDetail {
+    pub author: Option<CommitInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CommitData {
+    pub author: Option<CommitAuthor>,
+    pub commit: CommitDetail,
+}
+

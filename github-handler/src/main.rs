@@ -179,7 +179,6 @@ async fn process_item(model: &programs::Model, context: Context) {
             a_model.github_analyzed = Set(true);
             context.github_handler_stg().update_program(a_model).await.unwrap();
         }
-        tracing::info!("Owner: {}, Repo: {}", owner, repo);
     } else {
         tracing::error!("URL 格式不正确: {}", model.github_url);
     }
