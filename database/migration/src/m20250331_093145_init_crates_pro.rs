@@ -249,25 +249,6 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
-        manager
-            .drop_table(Table::drop().table(RepoSyncResult::Table).to_owned())
-            .await?;
-        manager
-            .drop_table(Table::drop().table(GithubSyncStatus::Table).to_owned())
-            .await?;
-        manager
-            .drop_table(Table::drop().table(ContributorLocation::Table).to_owned())
-            .await?;
-        manager
-            .drop_table(
-                Table::drop()
-                    .table(RepositoryContributor::Table)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .drop_table(Table::drop().table(GithubUser::Table).to_owned())
-            .await?;
         // 删除type 防止启动的时候提示重复
         manager
             .drop_type(Type::drop().if_exists().name(CrateTypeEnum).to_owned())

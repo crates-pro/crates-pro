@@ -6,10 +6,13 @@ use entity::{
     repository_contributor,
 };
 use futures::Stream;
-use model::github::{ContributorAnalysis, GitHubUser};
+use model::github::ContributorAnalysis;
 use sea_orm::{
-    sea_query::OnConflict, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
-    DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder, Statement,
+    sea_query::{self, OnConflict},
+    ActiveModelTrait,
+    ActiveValue::Set,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
+    Statement,
 };
 use tracing::{debug, info, warn};
 
@@ -50,7 +53,7 @@ impl GithubHanlderStorage {
         programs::Entity::insert_many(models)
             .on_conflict(
                 OnConflict::column(programs::Column::GithubUrl)
-                    .do_nothing()
+                    .update_columns([programs::Column::GithubUrl, programs::Column::RepoCreatedAt])
                     .to_owned(),
             )
             .do_nothing()
@@ -97,27 +100,25 @@ impl GithubHanlderStorage {
     }
 
     // 存储GitHub用户
-    pub async fn store_user(&self, user: &GitHubUser) -> Result<i32, DbErr> {
-        debug!("存储GitHub用户: {}", user.login);
+    pub async fn store_user(
+        &self,
+        user: github_user::ActiveModel,
+    ) -> Result<github_user::Model, DbErr> {
+        debug!("存储或者更新GitHub用户: {:?}", user.login);
 
-        // 查询用户是否已存在
-        let existing_user = github_user::Entity::find()
-            .filter(github_user::Column::GithubId.eq(user.id))
-            .one(self.get_connection())
+        let res = github_user::Entity::insert(user)
+            .on_conflict(
+                sea_query::OnConflict::column(github_user::Column::GithubId)
+                    .update_columns([
+                        github_user::Column::Name,
+                        github_user::Column::Email,
+                        github_user::Column::CommitEmail,
+                    ])
+                    .to_owned(),
+            )
+            .exec_with_returning(self.get_connection())
             .await?;
-
-        // 如果用户已存在，返回ID
-        if let Some(existing) = existing_user {
-            info!("用户 {} 已存在，ID: {}", user.login, existing.id);
-            return Ok(existing.id);
-        }
-
-        // 用户不存在，创建新用户
-        debug!("创建新用户: {}", user.login);
-        let user_model = github_user::ActiveModel::from(user.clone());
-        let res = user_model.insert(self.get_connection()).await?;
-
-        Ok(res.id)
+        Ok(res)
     }
 
     // 根据用户名查找用户ID

@@ -1,4 +1,4 @@
-use chrono::{Duration, NaiveDate};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use database::storage::Context;
 use entity::{github_sync_status, programs};
 use futures::{stream, StreamExt};
@@ -15,10 +15,8 @@ use tracing::{debug, error, info, warn};
 const GITHUB_API_URL: &str = "https://api.github.com";
 
 // 使用main中定义的函数获取GitHub令牌
-use crate::{
-    config::get_github_token,
-    services::model::{CommitData, GraphQLResponse, Repository},
-};
+use crate::config::get_github_token;
+use model::github::{CommitData, GraphQLResponse, Repository};
 
 // GitHub API客户端
 pub struct GitHubApiClient {
@@ -51,13 +49,8 @@ impl GitHubApiClient {
     }
 
     // api 限流检查
-    pub fn github_api_limit_check(
-        &self,
-        response: &Response,
-        page: i32,
-    ) -> Result<(), anyhow::Error> {
+    pub fn github_api_limit_check(&self, response: &Response) -> Result<(), anyhow::Error> {
         if !response.status().is_success() {
-            error!("获取Contributor {} 失败: HTTP {}", page, response.status());
             // 如果是速率限制，打印详细信息
             if response.status() == reqwest::StatusCode::FORBIDDEN {
                 if let Some(remain) = response.headers().get("x-ratelimit-remaining") {
@@ -125,12 +118,12 @@ impl GitHubApiClient {
             let response = match self.authorized_request(&url).send().await {
                 Ok(resp) => resp,
                 Err(e) => {
-                    error!("获取Contributor {} 失败: {}", page, e);
+                    error!("获取Contributor {} 失败: {}", url, e);
                     break;
                 }
             };
 
-            self.github_api_limit_check(&response, page)?;
+            self.github_api_limit_check(&response)?;
 
             // 提取分页信息
             let has_next_page = response
@@ -172,7 +165,7 @@ impl GitHubApiClient {
         owner: &str,
         repo: &str,
         login: &str,
-    ) -> Result<String, anyhow::Error> {
+    ) -> Result<Option<String>, anyhow::Error> {
         let url = format!(
             "{}/repos/{}/{}/commits?page=1&per_page=1&author={}",
             GITHUB_API_URL, owner, repo, login
@@ -183,7 +176,7 @@ impl GitHubApiClient {
             anyhow::anyhow!("获取提交页面失败: {}", e)
         })?;
 
-        self.github_api_limit_check(&response, 1)?;
+        self.github_api_limit_check(&response)?;
 
         let commits: Vec<CommitData> = response.json().await.map_err(|e| {
             error!("解析提交数据失败: {}", e);
@@ -191,7 +184,8 @@ impl GitHubApiClient {
         })?;
 
         if commits.is_empty() {
-            return Err(anyhow::anyhow!("无法根据 login 获取commit 信息"));
+            error!("无法根据 login 获取commit 信息:{}", url);
+            return Ok(None);
         }
         let email = commits
             .first()
@@ -201,7 +195,7 @@ impl GitHubApiClient {
             .as_ref()
             .and_then(|a| a.email.clone())
             .unwrap();
-        Ok(email)
+        Ok(Some(email))
     }
 
     // 获取所有仓库贡献者（通过Commits API）
@@ -523,7 +517,26 @@ async fn convert_to_model(item: Repository, save_models: &mut Vec<programs::Acti
         program_type: Set("".to_owned()),
         downloads: Set(0),
         cratesio: Set("".to_owned()),
+        repo_created_at: Set(Some(item.created_at.parse::<DateTime<Utc>>().unwrap().naive_utc())),
         ..Default::default()
     };
     save_models.push(model);
+}
+
+#[cfg(test)]
+mod test {
+    use chrono::{DateTime, NaiveDateTime, Utc};
+
+    #[test]
+    fn main() {
+        let time_str = "2024-11-30T01:55:00Z";
+    
+        // 先解析成 DateTime<Utc>
+        let datetime_utc: DateTime<Utc> = time_str.parse().expect("解析失败");
+    
+        // 然后转换为 NaiveDateTime（去掉时区信息）
+        let naive: NaiveDateTime = datetime_utc.naive_utc();
+    
+        println!("NaiveDateTime: {}", naive);
+    }
 }

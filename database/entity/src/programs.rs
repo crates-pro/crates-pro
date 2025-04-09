@@ -25,6 +25,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub cratesio: String,
     pub github_analyzed: bool,
+    pub repo_created_at: Option<DateTime>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

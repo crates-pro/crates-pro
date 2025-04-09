@@ -1,7 +1,9 @@
 use chrono::{DateTime, FixedOffset};
 use database::storage::Context;
-use model::github::{ContributorAnalysis, GitHubUser};
-use std::collections::HashMap;
+use entity::github_user;
+use model::github::{AnalyzedUser, ContributorAnalysis};
+use sea_orm::ActiveValue::Set;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use tokio::process::Command as TokioCommand;
@@ -20,26 +22,35 @@ fn is_china_timezone(timezone: &str) -> bool {
 /// 分析贡献者的时区统计
 pub async fn analyze_contributor_timezone(
     repo_path: &str,
-    author_email: &str,
+    analyzed_emails: &HashSet<String>,
 ) -> Option<ContributorAnalysis> {
     if !Path::new(repo_path).exists() {
         error!("仓库路径不存在: {}", repo_path);
         return None;
     }
+    // 用于分析的邮箱可能存在多个不同的值，如profile 设置的值，commit时设置的值
+    debug!("分析作者 {:?} 的时区统计", analyzed_emails);
 
-    debug!("分析作者 {} 的时区统计", author_email);
-
-    // 获取提交时区分布
-    let commits = match get_author_commits(repo_path, author_email).await {
-        Some(commits) => commits,
-        None => {
-            warn!("无法获取作者提交: {}", author_email);
-            return None;
-        }
-    };
+    let mut commits = vec![];
+    for email in analyzed_emails {
+        // 获取提交时区分布
+        match get_author_commits(repo_path, email).await {
+            Some(result) => {
+                if !result.is_empty() {
+                    commits = result;
+                    break;
+                }
+            }
+            None => {
+                continue;
+                // warn!("无法获取作者提交: {}", author_email);
+                // return None;
+            }
+        };
+    }
 
     if commits.is_empty() {
-        warn!("作者没有提交记录: {}", author_email);
+        warn!("作者没有提交记录: {:?}", analyzed_emails);
         return None;
     }
 
@@ -69,7 +80,7 @@ pub async fn analyze_contributor_timezone(
         .unwrap_or_else(|| "Unknown".to_string());
 
     let analysis = ContributorAnalysis {
-        email: Some(author_email.to_string()),
+        // email: Some(author_email.to_string()),
         from_china: has_china_timezone,
         common_timezone,
     };
@@ -137,8 +148,7 @@ async fn analyze_contributor_locations(
     owner: &str,
     repo: &str,
     repository_id: &str,
-    github_users: &[GitHubUser],
-    email_to_user_id: &HashMap<String, i32>,
+    analyzed_users: &[AnalyzedUser],
 ) -> Result<(), BoxError> {
     debug!("分析仓库 {}/{} 的贡献者地理位置", owner, repo);
     let base_dir = context.base_dir.clone();
@@ -221,54 +231,45 @@ async fn analyze_contributor_locations(
         }
     }
 
-    debug!("开始分析 {} 个贡献者的时区信息", github_users.len());
+    debug!("开始分析 {} 个贡献者的时区信息", analyzed_users.len());
 
     let mut china_contributors = 0;
     let mut non_china_contributors = 0;
 
     // 对每个贡献者进行时区分析
-    for user in github_users.iter() {
+    for user in analyzed_users.iter() {
         // 使用贡献者的邮箱进行时区分析
-        let email = match &user.email {
-            Some(email) => email.clone(),
+        if user.commit_email.is_none() && user.profile_email.is_none() {
+            error!("用户 {} 没有邮箱信息", user.login);
+            continue;
+        }
+
+        let mut analyzed_emails = HashSet::new();
+
+        for email in [user.profile_email.as_ref(), user.commit_email.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            analyzed_emails.insert(email.clone());
+        }
+        // 分析该贡献者的时区情况
+        let analysis = match contributor_analysis::analyze_contributor_timezone(
+            target_path.as_ref(),
+            &analyzed_emails,
+        )
+        .await
+        {
+            Some(result) => result,
             None => {
-                error!("用户 {} 没有邮箱信息", user.login);
+                warn!("无法分析用户 {} 的时区信息", user.login);
                 continue;
             }
-        };
-
-        // 分析该贡献者的时区情况
-        let analysis =
-            match contributor_analysis::analyze_contributor_timezone(target_path.as_ref(), &email)
-                .await
-            {
-                Some(result) => result,
-                None => {
-                    warn!("无法分析用户 {} 的时区信息", user.login);
-                    continue;
-                }
-            };
-
-        // 查找用户ID
-        let user_id = match email_to_user_id.get(&email) {
-            Some(id) => *id,
-            None => match context
-                .github_handler_stg()
-                .get_user_by_name(&user.login)
-                .await
-            {
-                Ok(Some(model)) => model.id,
-                _ => {
-                    warn!("未找到用户 {} 的ID", user.login);
-                    continue;
-                }
-            },
         };
 
         // 存储贡献者位置分析
         if let Err(e) = context
             .github_handler_stg()
-            .store_contributor_location(repository_id, user_id, &analysis)
+            .store_contributor_location(repository_id, user.user_id, &analysis)
             .await
         {
             error!("存储贡献者位置分析失败: {}", e);
@@ -278,14 +279,14 @@ async fn analyze_contributor_locations(
         if analysis.from_china {
             china_contributors += 1;
             info!(
-                "贡献者 {} (邮箱: {}) 可能来自中国, 常用时区: {}",
-                user.login, email, analysis.common_timezone
+                "贡献者 {} 可能来自中国, 常用时区: {}",
+                user.login, analysis.common_timezone
             );
         } else {
             non_china_contributors += 1;
             info!(
-                "贡献者 {} (邮箱: {}) 可能来自海外, 常用时区: {}",
-                user.login, email, analysis.common_timezone
+                "贡献者 {} 可能来自海外, 常用时区: {}",
+                user.login, analysis.common_timezone
             );
         }
     }
@@ -376,23 +377,21 @@ pub(crate) async fn analyze_git_contributors(
         .get_all_repository_contributors(owner, repo)
         .await?;
 
-    // 使用HashMap存储邮箱到用户ID的映射，用于后续分析
-    let mut email_to_user_id = HashMap::new();
     // 存储所有获取的用户信息，用于后续分析
-    let mut github_users = Vec::new();
+    let mut analyzed_users: Vec<AnalyzedUser> = Vec::new();
 
     // 存储贡献者信息
     for contributor in &contributors {
-        let (user, user_id) = match context
+        let user = match context
             .github_handler_stg()
             .get_user_by_name(&contributor.login)
             .await
             .unwrap()
         {
-            Some(user) => (user.clone().into(), user.id),
+            Some(user) => user,
             None => {
                 // 获取并存储用户详细信息
-                let mut user = match github_client.get_user_details(&contributor.login).await {
+                let user = match github_client.get_user_details(&contributor.login).await {
                     Ok(user) => user,
                     Err(e) => {
                         warn!("获取用户 {} 详情失败: {}", contributor.login, e);
@@ -400,40 +399,30 @@ pub(crate) async fn analyze_git_contributors(
                     }
                 };
 
-                // 如果API返回的用户没有邮箱但贡献信息中有，则使用贡献中的邮箱
-                if user.email.is_none() {
-                    // 从commit 获取email
-                    let email = github_client
-                        .get_user_email_from_commits(owner, repo, &contributor.login)
-                        .await?;
-                    user.email = Some(email);
+                if user.is_bot() {
+                    info!("skip bot:{}:", user.login);
+                    continue;
                 }
 
+                // 从commit 获取email
+                let commit_email = github_client
+                    .get_user_email_from_commits(owner, repo, &contributor.login)
+                    .await?;
+
+                let mut a_model: github_user::ActiveModel = user.into();
+                a_model.commit_email = Set(commit_email);
                 // 存储用户到数据库
-                let user_id = match context.github_handler_stg().store_user(&user).await {
-                    Ok(id) => id,
-                    Err(e) => {
-                        error!("存储用户 {} 失败: {}", user.login, e);
-                        continue;
-                    }
-                };
-                (user, user_id)
+                context.github_handler_stg().store_user(a_model).await?
             }
         };
 
-        // 保存邮箱到用户ID的映射
-        if let Some(email) = &user.email {
-            email_to_user_id.insert(email.clone(), user_id);
-            debug!("记录邮箱映射: {} -> ID {}", email, user_id);
-        }
-
         // 保存用户信息用于后续分析
-        github_users.push(user.clone());
+        analyzed_users.push(user.clone().into());
 
         // 存储贡献者关系
         if let Err(e) = context
             .github_handler_stg()
-            .store_contributor(&repository_id, user_id, contributor.contributions)
+            .store_contributor(&repository_id, user.id, contributor.contributions)
             .await
         {
             error!(
@@ -466,15 +455,7 @@ pub(crate) async fn analyze_git_contributors(
     // }
 
     // 分析贡献者国别 - 传递已获取的用户信息
-    analyze_contributor_locations(
-        context,
-        owner,
-        repo,
-        &repository_id,
-        &github_users,
-        &email_to_user_id,
-    )
-    .await?;
+    analyze_contributor_locations(context, owner, repo, &repository_id, &analyzed_users).await?;
 
     Ok(())
 }

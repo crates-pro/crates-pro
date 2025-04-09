@@ -16,9 +16,22 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(false),
                     )
+                    .add_column_if_not_exists(
+                        ColumnDef::new(Alias::new("repo_created_at")).date_time(),
+                    )
                     .to_owned(),
             )
-            .await
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(GithubUser::Table)
+                    .add_column_if_not_exists(ColumnDef::new(Alias::new("commit_email")).string())
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
     }
 
     async fn down(&self, _: &SchemaManager) -> Result<(), DbErr> {
@@ -28,5 +41,10 @@ impl MigrationTrait for Migration {
 
 #[derive(DeriveIden)]
 enum Programs {
+    Table,
+}
+
+#[derive(DeriveIden)]
+enum GithubUser {
     Table,
 }
