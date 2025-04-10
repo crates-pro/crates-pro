@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use entity::{
-    contributor_location, github_sync_status, github_user,
+    contributor_location, crates, github_sync_status, github_user,
     programs::{self},
     repository_contributor,
 };
@@ -455,56 +455,33 @@ impl GithubHanlderStorage {
         }
     }
     pub async fn query_all_crates(&self) -> Result<Vec<(String, String)>, DbErr> {
-        let query = "SELECT name,repository FROM crates;";
-        let result = self
-            .get_connection()
-            .query_all(Statement::from_sql_and_values(
-                self.get_connection().get_database_backend(),
-                query,
-                [],
-            ))
-            .await?;
-        let mut all_crates = Vec::new();
-        for row in result {
-            let name: Option<String> = row.try_get("", "name")?;
-            if name.is_none() {
-                continue;
+        debug!("查询所有 crates 信息");
+
+        let crates = crates::Entity::find().all(self.get_connection()).await?;
+
+        let mut results = Vec::new();
+        for crate_info in crates {
+            if let Some(repo) = crate_info.repository {
+                results.push((crate_info.name, repo));
             }
-            let name = name.unwrap();
-            let repo: Option<String> = row.try_get("", "repository")?;
-            if repo.is_none() {
-                continue;
-            }
-            let repo = repo.unwrap();
-            all_crates.push((name.clone(), repo.clone()));
         }
-        Ok(all_crates)
+
+        Ok(results)
     }
     pub async fn query_programs_by_name(&self, name: &str) -> Result<Vec<(Uuid, String)>, DbErr> {
-        let query = "SELECT id,github_url FROM programs WHERE name = $1;";
-        let result = self
-            .get_connection()
-            .query_all(Statement::from_sql_and_values(
-                self.get_connection().get_database_backend(),
-                query,
-                [name.into()],
-            ))
+        debug!("通过名称查询程序: {}", name);
+
+        let programs = programs::Entity::find()
+            .filter(programs::Column::Name.eq(name))
+            .all(self.get_connection())
             .await?;
-        let mut all_programs = Vec::new();
-        for row in result {
-            let id: Option<Uuid> = row.try_get("", "id")?;
-            if id.is_none() {
-                continue;
-            }
-            let id = id.unwrap();
-            let github_url: Option<String> = row.try_get("", "github_url")?;
-            if github_url.is_none() {
-                continue;
-            }
-            let github_url = github_url.unwrap();
-            all_programs.push((id, github_url));
+
+        let mut results = Vec::new();
+        for program in programs {
+            results.push((program.id, program.github_url));
         }
-        Ok(all_programs)
+
+        Ok(results)
     }
     pub async fn update_in_cratesio(&self, id: Uuid) -> Result<(), DbErr> {
         //debug!("更新程序 crates.io 状态: 程序ID={}", id);

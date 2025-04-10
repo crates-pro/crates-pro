@@ -6,6 +6,7 @@ mod m20250407_094050_alter_programs;
 mod m20250409_085616_add_in_cratesio_column;
 mod m20250409_090128_update_repo_id_type;
 
+
 pub struct Migrator;
 
 #[async_trait::async_trait]
