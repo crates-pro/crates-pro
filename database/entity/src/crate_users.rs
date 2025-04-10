@@ -4,20 +4,20 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
-#[sea_orm(table_name = "crates")]
+#[sea_orm(table_name = "crate_users")]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = false)]
+    #[sea_orm(primary_key)]
     pub id: i32,
-    pub name: String,
-    pub updated_at: DateTimeWithTimeZone,
-    pub created_at: DateTimeWithTimeZone,
-    pub description: Option<String>,
-    pub homepage: Option<String>,
-    pub documentation: Option<String>,
-    pub readme: Option<String>,
-    pub repository: Option<String>,
-    pub max_upload_size: Option<i32>,
-    pub max_features: Option<i16>,
+    pub gh_access_token: String,
+    pub gh_login: String,
+    pub name: Option<String>,
+    pub gh_avatar: Option<String>,
+    #[sea_orm(unique)]
+    pub gh_id: i32,
+    pub account_lock_reason: Option<String>,
+    pub account_lock_until: Option<DateTimeWithTimeZone>,
+    pub is_admin: bool,
+    pub publish_notifications: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -81,8 +81,7 @@ pub async fn analyze_contributor_timezone(
         .unwrap_or_else(|| "Unknown".to_string());
 
     let analysis = ContributorAnalysis {
-        // email: Some(author_email.to_string()),
-        from_china: has_china_timezone,
+        has_china_timezone,
         common_timezone,
     };
 
@@ -277,7 +276,7 @@ async fn analyze_contributor_locations(
         }
 
         // 统计中国贡献者和非中国贡献者
-        if analysis.from_china {
+        if analysis.common_timezone == "+08:00" {
             china_contributors += 1;
             info!(
                 "贡献者 {} 可能来自中国, 常用时区: {}",
