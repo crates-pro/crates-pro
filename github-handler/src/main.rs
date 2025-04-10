@@ -100,7 +100,7 @@ async fn query_top_contributors(context: Context, owner: &str, repo: &str) -> Re
     // 查询贡献者统计
     match context
         .github_handler_stg()
-        .query_top_contributors(&repository_id)
+        .query_top_contributors(repository_id)
         .await
     {
         Ok(top_contributors) => {
@@ -131,7 +131,7 @@ async fn query_top_contributors(context: Context, owner: &str, repo: &str) -> Re
     // 查询中国贡献者统计
     match context
         .github_handler_stg()
-        .get_repository_china_contributor_stats(&repository_id)
+        .get_repository_china_contributor_stats(repository_id)
         .await
     {
         Ok(stats) => {
