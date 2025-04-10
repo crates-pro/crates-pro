@@ -97,7 +97,7 @@ impl GitHubApiClient {
         &self,
         owner: &str,
         repo: &str,
-    ) -> Result<Vec<Contributor>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<Contributor>, anyhow::Error> {
         debug!("通过Contributor API获取所有仓库贡献者: {}/{}", owner, repo);
 
         // 使用HashMap统计每个贡献者的提交次数
@@ -119,7 +119,7 @@ impl GitHubApiClient {
                 Ok(resp) => resp,
                 Err(e) => {
                     error!("获取Contributor {} 失败: {}", url, e);
-                    break;
+                    return Err(anyhow::anyhow!("取Contributor 失败"));
                 }
             };
 
