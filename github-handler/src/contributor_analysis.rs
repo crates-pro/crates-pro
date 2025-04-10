@@ -3,6 +3,7 @@ use database::storage::Context;
 use entity::github_user;
 use model::github::{AnalyzedUser, ContributorAnalysis};
 use sea_orm::ActiveValue::Set;
+use uuid::Uuid;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -147,7 +148,7 @@ async fn analyze_contributor_locations(
     context: Context,
     owner: &str,
     repo: &str,
-    repository_id: &str,
+    repository_id: Uuid,
     analyzed_users: &[AnalyzedUser],
 ) -> Result<(), BoxError> {
     debug!("分析仓库 {}/{} 的贡献者地理位置", owner, repo);
@@ -422,7 +423,7 @@ pub(crate) async fn analyze_git_contributors(
         // 存储贡献者关系
         if let Err(e) = context
             .github_handler_stg()
-            .store_contributor(&repository_id, user.id, contributor.contributions)
+            .store_contributor(repository_id, user.id, contributor.contributions)
             .await
         {
             error!(
@@ -455,7 +456,7 @@ pub(crate) async fn analyze_git_contributors(
     // }
 
     // 分析贡献者国别 - 传递已获取的用户信息
-    analyze_contributor_locations(context, owner, repo, &repository_id, &analyzed_users).await?;
+    analyze_contributor_locations(context, owner, repo, repository_id, &analyzed_users).await?;
 
     Ok(())
 }

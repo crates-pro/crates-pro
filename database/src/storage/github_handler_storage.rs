@@ -135,11 +135,7 @@ impl GithubHanlderStorage {
     }
 
     // 根据仓库所有者和名称获取仓库ID
-    pub async fn get_repository_id(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> Result<Option<String>, DbErr> {
+    pub async fn get_repository_id(&self, owner: &str, repo: &str) -> Result<Option<Uuid>, DbErr> {
         debug!("获取仓库ID: {}/{}", owner, repo);
 
         // 直接查询github_url字段
@@ -152,7 +148,7 @@ impl GithubHanlderStorage {
 
         if !programs.is_empty() {
             debug!("找到仓库 {}/{}, ID: {}", owner, repo, programs[0].id);
-            return Ok(Some(programs[0].id.to_string()));
+            return Ok(Some(programs[0].id));
         }
 
         // 如果没有找到，尝试直接通过名称匹配
@@ -173,7 +169,7 @@ impl GithubHanlderStorage {
     // 存储仓库贡献者
     pub async fn store_contributor(
         &self,
-        repository_id: &str,
+        repository_id: Uuid,
         user_id: i32,
         contributions: i32,
     ) -> Result<(), DbErr> {
@@ -208,7 +204,7 @@ impl GithubHanlderStorage {
             let now = chrono::Utc::now().naive_utc();
             let contributor = repository_contributor::ActiveModel {
                 id: Default::default(),
-                repository_id: Set(repository_id.to_string()),
+                repository_id: Set(repository_id),
                 user_id: Set(user_id),
                 contributions: Set(contributions),
                 inserted_at: Set(now),
@@ -244,7 +240,7 @@ impl GithubHanlderStorage {
     // 查询仓库的顶级贡献者
     pub async fn query_top_contributors(
         &self,
-        repository_id: &str,
+        repository_id: Uuid,
     ) -> Result<Vec<ContributorDetail>, DbErr> {
         info!("查询仓库 ID={} 的顶级贡献者", repository_id);
 
@@ -293,7 +289,7 @@ impl GithubHanlderStorage {
     // 存储贡献者位置信息
     pub async fn store_contributor_location(
         &self,
-        repository_id: &str,
+        repository_id: Uuid,
         user_id: i32,
         analysis: &ContributorAnalysis,
     ) -> Result<(), DbErr> {
@@ -305,7 +301,7 @@ impl GithubHanlderStorage {
         // 通过conversion trait转换
         let mut model = contributor_location::ActiveModel::from(analysis);
         model.user_id = Set(user_id);
-        model.repository_id = Set(repository_id.to_owned());
+        model.repository_id = Set(repository_id);
         contributor_location::Entity::insert(model)
             .on_conflict(
                 OnConflict::columns([
@@ -330,7 +326,7 @@ impl GithubHanlderStorage {
     // 获取仓库的中国贡献者统计
     pub async fn get_repository_china_contributor_stats(
         &self,
-        repository_id: &str,
+        repository_id: Uuid,
     ) -> Result<ChinaContributorStats, DbErr> {
         debug!("获取仓库 ID={} 的中国贡献者统计", repository_id);
 
