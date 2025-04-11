@@ -3,6 +3,8 @@
 pub mod prelude;
 
 pub mod contributor_location;
+pub mod crate_owners;
+pub mod crate_users;
 pub mod crates;
 pub mod github_sync_status;
 pub mod github_user;

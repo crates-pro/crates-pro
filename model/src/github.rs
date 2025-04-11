@@ -109,7 +109,7 @@ pub struct Contributor {
 // 贡献者分析结果
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ContributorAnalysis {
-    pub from_china: bool,
+    pub has_china_timezone: bool,
     pub common_timezone: String,
 }
 
@@ -120,7 +120,7 @@ impl From<&ContributorAnalysis> for contributor_location::ActiveModel {
 
         Self {
             id: NotSet,
-            is_from_china: Set(analysis.from_china),
+            is_from_china: Set(analysis.common_timezone == "+08:00"),
             common_timezone: Set(Some(analysis.common_timezone.clone())),
             analyzed_at: Set(now),
             ..Default::default()

@@ -37,7 +37,7 @@ impl GitHubApiClient {
     }
 
     // 创建带有认证头的请求构建器
-    fn authorized_request(&self, url: &str) -> reqwest::RequestBuilder {
+    async fn authorized_request(&self, url: &str) -> Result<reqwest::Response, anyhow::Error> {
         let token = get_github_token();
         let mut builder = self.client.get(url);
 
@@ -45,11 +45,22 @@ impl GitHubApiClient {
             builder = builder.header(header::AUTHORIZATION, format!("token {}", token));
         }
 
-        builder.header(header::USER_AGENT, "github-handler")
+        let request = builder.header(header::USER_AGENT, "github-handler");
+
+        let response = match request.send().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                error!("API请求 {} 失败: {}", url, e);
+                return Err(anyhow::anyhow!("API请求失败"));
+            }
+        };
+        self.github_api_limit_check(&response, &token)?;
+
+        Ok(response)
     }
 
     // api 限流检查
-    pub fn github_api_limit_check(&self, response: &Response) -> Result<(), anyhow::Error> {
+    pub fn github_api_limit_check(&self, response: &Response, token: &str) -> Result<(), anyhow::Error> {
         if !response.status().is_success() {
             // 如果是速率限制，打印详细信息
             if response.status() == reqwest::StatusCode::FORBIDDEN {
@@ -67,9 +78,10 @@ impl GitHubApiClient {
                         .as_secs() as i64;
                     let wait_time = reset_time - now;
                     error!(
-                        "GitHub API速率限制重置时间: {} (还需等待约{}秒)",
+                        "GitHub API速率限制重置时间: {} (还需等待约{}秒), token: {}",
                         reset_time,
-                        if wait_time > 0 { wait_time } else { 0 }
+                        if wait_time > 0 { wait_time } else { 0 },
+                        self.mask_token(token)
                     );
                 }
             }
@@ -78,15 +90,24 @@ impl GitHubApiClient {
         Ok(())
     }
 
+    fn mask_token(&self, token: &str) -> String {
+        let len = token.len();
+        if len <= 8 {
+            "*".repeat(len)
+        } else {
+            let start = &token[..10];
+            let end = &token[len - 4..];
+            format!("{}{}{}", start, "*".repeat(len - 8), end)
+        }
+    }
+
     // 获取GitHub用户详细信息
-    pub async fn get_user_details(&self, username: &str) -> Result<GitHubUser, reqwest::Error> {
+    pub async fn get_user_details(&self, username: &str) -> Result<GitHubUser, anyhow::Error> {
         let url = format!("{}/users/{}", GITHUB_API_URL, username);
         debug!("请求用户信息: {}", url);
 
         let response = self
-            .authorized_request(&url)
-            .send()
-            .await?
+            .authorized_request(&url).await?
             .error_for_status()?;
         let user: GitHubUser = response.json().await?;
 
@@ -115,15 +136,7 @@ impl GitHubApiClient {
 
             debug!("请求Contributor API: {} (第{}页)", url, page);
 
-            let response = match self.authorized_request(&url).send().await {
-                Ok(resp) => resp,
-                Err(e) => {
-                    error!("获取Contributor {} 失败: {}", url, e);
-                    return Err(anyhow::anyhow!("取Contributor 失败"));
-                }
-            };
-
-            self.github_api_limit_check(&response)?;
+            let response = self.authorized_request(&url).await?;
 
             // 提取分页信息
             let has_next_page = response
@@ -171,12 +184,7 @@ impl GitHubApiClient {
             GITHUB_API_URL, owner, repo, login
         );
 
-        let response = self.authorized_request(&url).send().await.map_err(|e| {
-            error!("获取提交页面失败: {}", e);
-            anyhow::anyhow!("获取提交页面失败: {}", e)
-        })?;
-
-        self.github_api_limit_check(&response)?;
+        let response = self.authorized_request(&url).await?;
 
         let commits: Vec<CommitData> = response.json().await.map_err(|e| {
             error!("解析提交数据失败: {}", e);
@@ -223,13 +231,7 @@ impl GitHubApiClient {
 
             debug!("请求Commits API: {} (第{}页)", url, page);
 
-            let response = match self.authorized_request(&url).send().await {
-                Ok(resp) => resp,
-                Err(e) => {
-                    error!("获取提交页面 {} 失败: {}", page, e);
-                    break;
-                }
-            };
+            let response = self.authorized_request(&url).await?;
 
             // 检查状态码
             if !response.status().is_success() {
@@ -339,7 +341,7 @@ impl GitHubApiClient {
     }
 
     pub async fn start_graphql_sync(&self, context: &Context) -> Result<(), Error> {
-        let date = NaiveDate::parse_from_str("2011-01-01", "%Y-%m-%d").unwrap();
+        let date = NaiveDate::parse_from_str("2010-06-16", "%Y-%m-%d").unwrap();
         let end_date = NaiveDate::parse_from_str("2025-04-01", "%Y-%m-%d").unwrap();
         // let threshold_date = NaiveDate::parse_from_str("2015-01-01", "%Y-%m-%d").unwrap();
 
@@ -517,7 +519,12 @@ async fn convert_to_model(item: Repository, save_models: &mut Vec<programs::Acti
         program_type: Set("".to_owned()),
         downloads: Set(0),
         cratesio: Set("".to_owned()),
-        repo_created_at: Set(Some(item.created_at.parse::<DateTime<Utc>>().unwrap().naive_utc())),
+        repo_created_at: Set(Some(
+            item.created_at
+                .parse::<DateTime<Utc>>()
+                .unwrap()
+                .naive_utc(),
+        )),
         ..Default::default()
     };
     save_models.push(model);
@@ -530,13 +537,13 @@ mod test {
     #[test]
     fn main() {
         let time_str = "2024-11-30T01:55:00Z";
-    
+
         // 先解析成 DateTime<Utc>
         let datetime_utc: DateTime<Utc> = time_str.parse().expect("解析失败");
-    
+
         // 然后转换为 NaiveDateTime（去掉时区信息）
         let naive: NaiveDateTime = datetime_utc.naive_utc();
-    
+
         println!("NaiveDateTime: {}", naive);
     }
 }
