@@ -1,11 +1,15 @@
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::time::SystemTime;
 use tracing::{error, info, warn};
+
+use crate::services::github_api::GitHubApiClient;
 
 // 配置结构
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -27,6 +31,9 @@ pub struct DatabaseConfig {
     pub url: String,
 }
 
+static EXHAUSTED_TOKENS: Lazy<tokio::sync::Mutex<HashSet<String>>> = Lazy::new(|| tokio::sync::Mutex::new(HashSet::new()));
+const TOKEN_RECHECK_INTERVAL: u64 = 600;
+static LAST_CHECK_TIME: Lazy<tokio::sync::Mutex<SystemTime>> = Lazy::new(|| tokio::sync::Mutex::new(SystemTime::now()));
 // 默认配置文件路径
 const DEFAULT_CONFIG_PATH: &str = "config.json";
 
@@ -128,7 +135,7 @@ pub fn load_config() -> Option<Config> {
 }
 
 /// 获取GitHub令牌，支持令牌轮换
-pub fn get_github_token() -> String {
+pub async fn get_github_token() -> String {
     // 尝试获取配置
     let config = {
         let config_guard = CONFIG.lock().unwrap();
@@ -149,14 +156,62 @@ pub fn get_github_token() -> String {
             warn!("没有可用的GitHub令牌");
             return String::new();
         }
+        let now = SystemTime::now();
+        let mut last_check = LAST_CHECK_TIME.lock().await;
+        let should_check = now
+            .duration_since(*last_check)
+            .map(|duration| duration.as_secs() > TOKEN_RECHECK_INTERVAL)
+            .unwrap_or(true);
+        if should_check {
+            // 更新检查时间
+            *last_check = now;
+            drop(last_check);
 
-        // 获取当前索引并递增
-        let current_index = TOKEN_INDEX.fetch_add(1, Ordering::SeqCst) % tokens.len();
+            // 创建一个 GitHub 客户端来验证令牌
+            let client = GitHubApiClient::new();
+            
+            // 获取已用完的令牌列表
+            let mut exhausted_tokens = EXHAUSTED_TOKENS.lock().await;
+            let mut tokens_to_remove = Vec::new();
 
-        // 返回当前索引对应的令牌
-        tokens[current_index].clone()
+            // 检查每个已用完的令牌
+            for token in exhausted_tokens.iter() {
+                if client.verify_token(token).await {
+                    tokens_to_remove.push(token.clone());
+                    info!("令牌已恢复可用: {}", token);
+                }
+            }
+
+            // 移除已恢复的令牌
+            for token in tokens_to_remove {
+                exhausted_tokens.remove(&token);
+            }
+        }
+
+        // 获取可用的令牌（排除已用完的）
+        let exhausted_tokens = EXHAUSTED_TOKENS.lock().await;
+        let available_tokens: Vec<&String> = tokens
+            .iter()
+            .filter(|t| !exhausted_tokens.contains(*t))
+            .collect();
+
+        if available_tokens.is_empty() {
+            warn!("所有令牌都已达到限制！");
+            return String::new();
+        }
+
+        // 在可用令牌中轮换
+        let current_index = TOKEN_INDEX.fetch_add(1, Ordering::SeqCst) % available_tokens.len();
+        available_tokens[current_index].clone()
     } else {
         warn!("配置加载失败，无法获取GitHub令牌");
         String::new()
     }
+}
+
+// 添加标记令牌用完的函数
+pub async fn mark_token_exhausted(token: String) {
+    let mut exhausted_tokens = EXHAUSTED_TOKENS.lock().await;
+    exhausted_tokens.insert(token);
+    info!("令牌已被标记为已用完");
 }

@@ -38,7 +38,7 @@ impl GitHubApiClient {
 
     // 创建带有认证头的请求构建器
     async fn authorized_request(&self, url: &str) -> Result<reqwest::Response, anyhow::Error> {
-        let token = get_github_token();
+        let token = get_github_token().await;
         let mut builder = self.client.get(url);
 
         if !token.is_empty() {
@@ -54,13 +54,13 @@ impl GitHubApiClient {
                 return Err(anyhow::anyhow!("API请求失败"));
             }
         };
-        self.github_api_limit_check(&response, &token)?;
+        self.github_api_limit_check(&response, &token).await?;
 
         Ok(response)
     }
 
     // api 限流检查
-    pub fn github_api_limit_check(&self, response: &Response, token: &str) -> Result<(), anyhow::Error> {
+    pub async fn github_api_limit_check(&self, response: &Response, token: &str) -> Result<(), anyhow::Error> {
         if !response.status().is_success() {
             // 如果是速率限制，打印详细信息
             if response.status() == reqwest::StatusCode::FORBIDDEN {
@@ -84,10 +84,50 @@ impl GitHubApiClient {
                         self.mask_token(token)
                     );
                 }
+                let remaining = response
+                .headers()
+                .get("x-ratelimit-remaining")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<i32>().ok())
+                .unwrap_or(-1);
+
+                if remaining == 0 {
+                    // 标记令牌为已用完
+                    crate::config::mark_token_exhausted(token.to_string()).await;
+                    error!("GitHub API令牌已用完");
+                }
             }
             return Err(anyhow::anyhow!("GitHub API 限制"));
         }
         Ok(())
+    }
+    pub async fn verify_token(&self, token: &str) -> bool {
+        let url = format!("{}/rate_limit", GITHUB_API_URL);
+        let client = &self.client;
+        
+        let response = client
+            .get(&url)
+            .header(header::AUTHORIZATION, format!("token {}", token))
+            .header(header::USER_AGENT, "github-handler")
+            .send()
+            .await;
+
+        match response {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    if let Some(remaining) = resp
+                        .headers()
+                        .get("x-ratelimit-remaining")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.parse::<i32>().ok())
+                    {
+                        return remaining > 0;
+                    }
+                }
+                false
+            }
+            Err(_) => false,
+        }
     }
 
     fn mask_token(&self, token: &str) -> String {
