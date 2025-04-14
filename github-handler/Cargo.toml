@@ -36,6 +36,7 @@ uuid = { workspace = true, features = [
 ] }
 futures = { workspace = true }
 anyhow = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 walkdir = { workspace = true }
