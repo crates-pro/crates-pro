@@ -1,0 +1,361 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(CratesInfo::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(CratesInfo::Id)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(CratesInfo::Description).text().not_null())
+                    .col(ColumnDef::new(CratesInfo::DirectDependency).integer())
+                    .col(ColumnDef::new(CratesInfo::IndirectDependency).integer())
+                    .col(ColumnDef::new(CratesInfo::DirectDependent).integer())
+                    .col(ColumnDef::new(CratesInfo::IndirectDependent).integer())
+                    .col(ColumnDef::new(CratesInfo::Cves).text().not_null())
+                    .col(ColumnDef::new(CratesInfo::DepCves).text().not_null())
+                    .col(ColumnDef::new(CratesInfo::Versions).text().not_null())
+                    .col(ColumnDef::new(CratesInfo::License).text().not_null())
+                    .col(ColumnDef::new(CratesInfo::GithubUrl).text().not_null())
+                    .col(ColumnDef::new(CratesInfo::DocUrl).text().not_null())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(Cves::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Cves::CveId)
+                            .string_len(50)
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Cves::Name).string_len(50))
+                    .col(ColumnDef::new(Cves::StartVersion).string_len(10))
+                    .col(ColumnDef::new(Cves::EndVersion).string_len(10))
+                    .col(ColumnDef::new(Cves::Description).text())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(DependencyCache::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(DependencyCache::Id)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(DependencyCache::DirectCount).integer())
+                    .col(ColumnDef::new(DependencyCache::IndirectCount).integer())
+                    .col(
+                        ColumnDef::new(DependencyCache::Dependency)
+                            .text()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(DependentCache::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(DependentCache::Id)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(DependentCache::DirectCount).integer())
+                    .col(ColumnDef::new(DependentCache::IndirectCount).integer())
+                    .col(ColumnDef::new(DependentCache::Dependent).text().not_null())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(GraphInfo::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(GraphInfo::Id)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(GraphInfo::Graph).text().not_null())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(License::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(License::ProgramId)
+                            .text()
+                            .not_null()
+                            .primary_key(), // Sets program_id as primary key, creates license_pkey index
+                    )
+                    .col(ColumnDef::new(License::ProgramName).text().not_null())
+                    .col(ColumnDef::new(License::ProgramNamespace).text().not_null())
+                    .col(ColumnDef::new(License::License).text().not_null())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(RustsecInfo::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(RustsecInfo::Id)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(RustsecInfo::Subtitle).text().not_null())
+                    .col(ColumnDef::new(RustsecInfo::Reported).text().not_null())
+                    .col(ColumnDef::new(RustsecInfo::Issued).text().not_null())
+                    .col(ColumnDef::new(RustsecInfo::Package).text().not_null())
+                    .col(ColumnDef::new(RustsecInfo::Type).text().not_null())
+                    .col(ColumnDef::new(RustsecInfo::Keywords).text().not_null())
+                    .col(ColumnDef::new(RustsecInfo::Aliases).text().not_null())
+                    .col(ColumnDef::new(RustsecInfo::Reference).text().not_null())
+                    .col(ColumnDef::new(RustsecInfo::Patched).text().not_null())
+                    .col(ColumnDef::new(RustsecInfo::Unaffected).text().not_null())
+                    .col(ColumnDef::new(RustsecInfo::Description).text().not_null())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(Rustsecs::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(Rustsecs::Id).text().not_null().primary_key())
+                    .col(ColumnDef::new(Rustsecs::PublishTime).text().not_null())
+                    .col(ColumnDef::new(Rustsecs::Cratename).text().not_null())
+                    .col(ColumnDef::new(Rustsecs::Patched).text().not_null())
+                    .col(ColumnDef::new(Rustsecs::Aliases).text().not_null())
+                    .col(ColumnDef::new(Rustsecs::SmallDesc).text().not_null())
+                    .col(ColumnDef::new(Rustsecs::Description).text().not_null())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(SenseleakRes::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SenseleakRes::Id)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(SenseleakRes::Res).text().not_null())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(Userloginfo::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Userloginfo::Id)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Userloginfo::Image).text().not_null())
+                    .col(ColumnDef::new(Userloginfo::Name).text().not_null())
+                    .col(ColumnDef::new(Userloginfo::Expires).text().not_null())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(VersionInfo::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(VersionInfo::Id)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(VersionInfo::Versions).text().not_null())
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(CratesInfo::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Cves::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(DependencyCache::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(DependentCache::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(GraphInfo::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(License::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(RustsecInfo::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Rustsecs::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(SenseleakRes::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Userloginfo::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(VersionInfo::Table).to_owned())
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(DeriveIden)]
+enum CratesInfo {
+    Table,
+    Id,
+    Description,
+    DirectDependency,
+    IndirectDependency,
+    DirectDependent,
+    IndirectDependent,
+    Cves,
+    DepCves,
+    Versions,
+    License,
+    GithubUrl,
+    DocUrl,
+}
+
+#[derive(DeriveIden)]
+enum Cves {
+    Table,
+    CveId,
+    Name,
+    StartVersion,
+    EndVersion,
+    Description,
+}
+
+#[derive(DeriveIden)]
+enum DependencyCache {
+    Table,
+    Id,
+    DirectCount,
+    IndirectCount,
+    Dependency,
+}
+#[derive(DeriveIden)]
+enum DependentCache {
+    Table,
+    Id,
+    DirectCount,
+    IndirectCount,
+    Dependent,
+}
+
+#[derive(DeriveIden)]
+enum GraphInfo {
+    Table,
+    Id,
+    Graph,
+}
+
+#[allow(clippy::enum_variant_names)]
+#[derive(DeriveIden)]
+enum License {
+    Table,
+    ProgramId,
+    ProgramName,
+    ProgramNamespace,
+    License,
+}
+
+#[derive(DeriveIden)]
+enum RustsecInfo {
+    Table,
+    Id,
+    Subtitle,
+    Reported,
+    Issued,
+    Package,
+    Type,
+    Keywords,
+    Aliases,
+    Reference,
+    Patched,
+    Unaffected,
+    Description,
+}
+
+#[derive(DeriveIden)]
+enum Rustsecs {
+    Table,
+    Id,
+    PublishTime,
+    Cratename,
+    Patched,
+    Aliases,
+    SmallDesc,
+    Description,
+}
+
+#[derive(DeriveIden)]
+enum SenseleakRes {
+    Table,
+    Id,
+    Res,
+}
+
+#[derive(DeriveIden)]
+enum Userloginfo {
+    Table,
+    Id,
+    Image,
+    Name,
+    Expires,
+}
+
+#[derive(DeriveIden)]
+enum VersionInfo {
+    Table,
+    Id,
+    Versions,
+}
