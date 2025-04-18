@@ -5,7 +5,7 @@ mod m20250401_100000_add_performance_indices;
 mod m20250407_094050_alter_programs;
 mod m20250409_085616_add_in_cratesio_column;
 mod m20250409_090128_update_repo_id_type;
-
+mod m20250418_081905_add_new_tables;
 
 pub struct Migrator;
 
@@ -18,6 +18,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250407_094050_alter_programs::Migration),
             Box::new(m20250409_085616_add_in_cratesio_column::Migration),
             Box::new(m20250409_090128_update_repo_id_type::Migration),
+            Box::new(m20250418_081905_add_new_tables::Migration),
         ]
     }
 }

@@ -4,29 +4,28 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
-#[sea_orm(table_name = "programs")]
+#[sea_orm(table_name = "crates_info")]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
-    pub name: String,
+    #[sea_orm(primary_key, auto_increment = false, column_type = "Text")]
+    pub id: String,
     #[sea_orm(column_type = "Text")]
     pub description: String,
-    pub namespace: String,
-    pub max_version: String,
+    pub direct_dependency: Option<i32>,
+    pub indirect_dependency: Option<i32>,
+    pub direct_dependent: Option<i32>,
+    pub indirect_dependent: Option<i32>,
+    #[sea_orm(column_type = "Text")]
+    pub cves: String,
+    #[sea_orm(column_type = "Text")]
+    pub dep_cves: String,
+    #[sea_orm(column_type = "Text")]
+    pub versions: String,
+    #[sea_orm(column_type = "Text")]
+    pub license: String,
     #[sea_orm(column_type = "Text")]
     pub github_url: String,
     #[sea_orm(column_type = "Text")]
-    pub mega_url: String,
-    #[sea_orm(column_type = "Text")]
     pub doc_url: String,
-    #[sea_orm(column_type = "Text")]
-    pub program_type: String,
-    pub downloads: i64,
-    #[sea_orm(column_type = "Text")]
-    pub cratesio: String,
-    pub github_analyzed: bool,
-    pub repo_created_at: Option<DateTime>,
-    pub in_cratesio: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
