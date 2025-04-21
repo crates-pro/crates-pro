@@ -30,6 +30,7 @@ migration = { path = "database/migration" }
 entity = { path = "database/entity" }
 github-handler = { path = "github-handler"}
 
+
 # third-party (所有第三方依赖, 按字母表排序, 均保留1个小数点)
 actix-multipart = "0.7"
 actix-web = "4.10"

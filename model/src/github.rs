@@ -24,7 +24,7 @@ pub struct GitHubUser {
 }
 
 impl GitHubUser {
-    pub fn is_bot(&self) -> bool{
+    pub fn is_bot(&self) -> bool {
         self.user_type == "Bot"
     }
 }
@@ -51,7 +51,7 @@ impl From<GitHubUser> for github_user::ActiveModel {
             updated_at: Set(user.updated_at.naive_utc()),
             inserted_at: Set(now),
             updated_at_local: Set(now),
-            commit_email: NotSet
+            commit_email: NotSet,
         }
     }
 }
@@ -65,7 +65,7 @@ impl From<github_user::Model> for GitHubUser {
             name: value.name,
             email: value.email,
             company: value.company,
-            location:value.location,
+            location: value.location,
             bio: value.bio,
             public_repos: value.public_repos,
             followers: value.followers,
@@ -82,11 +82,11 @@ pub struct AnalyzedUser {
     pub github_id: i64,
     pub login: String,
     pub profile_email: Option<String>,
-    pub commit_email: Option<String>
+    pub commit_email: Option<String>,
 }
 
-impl From<github_user::Model> for AnalyzedUser { 
-    fn from(value: github_user::Model) -> Self { 
+impl From<github_user::Model> for AnalyzedUser {
+    fn from(value: github_user::Model) -> Self {
         Self {
             user_id: value.id,
             github_id: value.github_id,
@@ -190,4 +190,3 @@ pub struct CommitData {
     pub author: Option<CommitAuthor>,
     pub commit: CommitDetail,
 }
-

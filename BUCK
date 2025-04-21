@@ -59,3 +59,27 @@ alias(
     actual = "//project/crates-pro/tudriver:tudriver",
     visibility = ["PUBLIC"],
 )
+
+alias(
+    name = "database",
+    actual = "//project/crates-pro/database:database",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "migration",
+    actual = "//project/crates-pro/database/migration:migration",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "entity",
+    actual = "//project/crates-pro/database/entity:entity",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "github-handler",
+    actual = "//project/crates-pro/github-handler:github-handler",
+    visibility = ["PUBLIC"],
+)
