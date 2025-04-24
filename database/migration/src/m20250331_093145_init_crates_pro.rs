@@ -93,7 +93,6 @@ impl MigrationTrait for Migration {
                 Index::create()
                     .if_not_exists()
                     .name("idx-programs_github_url")
-                    .unique()
                     .table(Programs::Table)
                     .col(Programs::GithubUrl)
                     .to_owned(),
