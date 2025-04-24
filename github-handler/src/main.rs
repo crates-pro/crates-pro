@@ -1,13 +1,9 @@
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
-use contributor_analysis::{analyze_git_contributors, repo_dir};
+use clap::{ArgAction, Parser, Subcommand};
 use database::storage::Context;
-use entity::programs;
-use futures::TryStreamExt;
-use regex::Regex;
-use sea_orm::{ActiveValue::Set, IntoActiveModel};
-use tracing::{error, info, warn};
+use services::sync_repo;
+use tracing::info;
 
 use crate::services::github_api::GitHubApiClient;
 
@@ -16,6 +12,7 @@ mod config;
 mod contributor_analysis;
 mod git;
 mod services;
+mod utils;
 
 // CLI 参数结构
 #[derive(Parser, Debug)]
@@ -41,9 +38,19 @@ enum Commands {
     /// 拉取GitHub仓库地址到数据库
     SyncUrl,
     /// 单独拉取仓库
-    SyncRepo,
+    SyncRepo {
+        // 只拉取cratesio仓库
+        #[arg(long, action = ArgAction::SetTrue)]
+        cratesio: bool,
+    },
     /// 分析所有拉取的仓库地址
-    AnalyzeAll,
+    AnalyzeAll {
+        #[arg(long, action = ArgAction::SetTrue)]
+        cratesio: bool,
+        // 只
+        #[arg(long, action = ArgAction::SetTrue)]
+        not_analyzed: bool,
+    },
     /// 分析仓库贡献者
     Analyze {
         /// 仓库所有者
@@ -61,9 +68,8 @@ enum Commands {
         /// 仓库名称
         repo: String,
     },
-
-    ///更新in_cratesio
-    UpdateCratesioStatus,
+    SyncCratesio,
+    UpdateProgram,
 }
 
 // 定义错误类型
@@ -82,172 +88,6 @@ fn init_logger() {
         .init();
 }
 
-// 查询仓库的顶级贡献者
-async fn query_top_contributors(context: Context, owner: &str, repo: &str) -> Result<(), BoxError> {
-    info!("查询仓库 {}/{} 的顶级贡献者", owner, repo);
-
-    // 获取仓库ID
-    let repository_id = match context
-        .github_handler_stg()
-        .get_repository_id(owner, repo)
-        .await?
-    {
-        Some(id) => id,
-        None => {
-            warn!("仓库 {}/{} 未在数据库中注册", owner, repo);
-            return Ok(());
-        }
-    };
-
-    // 查询贡献者统计
-    match context
-        .github_handler_stg()
-        .query_top_contributors(repository_id)
-        .await
-    {
-        Ok(top_contributors) => {
-            info!("仓库 {}/{} 的贡献者统计:", owner, repo);
-            for (i, contributor) in top_contributors.iter().enumerate().take(10) {
-                let location_str = contributor
-                    .location
-                    .as_ref()
-                    .map(|loc| format!(" ({})", loc))
-                    .unwrap_or_default();
-
-                let name_display = contributor.name.as_ref().unwrap_or(&contributor.login);
-
-                info!(
-                    "  {}. {}{} - {} 次提交",
-                    i + 1,
-                    name_display,
-                    location_str,
-                    contributor.contributions
-                );
-            }
-        }
-        Err(e) => {
-            error!("查询贡献者统计失败: {}", e);
-        }
-    }
-
-    // 查询中国贡献者统计
-    match context
-        .github_handler_stg()
-        .get_repository_china_contributor_stats(repository_id)
-        .await
-    {
-        Ok(stats) => {
-            info!(
-                "仓库 {}/{} 的中国贡献者统计: {}人中有{}人来自中国 ({:.1}%)",
-                owner,
-                repo,
-                stats.total_contributors,
-                stats.china_contributors,
-                stats.china_percentage
-            );
-        }
-        Err(e) => {
-            error!("获取中国贡献者统计失败: {}", e);
-        }
-    }
-
-    Ok(())
-}
-
-async fn analyze_all(context: Context) -> Result<(), BoxError> {
-    let stg = context.github_handler_stg();
-    let url_stream = stg.query_programs_stream().await.unwrap();
-
-    // 并发处理 Stream
-    url_stream
-        .try_for_each_concurrent(8, |model| {
-            let context = context.clone();
-            async move {
-                if !model.github_analyzed {
-                    process_item(&model, context).await;
-                }
-                Ok(())
-            }
-        })
-        .await?;
-    Ok(())
-}
-async fn find_cratesio_in_programs(context: Context) -> Result<(), BoxError> {
-    let all_crates = context.github_handler_stg().query_all_crates().await?;
-    for (name, repo) in all_crates {
-        let all_programs = context
-            .github_handler_stg()
-            .query_programs_by_name(&name)
-            .await?;
-        for (id, github_url) in all_programs {
-            if github_url == repo {
-                context.github_handler_stg().update_in_cratesio(id).await?;
-                break;
-            }
-        }
-    }
-    Ok(())
-}
-
-async fn process_item(model: &programs::Model, context: Context) {
-    let re = Regex::new(r"github\.com/([^/]+)/([^/]+)").unwrap();
-    if let Some(captures) = re.captures(&model.github_url) {
-        let owner = &captures[1];
-        let repo = &captures[2];
-        let res = analyze_git_contributors(context.clone(), owner, repo).await;
-        if res.is_ok() {
-            let mut a_model = model.clone().into_active_model();
-            a_model.github_analyzed = Set(true);
-            context
-                .github_handler_stg()
-                .update_program(a_model)
-                .await
-                .unwrap();
-        }
-    } else {
-        tracing::error!("URL 格式不正确: {}", model.github_url);
-    }
-}
-
-async fn sync_repo_with_sha(context: Context) -> Result<(), anyhow::Error> {
-    let stg = context.github_handler_stg();
-    let url_stream = stg.query_programs_stream().await.unwrap();
-
-    url_stream
-        .try_for_each_concurrent(4, |model| {
-            let context = context.clone();
-            let base_dir = context.base_dir.clone();
-
-            async move {
-                let re = Regex::new(r"github\.com/([^/]+)/([^/]+)").unwrap();
-                if let Some(captures) = re.captures(&model.github_url) {
-                    let owner = &captures[1];
-                    let repo = &captures[2];
-                    let nested_path = repo_dir(base_dir, owner, repo);
-                    fs::create_dir_all(&nested_path).unwrap();
-
-                    // if old_path.exists() {
-                    //     println!(
-                    //         "Moving {} -> {}",
-                    //         &old_path.display(),
-                    //         nested_path.display()
-                    //     );
-                    //     fs::rename(&old_path, nested_path).unwrap();
-                    if nested_path.exists() {
-                        git::restore_repo(&nested_path).await.unwrap();
-                    } else {
-                        git::clone_repo(&nested_path, owner, repo, false)
-                            .await
-                            .unwrap();
-                    }
-                }
-                Ok(())
-            }
-        })
-        .await?;
-    Ok(())
-}
-
 #[tokio::main]
 async fn main() -> Result<(), BoxError> {
     // 加载.env文件
@@ -262,21 +102,16 @@ async fn main() -> Result<(), BoxError> {
     // 连接数据库
     info!("连接数据库...");
     let config = config::load_config().unwrap();
-    let context = Context::new(
-        &config.database.url,
-        &config.github.tokens[0],
-        PathBuf::from(config.repopath),
-    )
-    .await;
+    let context = Context::new(&config.database.url, PathBuf::from(config.repopath)).await;
 
     // 处理子命令
     match cli.command {
         Some(Commands::Analyze { owner, repo }) => {
-            analyze_git_contributors(context, &owner, &repo).await?;
+            contributor_analysis::analyze_git_contributors(context, &owner, &repo).await?;
         }
 
         Some(Commands::Query { owner, repo }) => {
-            query_top_contributors(context, &owner, &repo).await?;
+            contributor_analysis::query_top_contributors(context, &owner, &repo).await?;
         }
 
         Some(Commands::SyncUrl) => {
@@ -284,21 +119,26 @@ async fn main() -> Result<(), BoxError> {
             github_client.start_graphql_sync(&context).await?;
         }
 
-        Some(Commands::AnalyzeAll) => {
-            analyze_all(context).await?;
+        Some(Commands::AnalyzeAll { cratesio, not_analyzed }) => {
+            contributor_analysis::analyze_all(context, cratesio, not_analyzed).await?;
         }
 
-        Some(Commands::UpdateCratesioStatus) => {
-            find_cratesio_in_programs(context).await?;
+        Some(Commands::SyncCratesio) => {
+            sync_repo::sync_crates_io(context).await?;
         }
 
-        Some(Commands::SyncRepo) => {
-            sync_repo_with_sha(context).await?;
+        Some(Commands::SyncRepo { cratesio }) => {
+            sync_repo::sync_repo_with_sha(context, cratesio).await?;
         }
+
+        Some(Commands::UpdateProgram) => {
+            sync_repo::update_programs(context).await?;
+        }
+
         None => {
             // 如果没有提供子命令，但提供了owner和repo参数
             if let (Some(owner), Some(repo)) = (cli.owner, cli.repo) {
-                analyze_git_contributors(context, &owner, &repo).await?;
+                contributor_analysis::analyze_git_contributors(context, &owner, &repo).await?;
             } else {
                 // 没有足够的参数，显示帮助信息
                 println!("请提供仓库所有者和名称，或使用子命令。运行 --help 获取更多信息。");
@@ -307,29 +147,4 @@ async fn main() -> Result<(), BoxError> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod test {
-    use futures::stream::TryStreamExt;
-    use futures::{stream, StreamExt};
-    use std::error::Error;
-    use std::time::Duration;
-    use tokio::time::sleep;
-
-    #[tokio::test]
-    async fn test_stream_concurrent() {
-        let data = [1, 2, 3, 4, 5, 6, 7];
-        stream::iter(data)
-            .map(Ok::<i32, Box<dyn Error>>)
-            .try_for_each_concurrent(3, |item| async move {
-                println!("Start: {}", item);
-                sleep(Duration::from_millis(1000)).await;
-                println!("End: {}", item);
-                Ok(())
-            })
-            .await
-            .unwrap();
-        println!("All done");
-    }
 }

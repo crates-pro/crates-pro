@@ -119,45 +119,6 @@ CREATE FUNCTION public.canon_crate_name(text) RETURNS text
 
 
 
-
---
--- Name: ensure_crate_name_not_reserved(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.ensure_crate_name_not_reserved() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-                BEGIN
-                    IF canon_crate_name(NEW.name) IN (
-                        SELECT canon_crate_name(name) FROM reserved_crate_names
-                    ) THEN
-                        RAISE EXCEPTION 'cannot upload crate with reserved name';
-                    END IF;
-                    RETURN NEW;
-                END;
-                $$;
-
-
---
--- Name: ensure_reserved_name_not_in_use(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.ensure_reserved_name_not_in_use() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
-    IF canon_crate_name(NEW.name) IN (
-        SELECT canon_crate_name(name) FROM crates
-    ) THEN
-        RAISE EXCEPTION 'crate exists with name %', NEW.name;
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-
-
-
 --
 -- Name: random_string(integer); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -463,6 +424,38 @@ COMMENT ON COLUMN public.crate_users.publish_notifications IS 'Whether or not th
 
 
 --
+-- Name: crate_downloads; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crate_downloads (
+    crate_id integer NOT NULL,
+    downloads bigint DEFAULT 0 NOT NULL
+);
+
+
+--
+-- Name: TABLE crate_downloads; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.crate_downloads IS 'Number of downloads per crate. This was extracted from the `crates` table for performance reasons.';
+
+
+--
+-- Name: COLUMN crate_downloads.crate_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.crate_downloads.crate_id IS 'Reference to the crate that this row belongs to.';
+
+
+--
+-- Name: COLUMN crate_downloads.downloads; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.crate_downloads.downloads IS 'The total number of downloads for this crate.';
+
+
+
+--
 -- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -519,6 +512,14 @@ ALTER TABLE ONLY public.crate_users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
 
 
+--
+-- Name: crate_downloads crate_downloads_pk; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crate_downloads
+    ADD CONSTRAINT crate_downloads_pk PRIMARY KEY (crate_id);
+
+
 
 
 
@@ -529,6 +530,11 @@ ALTER TABLE ONLY public.crate_users
 CREATE UNIQUE INDEX crate_owners_not_deleted ON public.crate_owners USING btree (crate_id, owner_id, owner_kind) WHERE (NOT deleted);
 
 
+--
+-- Name: crate_downloads_downloads_crate_id_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX crate_downloads_downloads_crate_id_index ON public.crate_downloads USING btree (downloads DESC, crate_id DESC);
 
 
 
@@ -601,15 +607,6 @@ CREATE TRIGGER trigger_crates_set_updated_at BEFORE UPDATE ON public.crates FOR 
 
 
 --
--- Name: crates trigger_ensure_crate_name_not_reserved; Type: TRIGGER; Schema: public; Owner: -
---
-
-CREATE TRIGGER trigger_ensure_crate_name_not_reserved BEFORE INSERT OR UPDATE ON public.crates FOR EACH ROW EXECUTE FUNCTION public.ensure_crate_name_not_reserved();
-
-
-
-
---
 -- Name: crate_owners fk_crate_owners_crate_id; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -623,6 +620,8 @@ ALTER TABLE ONLY public.crate_owners
 
 ALTER TABLE ONLY public.crate_owners
     ADD CONSTRAINT fk_crate_owners_created_by FOREIGN KEY (created_by) REFERENCES public.crate_users(id);
+
+
 
 
 --

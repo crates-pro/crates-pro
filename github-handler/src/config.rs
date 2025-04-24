@@ -31,9 +31,11 @@ pub struct DatabaseConfig {
     pub url: String,
 }
 
-static EXHAUSTED_TOKENS: Lazy<tokio::sync::Mutex<HashSet<String>>> = Lazy::new(|| tokio::sync::Mutex::new(HashSet::new()));
+static EXHAUSTED_TOKENS: Lazy<tokio::sync::Mutex<HashSet<String>>> =
+    Lazy::new(|| tokio::sync::Mutex::new(HashSet::new()));
 const TOKEN_RECHECK_INTERVAL: u64 = 600;
-static LAST_CHECK_TIME: Lazy<tokio::sync::Mutex<SystemTime>> = Lazy::new(|| tokio::sync::Mutex::new(SystemTime::now()));
+static LAST_CHECK_TIME: Lazy<tokio::sync::Mutex<SystemTime>> =
+    Lazy::new(|| tokio::sync::Mutex::new(SystemTime::now()));
 // 默认配置文件路径
 const DEFAULT_CONFIG_PATH: &str = "config.json";
 
@@ -169,7 +171,7 @@ pub async fn get_github_token() -> String {
 
             // 创建一个 GitHub 客户端来验证令牌
             let client = GitHubApiClient::new();
-            
+
             // 获取已用完的令牌列表
             let mut exhausted_tokens = EXHAUSTED_TOKENS.lock().await;
             let mut tokens_to_remove = Vec::new();

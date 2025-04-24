@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration, NaiveDate, Utc};
 use database::storage::Context;
 use entity::{github_sync_status, programs};
 use futures::{stream, StreamExt};
-use model::github::{Contributor, GitHubUser};
+use model::github::{Contributor, GitHubUser, RestfulRepository};
 use reqwest::{header, Client, Error, Response};
 use sea_orm::{
     prelude::Uuid,
@@ -37,7 +37,7 @@ impl GitHubApiClient {
     }
 
     // 创建带有认证头的请求构建器
-    async fn authorized_request(&self, url: &str) -> Result<reqwest::Response, anyhow::Error> {
+    async fn authorized_request(&self, url: &str) -> Result<reqwest::Response, reqwest::Error> {
         let token = get_github_token().await;
         let mut builder = self.client.get(url);
 
@@ -51,16 +51,20 @@ impl GitHubApiClient {
             Ok(resp) => resp,
             Err(e) => {
                 error!("API请求 {} 失败: {}", url, e);
-                return Err(anyhow::anyhow!("API请求失败"));
+                return Err(e);
             }
         };
-        self.github_api_limit_check(&response, &token).await?;
+        let response = self.github_api_limit_check(response, &token).await?;
 
         Ok(response)
     }
 
     // api 限流检查
-    pub async fn github_api_limit_check(&self, response: &Response, token: &str) -> Result<(), anyhow::Error> {
+    pub async fn github_api_limit_check(
+        &self,
+        response: Response,
+        token: &str,
+    ) -> Result<Response, reqwest::Error> {
         if !response.status().is_success() {
             // 如果是速率限制，打印详细信息
             if response.status() == reqwest::StatusCode::FORBIDDEN {
@@ -85,11 +89,11 @@ impl GitHubApiClient {
                     );
                 }
                 let remaining = response
-                .headers()
-                .get("x-ratelimit-remaining")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.parse::<i32>().ok())
-                .unwrap_or(-1);
+                    .headers()
+                    .get("x-ratelimit-remaining")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.parse::<i32>().ok())
+                    .unwrap_or(-1);
 
                 if remaining == 0 {
                     // 标记令牌为已用完
@@ -97,14 +101,15 @@ impl GitHubApiClient {
                     error!("GitHub API令牌已用完");
                 }
             }
-            return Err(anyhow::anyhow!("GitHub API 限制"));
+            return response.error_for_status();
         }
-        Ok(())
+        Ok(response)
     }
+
     pub async fn verify_token(&self, token: &str) -> bool {
         let url = format!("{}/rate_limit", GITHUB_API_URL);
         let client = &self.client;
-        
+
         let response = client
             .get(&url)
             .header(header::AUTHORIZATION, format!("token {}", token))
@@ -141,14 +146,24 @@ impl GitHubApiClient {
         }
     }
 
+    pub async fn get_repo_info(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<RestfulRepository, reqwest::Error> {
+        let url = format!("{}/repos/{}/{}", GITHUB_API_URL, owner, repo);
+        let response = self.authorized_request(&url).await?.error_for_status()?;
+        let res: RestfulRepository = response.json().await?;
+        tracing::info!("请求repo 信息成功:{:?}", res);
+        Ok(res)
+    }
+
     // 获取GitHub用户详细信息
     pub async fn get_user_details(&self, username: &str) -> Result<GitHubUser, anyhow::Error> {
         let url = format!("{}/users/{}", GITHUB_API_URL, username);
         debug!("请求用户信息: {}", url);
 
-        let response = self
-            .authorized_request(&url).await?
-            .error_for_status()?;
+        let response = self.authorized_request(&url).await?.error_for_status()?;
         let user: GitHubUser = response.json().await?;
 
         Ok(user)
@@ -445,6 +460,7 @@ impl GitHubApiClient {
                 edges {
                     node {
                         ... on Repository {
+                            id
                             name
                             url
                             createdAt
@@ -465,10 +481,10 @@ impl GitHubApiClient {
                 "query": query,
                 "variables": variables
             });
-
+            let token = get_github_token().await;
             let response = client
                 .post(GITHUB_API_URL)
-                .header("Authorization", format!("token {}", context.github_token))
+                .header("Authorization", format!("token {}", &token))
                 .header("User-Agent", "Rust-GraphQL-Client")
                 .json(&request_body)
                 .send()
@@ -494,7 +510,12 @@ impl GitHubApiClient {
                             }
                         }
                     } else {
-                        tracing::error!("❌ HTTP Error: {} - {}", status, body);
+                        tracing::error!(
+                            "❌ HTTP Error: {} - {}, token: {}",
+                            status,
+                            body,
+                            self.mask_token(&token)
+                        );
                         None
                     }
                 }
@@ -514,7 +535,7 @@ impl GitHubApiClient {
                         }
                         context
                             .github_handler_stg()
-                            .save_programs(save_models)
+                            .save_or_update_programs(save_models)
                             .await
                             .unwrap();
                         if data.search.page_info.has_next_page {
@@ -565,7 +586,10 @@ async fn convert_to_model(item: Repository, save_models: &mut Vec<programs::Acti
                 .unwrap()
                 .naive_utc(),
         )),
-        ..Default::default()
+        github_analyzed: Set(false),
+        in_cratesio: Set(false),
+        github_node_id: Set(item.id),
+        updated_at: Set(Some(chrono::Utc::now().naive_utc())),
     };
     save_models.push(model);
 }
