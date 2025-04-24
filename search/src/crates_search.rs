@@ -123,7 +123,7 @@ async fn search_crate_without_ai(
     let query = format!("{}:*", tsquery_keyword);
 
     let statement = format!(
-        "SELECT {0}.id, {0}.name, {0}.description, ts_rank({0}.tsv, to_tsquery($1)) AS rank,{0}.downloads,{0}.namespace,{0}.max_version
+        "SELECT {0}.id::text, {0}.name, {0}.description, ts_rank({0}.tsv, to_tsquery($1)) AS rank,{0}.downloads,{0}.namespace,{0}.max_version
         FROM {0}
         WHERE {0}.tsv @@ to_tsquery($1)
         ORDER BY rank DESC",

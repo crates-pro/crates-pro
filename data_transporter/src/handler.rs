@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use crate::data_reader::{DataReader, DataReaderTrait};
 use crate::db::{db_connection_config_from_env, DBHandler};
+use crate::redis_store::{get_redis_connection, RedisHandler};
 use crate::{get_tugraph_api_handler, NameVersion, Userinfo};
 use crate::{Query, VersionInfo};
 use actix_multipart::{Field, Multipart};
@@ -468,78 +469,6 @@ pub async fn get_direct_dep_for_graph(nname: String, nversion: String) -> impl R
 
     Ok(res)
 }*/
-
-/// 获取crate主页面
-#[utoipa::path(
-    get,
-    path = "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}",
-    params(
-        ("nsfront" = String, Path, description = "命名空间前缀"),
-        ("nsbehind" = String, Path, description = "命名空间后缀"), 
-        ("cratename" = String, Path, description = "crate 名称"),
-        ("version" = String, Path, description = "版本号")
-    ),
-    responses(
-        (status = 200, description = "成功获取crate信息"),
-        (status = 404, description = "未找到相关crate信息")
-    ),
-    tag = "crates"
-)]
-pub async fn new_get_crates_front_info(
-    nname: String,
-    nversion: String,
-    nsfront: String,
-    nsbehind: String,
-) -> impl Responder {
-    let handler = get_tugraph_api_handler().await;
-    let name_and_version = nname.clone() + "/" + &nversion.clone();
-    let namespace = nsfront.clone() + "/" + &nsbehind.clone();
-
-    tracing::info!("name_and_version:{}", name_and_version);
-    let db_connection_config = db_connection_config_from_env();
-    #[allow(unused_variables)]
-    let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
-        .await
-        .unwrap();
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
-    tracing::info!("finish connect pg");
-    let dbhandler = DBHandler { client };
-    let qid = namespace.clone() + "/" + &nname + "/" + &nversion;
-    let qres = dbhandler
-        .query_crates_info_from_pg(&qid, nname.clone())
-        .await
-        .unwrap();
-    tracing::info!("finish query crates from pg");
-    if qres.is_empty() {
-        tracing::info!("qres is empty");
-        let res = handler
-            .reader
-            .get_crates_front_info_from_tg(
-                nname.clone(),
-                nversion.clone(),
-                nsfront.clone(),
-                nsbehind.clone(),
-            )
-            .await
-            .unwrap();
-        dbhandler
-            .insert_crates_info_into_pg(
-                res.clone(),
-                namespace.clone(),
-                nname.clone(),
-                nversion.clone(),
-            )
-            .await
-            .unwrap();
-        HttpResponse::Ok().json(res)
-    } else {
-        HttpResponse::Ok().json(qres[0].clone())
-    }
-}
 
 /*pub async fn new_get_dependency(
     name: String,
@@ -1190,4 +1119,48 @@ pub async fn get_senseleak(nsfront: String, nsbehind: String) -> impl Responder 
     }
     let return_val = SenseleakRes { exist, res };
     HttpResponse::Ok().json(return_val)
+}
+
+pub async fn new_get_crates_front_info_from_redis(
+    nname: String,
+    nversion: String,
+    nsfront: String,
+    nsbehind: String,
+) -> impl Responder {
+    let handler = get_tugraph_api_handler().await;
+    let namespace = nsfront.clone() + "/" + &nsbehind.clone();
+
+    let conn = get_redis_connection().await.unwrap();
+    let mut redisconn = RedisHandler { connection: conn };
+    let qid = format!("crates_info:{}:{}:{}", namespace, nname, nversion);
+    let qres = redisconn.query_crates_info_from_redis(qid).await.unwrap();
+    println!("finish query crates from reids");
+    if qres.is_empty() {
+        println!("qres is empty");
+        let res = handler
+            .reader
+            .get_crates_front_info_from_tg(
+                nname.clone(),
+                nversion.clone(),
+                nsfront.clone(),
+                nsbehind.clone(),
+            )
+            .await
+            .unwrap();
+        println!("finish get crates_info from tugraph");
+        let val = serde_json::to_string(&res).unwrap();
+        redisconn
+            .insert_crates_info_into_redis(
+                namespace.clone(),
+                nname.clone(),
+                nversion.clone(),
+                val.clone(),
+            )
+            .await
+            .unwrap();
+        HttpResponse::Ok().json(res)
+    } else {
+        let res: Crateinfo = serde_json::from_str(&qres).unwrap();
+        HttpResponse::Ok().json(res.clone())
+    }
 }
