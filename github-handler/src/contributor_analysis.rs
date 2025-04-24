@@ -3,13 +3,15 @@ use database::storage::Context;
 use entity::github_user;
 use model::github::{AnalyzedUser, ContributorAnalysis};
 use sea_orm::ActiveValue::Set;
-use uuid::Uuid;
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 use tokio::process::Command as TokioCommand;
 use tracing::{debug, error, info, warn};
+use uuid::Uuid;
 
+use crate::git;
 use crate::{contributor_analysis, services::github_api::GitHubApiClient, BoxError};
 
 // 中国相关时区
@@ -22,11 +24,11 @@ fn is_china_timezone(timezone: &str) -> bool {
 
 /// 分析贡献者的时区统计
 pub async fn analyze_contributor_timezone(
-    repo_path: &str,
+    repo_path: &PathBuf,
     analyzed_emails: &HashSet<String>,
 ) -> Option<ContributorAnalysis> {
-    if !Path::new(repo_path).exists() {
-        error!("仓库路径不存在: {}", repo_path);
+    if !repo_path.exists() {
+        error!("仓库路径不存在: {}", repo_path.display());
         return None;
     }
     // 用于分析的邮箱可能存在多个不同的值，如profile 设置的值，commit时设置的值
@@ -95,7 +97,7 @@ struct CommitInfo {
 }
 
 /// 从git log里面获取作者的所有提交
-async fn get_author_commits(repo_path: &str, author_email: &str) -> Option<Vec<CommitInfo>> {
+async fn get_author_commits(repo_path: &PathBuf, author_email: &str) -> Option<Vec<CommitInfo>> {
     let output = TokioCommand::new("git")
         .current_dir(repo_path)
         .args([
@@ -157,13 +159,7 @@ async fn analyze_contributor_locations(
         debug!("创建根目录: {:?}", base_dir);
     }
 
-    // 构建目标路径: /mnt/crates/github_source/{owner}/{repo}
-    let target_dir = if owner.len() < 4 {
-        base_dir.join(format!("{}/{}", owner, repo))
-    } else {
-        base_dir.join(format!("{}/{}/{}", &owner[..2], &owner[2..4], repo))
-    };
-    let target_path = target_dir.to_string_lossy();
+    let target_dir = repo_dir(base_dir, owner, repo);
 
     // 检查目录是否已存在
     if !target_dir.exists() {
@@ -173,62 +169,9 @@ async fn analyze_contributor_locations(
                 fs::create_dir_all(parent)?;
             }
         }
-
-        debug!("克隆仓库到指定目录: {}", target_path);
-        let status = TokioCommand::new("git")
-            .args([
-                "clone",
-                "--filter=blob:none", // 只clone 提交历史
-                "--no-checkout",
-                "--config",
-                "credential.helper=reject", // 拒绝认证请求，不会提示输入
-                "--config",
-                "http.lowSpeedLimit=1000", // 设置低速限制
-                "--config",
-                "http.lowSpeedTime=10", // 如果速度低于限制持续10秒则失败
-                "--config",
-                "core.askpass=echo", // 不使用交互式密码提示
-                &format!("https://github.com/{}/{}.git", owner, repo),
-                &target_path,
-            ])
-            .status()
-            .await;
-
-        match status {
-            Ok(status) if !status.success() => {
-                warn!("克隆仓库失败: {}，可能需要认证或不存在，跳过此仓库", status);
-                return Ok(());
-            }
-            Err(e) => {
-                warn!("执行git命令失败: {}，跳过此仓库", e);
-                return Ok(());
-            }
-            _ => {}
-        }
-    } else if is_shallow_repo(&target_dir) {
-        info!("更新之前clone的shallow仓库: {}", target_path);
-
-        let args = vec![
-            "-c",
-            "credential.helper=reject",
-            "-c",
-            "http.lowSpeedLimit=1000",
-            "-c",
-            "http.lowSpeedTime=10",
-            "-c",
-            "core.askpass=echo",
-            "fetch",
-            "--filter=blob:none", // 只clone 提交历史
-            "--unshallow",
-        ];
-        let status = TokioCommand::new("git")
-            .current_dir(&target_dir)
-            .args(args)
-            .status()
-            .await;
-        if let Err(e) = status {
-            warn!("更新仓库失败: {}，可能需要认证，继续分析当前代码", e);
-        }
+        git::clone_repo(&target_dir, owner, repo, true).await?;
+    } else if git::is_shallow_repo(&target_dir) {
+        git::update_shallow_repo(&target_dir).await?;
     }
 
     debug!("开始分析 {} 个贡献者的时区信息", analyzed_users.len());
@@ -253,18 +196,16 @@ async fn analyze_contributor_locations(
             analyzed_emails.insert(email.clone());
         }
         // 分析该贡献者的时区情况
-        let analysis = match contributor_analysis::analyze_contributor_timezone(
-            target_path.as_ref(),
-            &analyzed_emails,
-        )
-        .await
-        {
-            Some(result) => result,
-            None => {
-                warn!("无法分析用户 {} 的时区信息", user.login);
-                continue;
-            }
-        };
+        let analysis =
+            match contributor_analysis::analyze_contributor_timezone(&target_dir, &analyzed_emails)
+                .await
+            {
+                Some(result) => result,
+                None => {
+                    warn!("无法分析用户 {} 的时区信息", user.login);
+                    continue;
+                }
+            };
 
         // 存储贡献者位置分析
         if let Err(e) = context
@@ -460,12 +401,16 @@ pub(crate) async fn analyze_git_contributors(
     Ok(())
 }
 
-fn is_shallow_repo(path: &Path) -> bool {
-    let output = std::process::Command::new("git")
-        .args(["rev-parse", "--is-shallow-repository"])
-        .current_dir(path)
-        .output()
-        .expect("Failed to run git");
+pub fn repo_dir(base_dir: PathBuf, owner: &str, repo: &str) -> PathBuf {
+    let hash_hex = calculate_hash(owner);
+    let d1 = &hash_hex[0..2];
+    let d2 = &hash_hex[2..4];
+    base_dir.join(PathBuf::from(format!("{}/{}/{}/{}", d1, d2, owner, repo)))
+}
 
-    String::from_utf8_lossy(&output.stdout).trim() == "true"
+fn calculate_hash(owner: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(owner.as_bytes());
+    let hash = hasher.finalize();
+    format!("{:x}", hash)
 }

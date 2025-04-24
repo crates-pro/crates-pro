@@ -82,3 +82,4 @@ utoipa-swagger-ui = "9.0"
 uuid = "1.16"
 walkdir = "2.5"
 zip = "=2.4.2"             # !
+sha2 = "0.10"

@@ -1,7 +1,7 @@
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 use clap::{Parser, Subcommand};
-use contributor_analysis::analyze_git_contributors;
+use contributor_analysis::{analyze_git_contributors, repo_dir};
 use database::storage::Context;
 use entity::programs;
 use futures::TryStreamExt;
@@ -14,7 +14,7 @@ use crate::services::github_api::GitHubApiClient;
 // 导入模块
 mod config;
 mod contributor_analysis;
-// mod entities;
+mod git;
 mod services;
 
 // CLI 参数结构
@@ -39,7 +39,9 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// 拉取GitHub仓库地址到数据库
-    GithubSync,
+    SyncUrl,
+    /// 单独拉取仓库
+    SyncRepo,
     /// 分析所有拉取的仓库地址
     AnalyzeAll,
     /// 分析仓库贡献者
@@ -152,7 +154,7 @@ async fn query_top_contributors(context: Context, owner: &str, repo: &str) -> Re
     Ok(())
 }
 
-async fn sync_all_repos(context: Context) -> Result<(), BoxError> {
+async fn analyze_all(context: Context) -> Result<(), BoxError> {
     let stg = context.github_handler_stg();
     let url_stream = stg.query_programs_stream().await.unwrap();
 
@@ -207,6 +209,45 @@ async fn process_item(model: &programs::Model, context: Context) {
     }
 }
 
+async fn sync_repo_with_sha(context: Context) -> Result<(), anyhow::Error> {
+    let stg = context.github_handler_stg();
+    let url_stream = stg.query_programs_stream().await.unwrap();
+
+    url_stream
+        .try_for_each_concurrent(4, |model| {
+            let context = context.clone();
+            let base_dir = context.base_dir.clone();
+
+            async move {
+                let re = Regex::new(r"github\.com/([^/]+)/([^/]+)").unwrap();
+                if let Some(captures) = re.captures(&model.github_url) {
+                    let owner = &captures[1];
+                    let repo = &captures[2];
+                    let nested_path = repo_dir(base_dir, owner, repo);
+                    fs::create_dir_all(&nested_path).unwrap();
+
+                    // if old_path.exists() {
+                    //     println!(
+                    //         "Moving {} -> {}",
+                    //         &old_path.display(),
+                    //         nested_path.display()
+                    //     );
+                    //     fs::rename(&old_path, nested_path).unwrap();
+                    if nested_path.exists() {
+                        git::restore_repo(&nested_path).await.unwrap();
+                    } else {
+                        git::clone_repo(&nested_path, owner, repo, false)
+                            .await
+                            .unwrap();
+                    }
+                }
+                Ok(())
+            }
+        })
+        .await?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), BoxError> {
     // 加载.env文件
@@ -238,19 +279,22 @@ async fn main() -> Result<(), BoxError> {
             query_top_contributors(context, &owner, &repo).await?;
         }
 
-        Some(Commands::GithubSync) => {
+        Some(Commands::SyncUrl) => {
             let github_client = GitHubApiClient::new();
             github_client.start_graphql_sync(&context).await?;
         }
 
         Some(Commands::AnalyzeAll) => {
-            sync_all_repos(context).await?;
+            analyze_all(context).await?;
         }
 
         Some(Commands::UpdateCratesioStatus) => {
             find_cratesio_in_programs(context).await?;
         }
 
+        Some(Commands::SyncRepo) => {
+            sync_repo_with_sha(context).await?;
+        }
         None => {
             // 如果没有提供子命令，但提供了owner和repo参数
             if let (Some(owner), Some(repo)) = (cli.owner, cli.repo) {
@@ -270,11 +314,8 @@ mod test {
     use futures::stream::TryStreamExt;
     use futures::{stream, StreamExt};
     use std::error::Error;
-    use std::fs;
-    use std::path::PathBuf;
     use std::time::Duration;
     use tokio::time::sleep;
-    use walkdir::WalkDir;
 
     #[tokio::test]
     async fn test_stream_concurrent() {
@@ -290,55 +331,5 @@ mod test {
             .await
             .unwrap();
         println!("All done");
-    }
-
-    #[test]
-    fn move_histiry() {
-        let config = crate::config::load_config().unwrap();
-        let base_dir = PathBuf::from(config.repopath);
-        for entry in WalkDir::new(&base_dir)
-            .min_depth(1)
-            .max_depth(2) // Only go two levels: source/owner/repo
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| e.file_type().is_dir())
-        {
-            let path = entry.path().to_path_buf();
-
-            // We are interested in paths like source/owner/repo
-            if path.parent() == Some(&base_dir) {
-                // This is an owner directory: source/owner
-                let owner_name = match path.file_name().and_then(|s| s.to_str()) {
-                    Some(name) => name,
-                    None => continue,
-                };
-
-                if owner_name.len() < 4 {
-                    println!("Skipping short owner: {}", owner_name);
-                    continue;
-                }
-
-                let ow = &owner_name[0..2];
-                let ne = &owner_name[2..4];
-                let nested_path = base_dir.join(ow).join(ne);
-                fs::create_dir_all(&nested_path).unwrap();
-
-                for repo_entry in fs::read_dir(&path).unwrap() {
-                    let repo = repo_entry.unwrap();
-                    let repo_name = repo.file_name();
-                    let new_path = nested_path.join(&repo_name);
-
-                    if new_path.exists() {
-                        println!("跳过：目标路径已存在: {}", new_path.display());
-                    } else {
-                        println!("Moving {} -> {}", repo.path().display(), new_path.display());
-                        fs::rename(repo.path(), new_path).unwrap();
-                    }
-                }
-
-                // Remove the old owner directory
-                fs::remove_dir_all(path).unwrap();
-            }
-        }
     }
 }
