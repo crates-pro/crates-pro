@@ -248,167 +248,6 @@ pub async fn get_crate_details(crate_name: web::Path<String>) -> impl Responder 
     }
 }
 
-/// 获取版本页面信息,ok
-#[utoipa::path(
-    get,
-    path = "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/versions",
-    params(
-        ("nsfront" = String, Path, description = "命名空间前缀"),
-        ("nsbehind" = String, Path, description = "命名空间后缀"),
-        ("cratename" = String, Path, description = "crate 名称"),
-        ("version" = String, Path, description = "版本号")//TODO:?
-    ),
-    responses(
-        (status = 200, description = "成功获取版本信息", body = Vec<Versionpage>),
-        (status = 404, description = "未找到版本信息")
-    ),
-    tag = "versions"
-)]
-pub async fn get_version_page(
-    nsfront: String,
-    nsbehind: String,
-    nname: String,
-    _nversion: String,
-) -> impl Responder {
-    let handler = get_tugraph_api_handler().await;
-    let db_connection_config = db_connection_config_from_env();
-    #[allow(unused_variables)]
-    let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
-        .await
-        .unwrap();
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
-    let dbhandler = DBHandler { client };
-    tracing::info!("finish connect cratespro");
-    let res = dbhandler
-        .get_version_from_pg(nsfront.clone(), nsbehind.clone(), nname.clone())
-        .await
-        .unwrap();
-    tracing::info!("finish get version from pg");
-    if res.is_empty() {
-        tracing::info!("res is empty");
-        let every_version = handler
-            .reader
-            .get_version_page_from_tg(nsfront.clone(), nsbehind.clone(), nname.clone())
-            .await
-            .unwrap();
-        dbhandler
-            .insert_version_into_pg(
-                nsbehind.clone(),
-                nsfront.clone(),
-                nname.clone(),
-                every_version.clone(),
-            )
-            .await
-            .unwrap();
-        HttpResponse::Ok().json(every_version)
-    } else {
-        let all_version = res[0].clone();
-        let mut every_version = vec![];
-        let parts1: Vec<&str> = all_version.split('/').collect();
-        for part in parts1 {
-            let tmp_version = part.to_string();
-            let parts2: Vec<&str> = tmp_version.split('|').collect();
-            let res_version = parts2[0].to_string();
-            let res_updated = parts2[1].to_string();
-            let res_downloads = parts2[2].to_string();
-            let res_dependents = parts2[3].to_string();
-            let res_versionpage = Versionpage {
-                version: res_version.clone(),
-                dependents: res_dependents.parse::<usize>().unwrap(),
-                updated_at: res_updated,
-                downloads: res_downloads,
-            };
-            every_version.push(res_versionpage);
-        }
-        HttpResponse::Ok().json(every_version)
-    }
-}
-
-/// 获取依赖图
-#[utoipa::path(
-    get,
-    path = "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graphpage",
-    params(
-        ("nsfront" = String, Path, description = "命名空间前缀"),
-        ("nsbehind" = String, Path, description = "命名空间后缀"),
-        ("cratename" = String, Path, description = "crate 名称"),
-        ("version" = String, Path, description = "版本号")
-    ),
-    responses(
-        (status = 200, description = "成功获取依赖图", body = Deptree),
-        (status = 404, description = "未找到依赖图")
-    ),
-    tag = "dependencies"
-)]
-pub async fn get_graph(
-    nsfront: String,
-    nsbehind: String,
-    nname: String,
-    nversion: String,
-) -> impl Responder {
-    let handler = get_tugraph_api_handler().await;
-    let db_connection_config = db_connection_config_from_env();
-    #[allow(unused_variables)]
-    let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
-        .await
-        .unwrap();
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
-    let dbhandler = DBHandler { client };
-    let res = dbhandler
-        .get_graph_from_pg(
-            nsfront.clone(),
-            nsbehind.clone(),
-            nname.clone(),
-            nversion.clone(),
-        )
-        .await
-        .unwrap();
-    if res.is_empty() {
-        tracing::info!("first time");
-        let nav = nname.clone() + "/" + &nversion;
-        let rustcve = dbhandler
-            .get_direct_rustsec(&nname, &nversion)
-            .await
-            .unwrap();
-        let mut res = Deptree {
-            name_and_version: nav.clone(),
-            cve_count: rustcve.len(),
-            direct_dependency: Vec::new(),
-        };
-        let mut visited = HashSet::new();
-        visited.insert(nav.clone());
-        handler
-            .reader
-            .build_graph(&mut res, &mut visited)
-            .await
-            .unwrap();
-        let graph = serde_json::to_string(&res).unwrap();
-        dbhandler
-            .insert_graph_into_pg(
-                nsfront.clone(),
-                nsbehind.clone(),
-                nname.clone(),
-                nversion.clone(),
-                graph.clone(),
-            )
-            .await
-            .unwrap();
-        HttpResponse::Ok().json(res)
-    } else {
-        tracing::info!("second time");
-        let res_tree: Deptree = serde_json::from_str(&res[0]).unwrap();
-        HttpResponse::Ok().json(res_tree)
-    }
-}
-
 /// 获取直接依赖关系图,ok
 #[utoipa::path(
     get,
@@ -553,76 +392,6 @@ pub async fn get_direct_dep_for_graph(nname: String, nversion: String) -> impl R
     HttpResponse::Ok().json(res_deps)
 }*/
 
-///获取依赖关系
-#[utoipa::path(
-    get,
-    path = "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies",
-    params(
-        ("nsfront" = String, Path, description = "命名空间前缀"),
-        ("nsbehind" = String, Path, description = "命名空间后缀"), 
-        ("cratename" = String, Path, description = "crate 名称"),
-        ("version" = String, Path, description = "版本号")
-    ),
-    responses(
-        (status = 200, description = "成功获取依赖关系", body = DependencyInfo),
-        (status = 404, description = "未找到依赖关系")
-    ),
-    tag = "dependencies"
-)]
-pub async fn dependency_cache(
-    name: String,
-    version: String,
-    nsfront: String,
-    nsbehind: String,
-) -> impl Responder {
-    let handler = get_tugraph_api_handler().await;
-    let db_connection_config = db_connection_config_from_env();
-    #[allow(unused_variables)]
-    let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
-        .await
-        .unwrap();
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
-    let dbhandler = DBHandler { client };
-    let res = dbhandler
-        .get_dependency_from_pg(
-            nsfront.clone(),
-            nsbehind.clone(),
-            name.clone(),
-            version.clone(),
-        )
-        .await
-        .unwrap();
-    if res.is_empty() {
-        let res_deps = handler
-            .reader
-            .get_dependency_from_tg(
-                name.clone(),
-                version.clone(),
-                nsfront.clone(),
-                nsbehind.clone(),
-            )
-            .await
-            .unwrap();
-        dbhandler
-            .insert_dependency_into_pg(
-                nsfront.clone(),
-                nsbehind.clone(),
-                name.clone(),
-                version.clone(),
-                res_deps.clone(),
-            )
-            .await
-            .unwrap();
-        HttpResponse::Ok().json(res_deps.clone())
-    } else {
-        HttpResponse::Ok().json(res[0].clone())
-    }
-}
-
 /*pub async fn new_get_dependent(
     name: String,
     version: String,
@@ -663,75 +432,6 @@ pub async fn dependency_cache(
     HttpResponse::Ok().json(res_deps)
 }*/
 
-/// 获取被依赖关系
-#[utoipa::path(
-    get,
-    path = "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependents",
-    params(
-        ("nsfront" = String, Path, description = "命名空间前缀"),
-        ("nsbehind" = String, Path, description = "命名空间后缀"), 
-        ("cratename" = String, Path, description = "crate 名称"),
-        ("version" = String, Path, description = "版本号")
-    ),
-    responses(
-        (status = 200, description = "成功获取被依赖关系", body = DependentInfo),
-        (status = 404, description = "未找到被依赖关系")
-    ),
-    tag = "dependents"
-)]
-pub async fn dependent_cache(
-    name: String,
-    version: String,
-    nsfront: String,
-    nsbehind: String,
-) -> impl Responder {
-    let handler = get_tugraph_api_handler().await;
-    let db_connection_config = db_connection_config_from_env();
-    #[allow(unused_variables)]
-    let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
-        .await
-        .unwrap();
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
-    let dbhandler = DBHandler { client };
-    let res = dbhandler
-        .get_dependent_from_pg(
-            nsfront.clone(),
-            nsbehind.clone(),
-            name.clone(),
-            version.clone(),
-        )
-        .await
-        .unwrap();
-    if res.is_empty() {
-        let res_deps = handler
-            .reader
-            .get_dependent_from_tg(
-                name.clone(),
-                version.clone(),
-                nsfront.clone(),
-                nsbehind.clone(),
-            )
-            .await
-            .unwrap();
-        dbhandler
-            .insert_dependent_into_pg(
-                nsfront.clone(),
-                nsbehind.clone(),
-                name.clone(),
-                version.clone(),
-                res_deps.clone(),
-            )
-            .await
-            .unwrap();
-        HttpResponse::Ok().json(res_deps)
-    } else {
-        HttpResponse::Ok().json(res[0].clone())
-    }
-}
 /// 查询 crates
 #[utoipa::path(
     post,
@@ -1133,7 +833,7 @@ pub async fn new_get_crates_front_info_from_redis(
     let conn = get_redis_connection().await.unwrap();
     let mut redisconn = RedisHandler { connection: conn };
     let qid = format!("crates_info:{}:{}:{}", namespace, nname, nversion);
-    let qres = redisconn.query_crates_info_from_redis(qid).await.unwrap();
+    let qres = redisconn.query_from_redis(qid).await.unwrap();
     println!("finish query crates from reids");
     if qres.is_empty() {
         println!("qres is empty");
@@ -1162,5 +862,171 @@ pub async fn new_get_crates_front_info_from_redis(
     } else {
         let res: Crateinfo = serde_json::from_str(&qres).unwrap();
         HttpResponse::Ok().json(res.clone())
+    }
+}
+pub async fn dependency_redis_cache(
+    name: String,
+    version: String,
+    nsfront: String,
+    nsbehind: String,
+) -> impl Responder {
+    let handler = get_tugraph_api_handler().await;
+    let conn = get_redis_connection().await.unwrap();
+    let mut redisconn = RedisHandler { connection: conn };
+    let namespace = nsfront.clone() + "/" + &nsbehind.clone();
+    let qid = format!("dependency:{}:{}:{}", namespace, name, version);
+    let res = redisconn.query_from_redis(qid.clone()).await.unwrap();
+    if res.is_empty() {
+        let res_deps = handler
+            .reader
+            .get_dependency_from_tg(
+                name.clone(),
+                version.clone(),
+                nsfront.clone(),
+                nsbehind.clone(),
+            )
+            .await
+            .unwrap();
+        let val = serde_json::to_string(&res_deps).unwrap();
+        redisconn
+            .insert_dependency_into_redis(
+                namespace.clone(),
+                name.clone(),
+                version.clone(),
+                val.clone(),
+            )
+            .await
+            .unwrap();
+        HttpResponse::Ok().json(res_deps.clone())
+    } else {
+        let res_deps: DependencyInfo = serde_json::from_str(&res).unwrap();
+        HttpResponse::Ok().json(res_deps.clone())
+    }
+}
+pub async fn new_get_graph(
+    nsfront: String,
+    nsbehind: String,
+    nname: String,
+    nversion: String,
+) -> impl Responder {
+    let handler = get_tugraph_api_handler().await;
+    let db_connection_config = db_connection_config_from_env();
+    #[allow(unused_variables)]
+    let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+        .await
+        .unwrap();
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+    let dbhandler = DBHandler { client };
+    let conn = get_redis_connection().await.unwrap();
+    let mut redisconn = RedisHandler { connection: conn };
+    let namespace = nsfront.clone() + "/" + &nsbehind.clone();
+    let qid = format!("dependencygraph:{}:{}:{}", namespace, nname, nversion);
+    let qres = redisconn.query_from_redis(qid.clone()).await.unwrap();
+    if qres.is_empty() {
+        tracing::info!("first time");
+        let nav = nname.clone() + "/" + &nversion;
+        let rustcve = dbhandler
+            .get_direct_rustsec(&nname, &nversion)
+            .await
+            .unwrap();
+        let mut res = Deptree {
+            name_and_version: nav.clone(),
+            cve_count: rustcve.len(),
+            direct_dependency: Vec::new(),
+        };
+        let mut visited = HashSet::new();
+        visited.insert(nav.clone());
+        handler
+            .reader
+            .build_graph(&mut res, &mut visited)
+            .await
+            .unwrap();
+        let graph = serde_json::to_string(&res).unwrap();
+        redisconn
+            .insert_dependency_graph_into_redis(
+                namespace.clone(),
+                nname.clone(),
+                nversion.clone(),
+                graph.clone(),
+            )
+            .await
+            .unwrap();
+        HttpResponse::Ok().json(res)
+    } else {
+        tracing::info!("second time");
+        let res_tree: Deptree = serde_json::from_str(&qres).unwrap();
+        HttpResponse::Ok().json(res_tree)
+    }
+}
+pub async fn dependent_redis_cache(
+    name: String,
+    version: String,
+    nsfront: String,
+    nsbehind: String,
+) -> impl Responder {
+    let handler = get_tugraph_api_handler().await;
+    let conn = get_redis_connection().await.unwrap();
+    let mut redisconn = RedisHandler { connection: conn };
+    let namespace = nsfront.clone() + "/" + &nsbehind.clone();
+    let qid = format!("dependent:{}:{}:{}", namespace, name, version);
+    let qres = redisconn.query_from_redis(qid.clone()).await.unwrap();
+    if qres.is_empty() {
+        let res_deps = handler
+            .reader
+            .get_dependent_from_tg(
+                name.clone(),
+                version.clone(),
+                nsfront.clone(),
+                nsbehind.clone(),
+            )
+            .await
+            .unwrap();
+        let val = serde_json::to_string(&res_deps).unwrap();
+        redisconn
+            .insert_dependent_into_redis(
+                namespace.clone(),
+                name.clone(),
+                version.clone(),
+                val.clone(),
+            )
+            .await
+            .unwrap();
+        HttpResponse::Ok().json(res_deps)
+    } else {
+        let res: DependentInfo = serde_json::from_str(&qres).unwrap();
+        HttpResponse::Ok().json(res.clone())
+    }
+}
+pub async fn new_get_version_page(
+    nsfront: String,
+    nsbehind: String,
+    nname: String,
+    _nversion: String,
+) -> impl Responder {
+    let handler = get_tugraph_api_handler().await;
+    let conn = get_redis_connection().await.unwrap();
+    let mut redisconn = RedisHandler { connection: conn };
+    let namespace = nsfront.clone() + "/" + &nsbehind.clone();
+    let qid = format!("versionpage:{}:{}", namespace, nname);
+    let res = redisconn.query_from_redis(qid.clone()).await.unwrap();
+    if res.is_empty() {
+        let every_version = handler
+            .reader
+            .get_version_page_from_tg(nsfront.clone(), nsbehind.clone(), nname.clone())
+            .await
+            .unwrap();
+        let val = serde_json::to_string(&every_version).unwrap();
+        redisconn
+            .insert_versionpage_into_redis(namespace, nname.clone(), val.clone())
+            .await
+            .unwrap();
+        HttpResponse::Ok().json(every_version)
+    } else {
+        let every_version: Vec<Versionpage> = serde_json::from_str(&res).unwrap();
+        HttpResponse::Ok().json(every_version)
     }
 }
