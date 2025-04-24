@@ -15,6 +15,7 @@ actix-web = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 futures-util = { workspace = true }
+redis = { workspace = true }
 sanitize-filename = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true }

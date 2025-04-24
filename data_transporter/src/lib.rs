@@ -3,6 +3,7 @@ mod data_reader;
 pub mod db;
 mod handler;
 mod transporter;
+mod redis_store;
 
 use model::tugraph_model::UVersion;
 use search::search_prepare;
@@ -86,7 +87,6 @@ async fn get_tugraph_api_handler() -> ApiHandler {
         handler::get_crate_details,
         handler::dependency_cache,
         handler::dependent_cache,
-        handler::new_get_crates_front_info,
         handler::query_crates,
         //handler::get_graph,
         //route::get_version_page,
@@ -263,7 +263,7 @@ pub async fn run_api_server() -> std::io::Result<()> {
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}", 
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                handler::new_get_crates_front_info(cratename,version,nsfront,nsbehind).await
+                handler::new_get_crates_front_info_from_redis(cratename,version,nsfront,nsbehind).await
             }))
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/senseleak", 
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
