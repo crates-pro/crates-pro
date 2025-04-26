@@ -4,15 +4,11 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
-#[sea_orm(table_name = "repository_contributor")]
+#[sea_orm(table_name = "crate_downloads")]
 pub struct Model {
-    #[sea_orm(primary_key)]
-    pub id: i32,
-    pub repository_id: Uuid,
-    pub user_id: i32,
-    pub contributions: i32,
-    pub inserted_at: DateTime,
-    pub updated_at: DateTime,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub crate_id: i32,
+    pub downloads: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

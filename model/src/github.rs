@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
-use entity::{contributor_location, github_user};
+use entity::{contributor_location, github_user, programs};
 use sea_orm::ActiveValue::{NotSet, Set};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 // GitHub用户信息结构
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -131,6 +132,7 @@ impl From<&ContributorAnalysis> for contributor_location::ActiveModel {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Repository {
+    pub id: String,
     pub name: String,
     pub url: String,
     pub created_at: String,
@@ -189,4 +191,41 @@ pub struct CommitDetail {
 pub struct CommitData {
     pub author: Option<CommitAuthor>,
     pub commit: CommitDetail,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RestfulRepository {
+    pub id: i32,
+    pub node_id: String,
+    pub name: String,
+    pub html_url: String,
+    pub created_at: String,
+}
+
+impl From<RestfulRepository> for programs::ActiveModel {
+    fn from(item: RestfulRepository) -> Self {
+        Self {
+            id: Set(Uuid::new_v4()),
+            github_url: Set(item.html_url),
+            name: Set(item.name),
+            description: Set("".to_owned()),
+            namespace: Set("".to_owned()),
+            max_version: Set("".to_owned()),
+            mega_url: Set("".to_owned()),
+            doc_url: Set("".to_owned()),
+            program_type: Set("".to_owned()),
+            downloads: Set(0),
+            cratesio: Set("".to_owned()),
+            repo_created_at: Set(Some(
+                item.created_at
+                    .parse::<DateTime<Utc>>()
+                    .unwrap()
+                    .naive_utc(),
+            )),
+            github_analyzed: Set(false),
+            in_cratesio: Set(false),
+            github_node_id: Set(item.node_id),
+            updated_at: Set(Some(chrono::Utc::now().naive_utc())),
+        }
+    }
 }

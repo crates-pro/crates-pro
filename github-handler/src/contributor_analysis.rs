@@ -1,9 +1,10 @@
 use chrono::{DateTime, FixedOffset};
 use database::storage::Context;
-use entity::github_user;
+use entity::{github_user, programs};
+use futures::TryStreamExt;
 use model::github::{AnalyzedUser, ContributorAnalysis};
 use sea_orm::ActiveValue::Set;
-use sha2::{Digest, Sha256};
+use sea_orm::IntoActiveModel;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
@@ -11,8 +12,8 @@ use tokio::process::Command as TokioCommand;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::git;
 use crate::{contributor_analysis, services::github_api::GitHubApiClient, BoxError};
+use crate::{git, utils};
 
 // 中国相关时区
 const CHINA_TIMEZONES: [&str; 4] = ["+0800", "+08:00", "CST", "Asia/Shanghai"];
@@ -159,7 +160,7 @@ async fn analyze_contributor_locations(
         debug!("创建根目录: {:?}", base_dir);
     }
 
-    let target_dir = repo_dir(base_dir, owner, repo);
+    let target_dir = utils::repo_dir(base_dir, owner, repo);
 
     // 检查目录是否已存在
     if !target_dir.exists() {
@@ -171,7 +172,9 @@ async fn analyze_contributor_locations(
         }
         git::clone_repo(&target_dir, owner, repo, true).await?;
     } else if git::is_shallow_repo(&target_dir) {
-        git::update_shallow_repo(&target_dir).await?;
+        git::restore_shallow_repo(&target_dir).await?;
+    } else {
+        git::update_repo(&target_dir, owner, repo).await?;
     }
 
     debug!("开始分析 {} 个贡献者的时区信息", analyzed_users.len());
@@ -401,16 +404,126 @@ pub(crate) async fn analyze_git_contributors(
     Ok(())
 }
 
-pub fn repo_dir(base_dir: PathBuf, owner: &str, repo: &str) -> PathBuf {
-    let hash_hex = calculate_hash(owner);
-    let d1 = &hash_hex[0..2];
-    let d2 = &hash_hex[2..4];
-    base_dir.join(PathBuf::from(format!("{}/{}/{}/{}", d1, d2, owner, repo)))
+// 查询仓库的顶级贡献者
+pub async fn query_top_contributors(
+    context: Context,
+    owner: &str,
+    repo: &str,
+) -> Result<(), BoxError> {
+    info!("查询仓库 {}/{} 的顶级贡献者", owner, repo);
+
+    // 获取仓库ID
+    let repository_id = match context
+        .github_handler_stg()
+        .get_repository_id(owner, repo)
+        .await?
+    {
+        Some(id) => id,
+        None => {
+            warn!("仓库 {}/{} 未在数据库中注册", owner, repo);
+            return Ok(());
+        }
+    };
+
+    // 查询贡献者统计
+    match context
+        .github_handler_stg()
+        .query_top_contributors(repository_id)
+        .await
+    {
+        Ok(top_contributors) => {
+            info!("仓库 {}/{} 的贡献者统计:", owner, repo);
+            for (i, contributor) in top_contributors.iter().enumerate().take(10) {
+                let location_str = contributor
+                    .location
+                    .as_ref()
+                    .map(|loc| format!(" ({})", loc))
+                    .unwrap_or_default();
+
+                let name_display = contributor.name.as_ref().unwrap_or(&contributor.login);
+
+                info!(
+                    "  {}. {}{} - {} 次提交",
+                    i + 1,
+                    name_display,
+                    location_str,
+                    contributor.contributions
+                );
+            }
+        }
+        Err(e) => {
+            error!("查询贡献者统计失败: {}", e);
+        }
+    }
+
+    // 查询中国贡献者统计
+    match context
+        .github_handler_stg()
+        .get_repository_china_contributor_stats(repository_id)
+        .await
+    {
+        Ok(stats) => {
+            info!(
+                "仓库 {}/{} 的中国贡献者统计: {}人中有{}人来自中国 ({:.1}%)",
+                owner,
+                repo,
+                stats.total_contributors,
+                stats.china_contributors,
+                stats.china_percentage
+            );
+        }
+        Err(e) => {
+            error!("获取中国贡献者统计失败: {}", e);
+        }
+    }
+
+    Ok(())
 }
 
-fn calculate_hash(owner: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(owner.as_bytes());
-    let hash = hasher.finalize();
-    format!("{:x}", hash)
+pub async fn analyze_all(
+    context: Context,
+    cratesio: bool,
+    not_analyzed: bool,
+) -> Result<(), BoxError> {
+    let stg = context.github_handler_stg();
+    let url_stream = stg.query_programs_stream(cratesio).await.unwrap();
+
+    // 并发处理 Stream
+    url_stream
+        .try_for_each_concurrent(8, |model| {
+            let context = context.clone();
+            let stg = stg.clone();
+            async move {
+                // 通过数据库数据存在判断
+                if not_analyzed {
+                    let exist = stg.check_program_in_analyze(model.id).await?;
+                    if !exist {
+                        process_item(&model, context).await;
+                    }
+                } else if !model.github_analyzed {
+                    // 通过flag判断
+                    process_item(&model, context).await;
+                }
+                Ok(())
+            }
+        })
+        .await?;
+    Ok(())
+}
+
+pub async fn process_item(model: &programs::Model, context: Context) {
+    if let Some((owner, repo)) = utils::parse_to_owner_and_repo(&model.github_url) {
+        let res = analyze_git_contributors(context.clone(), &owner, &repo).await;
+        if res.is_ok() {
+            let mut a_model = model.clone().into_active_model();
+            a_model.github_analyzed = Set(true);
+            context
+                .github_handler_stg()
+                .update_program(a_model)
+                .await
+                .unwrap();
+        }
+    } else {
+        tracing::error!("URL 格式不正确: {}", model.github_url);
+    }
 }

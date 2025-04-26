@@ -8,12 +8,12 @@ use entity::{
 use futures::Stream;
 use model::github::ContributorAnalysis;
 use sea_orm::{
-    prelude::Uuid,
+    prelude::{Expr, Uuid},
     sea_query::{self, OnConflict},
     ActiveModelTrait,
     ActiveValue::Set,
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
-    Statement,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, Statement,
 };
 use tracing::{debug, info, warn};
 
@@ -50,11 +50,35 @@ impl GithubHanlderStorage {
         GithubHanlderStorage { connection }
     }
 
-    pub async fn save_programs(&self, models: Vec<programs::ActiveModel>) -> Result<(), DbErr> {
+    pub async fn save_or_update_programs(
+        &self,
+        models: Vec<programs::ActiveModel>,
+    ) -> Result<(), DbErr> {
         programs::Entity::insert_many(models)
             .on_conflict(
-                OnConflict::column(programs::Column::GithubUrl)
-                    .update_columns([programs::Column::GithubUrl, programs::Column::RepoCreatedAt])
+                OnConflict::column(programs::Column::GithubNodeId)
+                    .update_columns([
+                        programs::Column::GithubUrl,
+                        programs::Column::RepoCreatedAt,
+                        programs::Column::UpdatedAt,
+                    ])
+                    .to_owned(),
+            )
+            .do_nothing()
+            .exec(self.get_connection())
+            .await
+            .unwrap();
+        Ok(())
+    }
+
+    pub async fn save_or_update_programs_by_node_id(
+        &self,
+        models: Vec<programs::ActiveModel>,
+    ) -> Result<(), DbErr> {
+        programs::Entity::insert_many(models)
+            .on_conflict(
+                OnConflict::columns([programs::Column::GithubNodeId])
+                    .update_columns([programs::Column::UpdatedAt])
                     .to_owned(),
             )
             .do_nothing()
@@ -73,11 +97,28 @@ impl GithubHanlderStorage {
 
     pub async fn query_programs_stream(
         &self,
+        cratesio: bool,
     ) -> Result<impl Stream<Item = Result<programs::Model, DbErr>> + Send + '_, DbErr> {
+        let mut condition = Condition::all();
+        if cratesio {
+            condition = condition.add(programs::Column::InCratesio.eq(true));
+        }
         programs::Entity::find()
+            .filter(condition)
             .order_by_asc(programs::Column::Id)
             .stream(self.get_connection())
             .await
+    }
+
+    pub async fn check_program_in_analyze(&self, p_id: Uuid) -> Result<bool, DbErr> {
+        let count = contributor_location::Entity::find()
+            .filter(contributor_location::Column::RepositoryId.eq(p_id))
+            .count(self.get_connection())
+            .await?;
+        if count > 0 {
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     pub async fn save_github_sync_status(
@@ -454,20 +495,34 @@ impl GithubHanlderStorage {
             }
         }
     }
-    pub async fn query_all_crates(&self) -> Result<Vec<(String, String)>, DbErr> {
-        debug!("查询所有 crates 信息");
 
-        let crates = crates::Entity::find().all(self.get_connection()).await?;
-
-        let mut results = Vec::new();
-        for crate_info in crates {
-            if let Some(repo) = crate_info.repository {
-                results.push((crate_info.name, repo));
-            }
-        }
-
-        Ok(results)
+    pub async fn query_crates_stream(
+        &self,
+    ) -> Result<impl Stream<Item = Result<crates::Model, DbErr>> + Send + '_, DbErr> {
+        crates::Entity::find()
+            .filter(crates::Column::Repository.is_not_null())
+            .filter(crates::Column::RepoInvalid.eq(false))
+            .filter(crates::Column::GithubNodeId.is_null())
+            .filter(crates::Column::Repository.like("https://github.com%"))
+            .order_by_asc(crates::Column::Id)
+            .stream(self.get_connection())
+            .await
     }
+
+    pub async fn query_valid_crates(
+        &self,
+    ) -> Result<impl Stream<Item = Result<crates::Model, DbErr>> + Send + '_, DbErr> {
+        crates::Entity::find()
+            .filter(crates::Column::GithubNodeId.is_not_null())
+            .order_by_asc(crates::Column::Id)
+            .stream(self.get_connection())
+            .await
+    }
+
+    pub async fn update_crates(&self, model: crates::ActiveModel) -> Result<crates::Model, DbErr> {
+        model.update(self.get_connection()).await
+    }
+
     pub async fn query_programs_by_name(&self, name: &str) -> Result<Vec<(Uuid, String)>, DbErr> {
         debug!("通过名称查询程序: {}", name);
 
@@ -483,18 +538,16 @@ impl GithubHanlderStorage {
 
         Ok(results)
     }
-    pub async fn update_in_cratesio(&self, id: Uuid) -> Result<(), DbErr> {
-        //debug!("更新程序 crates.io 状态: 程序ID={}", id);
 
-        programs::Entity::update(programs::ActiveModel {
-            id: Set(id),
-            in_cratesio: Set(true),
-            ..Default::default()
-        })
-        .exec(self.get_connection())
-        .await?;
-
-        debug!("程序 crates.io 状态已更新");
+    pub async fn update_programs_by_node_id(
+        &self,
+        batch_node_ids: Vec<String>,
+    ) -> Result<(), DbErr> {
+        programs::Entity::update_many()
+            .col_expr(programs::Column::InCratesio, Expr::value(true))
+            .filter(programs::Column::GithubNodeId.is_in(batch_node_ids))
+            .exec(self.get_connection())
+            .await?;
         Ok(())
     }
 }

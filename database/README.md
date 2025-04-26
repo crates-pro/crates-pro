@@ -1,0 +1,1 @@
+docker exec -t cratespro-pg pg_dump -U cratespro -d cratespro -F p > crates_pro_dump_$(date +%Y%m%d_%H%M%S).sql
