@@ -82,11 +82,8 @@ async fn get_tugraph_api_handler() -> ApiHandler {
     paths(
         handler::get_cves,
         handler::get_all_crates,
-        handler::get_version_page,
         //handler::get_graph,
         handler::get_crate_details,
-        handler::dependency_cache,
-        handler::dependent_cache,
         handler::query_crates,
         //handler::get_graph,
         //route::get_version_page,
@@ -189,12 +186,12 @@ pub async fn run_api_server() -> std::io::Result<()> {
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/versions", 
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                handler::get_version_page(nsfront,nsbehind,cratename,version).await
+                handler::new_get_version_page(nsfront,nsbehind,cratename,version).await
             }))
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graphpage", 
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                handler::get_graph(nsfront,nsbehind,cratename,version).await
+                handler::new_get_graph(nsfront,nsbehind,cratename,version).await
             }))
 
             .route(
@@ -239,7 +236,7 @@ pub async fn run_api_server() -> std::io::Result<()> {
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies", 
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                handler::dependency_cache(cratename,version,nsfront,nsbehind).await
+                handler::dependency_redis_cache(cratename,version,nsfront,nsbehind).await
             }))
             /* .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencycache", 
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
@@ -253,7 +250,7 @@ pub async fn run_api_server() -> std::io::Result<()> {
             .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependents", 
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                handler::dependent_cache(cratename,version,nsfront,nsbehind).await
+                handler::dependent_redis_cache(cratename,version,nsfront,nsbehind).await
             }))
             /* .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependentcache", 
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
