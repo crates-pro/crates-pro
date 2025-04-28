@@ -154,7 +154,6 @@ impl GithubHanlderStorage {
                     .update_columns([
                         github_user::Column::Name,
                         github_user::Column::Email,
-                        github_user::Column::CommitEmail,
                     ])
                     .to_owned(),
             )

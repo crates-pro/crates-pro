@@ -300,6 +300,9 @@ pub(crate) async fn analyze_git_contributors(
 ) -> Result<(), BoxError> {
     debug!("分析仓库贡献者: {}/{}", owner, repo);
 
+    // 创建GitHub API客户端
+    let github_client = GitHubApiClient::new();
+
     // 获取仓库ID
     let repository_id = match context
         .github_handler_stg()
@@ -308,13 +311,25 @@ pub(crate) async fn analyze_git_contributors(
     {
         Some(id) => id,
         None => {
-            warn!("仓库 {}/{} 未在数据库中注册", owner, repo);
-            return Ok(());
+            let repository = github_client.get_repo_info(owner, repo).await;
+            match repository {
+                Ok(repository) => {
+                    let programs: programs::ActiveModel = repository.into();
+                    let id = programs.clone().r#id.unwrap();
+                    context
+                        .github_handler_stg()
+                        .save_or_update_programs_by_node_id(vec![programs])
+                        .await
+                        .unwrap();
+                    id
+                }
+                Err(_) => {
+                    warn!("无法查询到仓库 {}/{}", owner, repo);
+                    return Ok(());
+                }
+            }
         }
     };
-
-    // 创建GitHub API客户端
-    let github_client = GitHubApiClient::new();
 
     // 获取仓库贡献者
     let contributors = github_client
@@ -348,20 +363,21 @@ pub(crate) async fn analyze_git_contributors(
                     continue;
                 }
 
-                // 从commit 获取email
-                let commit_email = github_client
-                    .get_user_email_from_commits(owner, repo, &contributor.login)
-                    .await?;
-
-                let mut a_model: github_user::ActiveModel = user.into();
-                a_model.commit_email = Set(commit_email);
+                let a_model: github_user::ActiveModel = user.into();
                 // 存储用户到数据库
                 context.github_handler_stg().store_user(a_model).await?
             }
         };
 
+        // 从commit 获取email
+        let commit_email = github_client
+            .get_user_email_from_commits(owner, repo, &contributor.login)
+            .await?;
+
+        let mut a_user: AnalyzedUser = user.clone().into();
+        a_user.commit_email = commit_email;
         // 保存用户信息用于后续分析
-        analyzed_users.push(user.clone().into());
+        analyzed_users.push(a_user);
 
         // 存储贡献者关系
         if let Err(e) = context
