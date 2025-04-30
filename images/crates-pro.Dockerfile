@@ -1,10 +1,14 @@
-FROM almalinux:8.10-20250307 AS base
+FROM almalinux:9.5-20250411 AS base
+
+ARG NPROC=8
 
 # Install tools and dependencies
-# Kafka: java-11-openjdk
+# libgit2 (Dockerfile): cmake
+# Kafka (Dockerfile): java-11-openjdk
+# OpenSSL 3.2.2 (Dockerfile): perl-FindBin, perl-IPC-Cmd, perl-Pod-Html
 RUN dnf update -y \
     && dnf group install -y "Development Tools" \
-    && dnf install -y curl java-11-openjdk
+    && dnf install -y cmake java-11-openjdk perl-FindBin perl-IPC-Cmd perl-Pod-Html
 
 # Install crates-pro test/runtime dependencies
 ENV KAFKA_VERSION=3.9.0
@@ -14,6 +18,37 @@ RUN curl -O https://downloads.apache.org/kafka/${KAFKA_VERSION}/kafka_${SCALA_VE
     tar -xzf kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz -C /opt && \
     mv /opt/kafka_${SCALA_VERSION}-${KAFKA_VERSION} $KAFKA_HOME && \
     rm kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz
+
+# Install OpenSSL 3.2.2 from source
+# Required by: libgit2 1.9.0 (Dockerfile)
+WORKDIR /tmp
+RUN curl -LO https://www.openssl.org/source/openssl-3.2.2.tar.gz \
+    && tar -xzf openssl-3.2.2.tar.gz \
+    && cd openssl-3.2.2 \
+    && ./config --prefix=/usr/local/ssl --openssldir=/usr/local/ssl shared enable-sm4 \
+    && make -j$(NPROC) \
+    && make install \
+    && echo "/usr/local/ssl/lib64" > /etc/ld.so.conf.d/openssl.conf \
+    && ldconfig \
+    && ln -sf /usr/local/ssl/bin/openssl /usr/bin/openssl
+
+# Install libgit2 1.9.0 from source
+# Required by: ./crates_pro, ./bin_analyze, ./bin_data_transport, ./bin_repo_import
+WORKDIR /tmp
+RUN curl -LO https://github.com/libgit2/libgit2/archive/refs/tags/v1.9.0.tar.gz \
+    && tar -xzf v1.9.0.tar.gz \
+    && cd libgit2-1.9.0 \
+    && mkdir build && cd build \
+    && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
+    -DOPENSSL_ROOT_DIR=/usr/local/ssl \
+    -DBUILD_SHARED_LIBS=ON \
+    && make -j$(NPROC) \
+    && make install \
+    && ldconfig
+
+# Set library environment variables
+ENV LD_LIBRARY_PATH="/usr/local/ssl/lib64:/usr/local/lib64:/usr/lib64" \
+    PKG_CONFIG_PATH="/usr/local/ssl/lib64/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig"
 
 # Create and switch to user
 ARG USERNAME="rust"
@@ -32,7 +67,7 @@ USER $USERNAME
 
 WORKDIR /workdir
 
-# Download resources required by `//third-party/vendor/utoipa-swagger-ui-9.0.0-patch1/src/lib.rs`
+# Download resources required by `//third-party/vendor/utoipa-swagger-ui-9.0.1-patch1/src/lib.rs`
 # See https://github.com/crates-pro/crates-pro-infra/tree/main/third-party#step-4-update-patches
 RUN curl -L -o swagger-ui-5.17.14.zip https://github.com/swagger-api/swagger-ui/archive/refs/tags/v5.17.14.zip \
     && unzip -j swagger-ui-5.17.14.zip "swagger-ui-5.17.14/dist/*" -d ./swagger-ui-5.17.14-dist \
