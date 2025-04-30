@@ -1,4 +1,4 @@
-FROM almalinux:8.10-20250307
+FROM almalinux:9.5-20250411 AS base
 
 # Install tools and dependencies
 RUN dnf update -y \

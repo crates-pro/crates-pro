@@ -2,7 +2,8 @@
 set -euxo pipefail
 
 # source
-INFRA_PATH=/var/crates-pro-infra
+CRATESPRO_DIR=/home/rust/crates-pro
+INFRA_DIR=/home/rust/workspace/crates-pro-infra
 # deployment
 NAMESPACE=crates-pro
 INSTANCE=test1
@@ -10,24 +11,27 @@ DEPLOYMENT=cratespro-backend-$INSTANCE
 KAFKA_HOST=172.17.0.1:30092
 TAKE_SNAPSHOT_BEFORE_REDEPLOY=0
 # build
-BUILD_DIR=/workspace/build
-IMAGES_DIR=/workspace/images
+BUILD_DIR=$CRATESPRO_DIR/build
+IMAGES_DIR=$CRATESPRO_DIR/images
 TIMESTAMP=$(date +%Y%m%d-%H%M)
 CRATESPRO_MAIN_IMAGE=localhost:30500/crates-pro:local-$TIMESTAMP
 CRATESPRO_ANALYZE_IMAGE=localhost:30500/cratespro-analyze:local-$TIMESTAMP
 CRATESPRO_DATA_TRANSPORT_IMAGE=localhost:30500/cratespro-datatransport:local-$TIMESTAMP
 CRATESPRO_REPO_IMPORT_IMAGE=localhost:30500/cratespro-repoimport:local-$TIMESTAMP
 
+### Preparation: Sync source directory
+rsync --delete --archive $CRATESPRO_DIR/ $INFRA_DIR/project/crates-pro --exclude="/.git" --exclude="/buck-out" --exclude="/build" --exclude="/target"
+
 ### Step 1: Compile, then copy artifacts to $BUILD_DIR
 mkdir -p $BUILD_DIR
 rm -rf $BUILD_DIR/*
-cd $INFRA_PATH
+cd $INFRA_DIR
 cp "$(buck2 build //project/crates-pro:crates_pro --show-simple-output)" $BUILD_DIR/crates_pro
 cp "$(buck2 build //project/crates-pro:bin_analyze --show-simple-output)" $BUILD_DIR/bin_analyze
 cp "$(buck2 build //project/crates-pro:bin_data_transport --show-simple-output)" $BUILD_DIR/bin_data_transport
 cp "$(buck2 build //project/crates-pro:bin_repo_import --show-simple-output)" $BUILD_DIR/bin_repo_import
-cp /workspace/.env $BUILD_DIR/.env
-cd /workspace
+cp $CRATESPRO_DIR/.env $BUILD_DIR/.env
+cd $CRATESPRO_DIR
 
 ### Step 2: Build Docker images
 docker build --target crates_pro        -t $CRATESPRO_MAIN_IMAGE            -f $IMAGES_DIR/crates-pro.Dockerfile    $BUILD_DIR
