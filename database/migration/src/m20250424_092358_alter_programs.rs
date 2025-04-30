@@ -23,9 +23,22 @@ impl MigrationTrait for Migration {
         manager
             .alter_table(
                 Table::alter()
+                    .table(GithubUser::Table)
+                    .drop_column(Alias::new("commit_email"))
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
                     .table(Crates::Table)
                     .add_column_if_not_exists(ColumnDef::new(Alias::new("github_node_id")).string())
-                    .add_column_if_not_exists(ColumnDef::new(Alias::new("repo_invalid")).boolean().not_null().default(false))
+                    .add_column_if_not_exists(
+                        ColumnDef::new(Alias::new("repo_invalid"))
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -56,5 +69,10 @@ enum Programs {
 
 #[derive(DeriveIden)]
 enum Crates {
+    Table,
+}
+
+#[derive(DeriveIden)]
+enum GithubUser {
     Table,
 }

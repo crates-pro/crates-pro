@@ -52,7 +52,6 @@ impl From<GitHubUser> for github_user::ActiveModel {
             updated_at: Set(user.updated_at.naive_utc()),
             inserted_at: Set(now),
             updated_at_local: Set(now),
-            commit_email: NotSet,
         }
     }
 }
@@ -93,7 +92,7 @@ impl From<github_user::Model> for AnalyzedUser {
             github_id: value.github_id,
             login: value.login,
             profile_email: value.email,
-            commit_email: value.commit_email,
+            commit_email: None,
         }
     }
 }

@@ -26,7 +26,6 @@ pub struct Model {
     pub updated_at: DateTime,
     pub inserted_at: DateTime,
     pub updated_at_local: DateTime,
-    pub commit_email: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
