@@ -8,6 +8,7 @@ filegroup(
         "src/kafka_handler.rs",
         "src/utils.rs",
         ### Workers source
+        "src/bin/analysis_mirchecker.rs",
         "src/bin/analysis_tool_worker.rs",
     ],
 )
@@ -33,6 +34,15 @@ cargo.rust_library(
     crate_root = "analysis-0.1.0.crate/src/lib.rs",
     edition = "2021",
     deps = pkg_deps,
+    visibility = ["PUBLIC"],
+)
+
+cargo.rust_binary(
+    name = "analysis_mirchecker",
+    srcs = [":analysis-0.1.0.crate"],
+    crate_root = "analysis-0.1.0.crate/src/bin/analysis_mirchecker.rs",
+    edition = "2021",
+    deps = [":analysis"] + pkg_deps,
     visibility = ["PUBLIC"],
 )
 
