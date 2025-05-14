@@ -272,6 +272,11 @@ pub async fn run_api_server() -> std::io::Result<()> {
                 let (cratename, version) = path.into_inner();
                 handler::get_direct_dep_for_graph(cratename,version).await
             }))
+            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/mirchecker", 
+            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
+                let (nsfront,nsbehind,cratename,version) = path.into_inner();
+                handler::get_mirchecker(nsfront, nsbehind,cratename,version).await
+            }))
     })
     .bind("0.0.0.0:6888")?
     .run()

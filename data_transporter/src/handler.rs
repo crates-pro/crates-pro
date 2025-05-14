@@ -154,6 +154,12 @@ pub struct SenseleakRes {
     pub exist: bool,
     pub res: String,
 }
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct MircheckerRes {
+    pub run_state: bool,
+    pub exist:bool,
+    pub res: String,
+}
 
 /// 获取cve信息
 #[utoipa::path(
@@ -818,6 +824,28 @@ pub async fn get_senseleak(nsfront: String, nsbehind: String) -> impl Responder 
         exist = false;
     }
     let return_val = SenseleakRes { exist, res };
+    HttpResponse::Ok().json(return_val)
+}
+pub async fn get_mirchecker(nsfront: String, nsbehind: String,name:String,version:String) -> impl Responder {
+    let db_connection_config = db_connection_config_from_env();
+    #[allow(unused_variables)]
+    let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+        .await
+        .unwrap();
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+    let dbhandler = DBHandler { client };
+    let id = nsfront.clone() + "/" + &nsbehind +"/" + &name + "/" +&version;
+    let run_state = dbhandler.get_mirchecker_run_state_from_pg(id.clone()).await.unwrap();
+    let res = dbhandler.get_mirchecker_from_pg(id.clone()).await.unwrap();
+    let mut exist = false;
+    if res.contains("warning: [MirChecker]"){
+        exist = true;
+    }
+    let return_val = MircheckerRes { run_state,exist, res };
     HttpResponse::Ok().json(return_val)
 }
 
