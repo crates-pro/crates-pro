@@ -2,30 +2,33 @@
 set -euxo pipefail
 
 # source
-INFRA_PATH=/var/crates-pro-infra
-WORKSPACE_PATH=/workspace
+CRATESPRO_DIR=/home/rust/crates-pro
+INFRA_DIR=/home/rust/workspace/crates-pro-infra
 # deployment
 NAMESPACE=analysis-tool-worker
 DEPLOYMENT=analysis-tool-worker
 KAFKA_HOST=172.17.0.1:30092
 # build
-BUILD_DIR=$WORKSPACE_PATH/build
-IMAGES_DIR=$WORKSPACE_PATH/images
+BUILD_DIR=$CRATESPRO_DIR/build
+IMAGES_DIR=$CRATESPRO_DIR/images
 TIMESTAMP=$(date +%Y%m%d-%H%M)
 ANALYSIS_TOOL_WORKER_IMAGE=localhost:30500/analysis-tool-worker:local-$TIMESTAMP
+
+### Preparation: Sync source directory
+rsync --delete --archive $CRATESPRO_DIR/ $INFRA_DIR/project/crates-pro --exclude="/.git" --exclude="/buck-out" --exclude="/build" --exclude="/target"
 
 ### Step 1: Compile, then copy artifacts to $BUILD_DIR
 mkdir -p $BUILD_DIR
 rm -rf $BUILD_DIR/*
-cd $INFRA_PATH
+cd $INFRA_DIR
 # Copy artifacts for tool 'sensleak-rs'
 cp "$(buck2 build //project/sensleak-rs:scan --show-simple-output)" $BUILD_DIR/scan
-cp $INFRA_PATH/project/sensleak-rs/gitleaks.toml $BUILD_DIR/gitleaks.toml
+cp $INFRA_DIR/project/sensleak-rs/gitleaks.toml $BUILD_DIR/gitleaks.toml
 # Copy artifacts for analysis-tool-worker
 cp "$(buck2 build //project/crates-pro/analysis:analysis_tool_worker --show-simple-output)" $BUILD_DIR/analysis_tool_worker
-cp -r $WORKSPACE_PATH/analysis/tools/ $BUILD_DIR/tools/
-cp $WORKSPACE_PATH/.env $BUILD_DIR/.env
-cd $WORKSPACE_PATH
+cp -r $CRATESPRO_DIR/analysis/tools/ $BUILD_DIR/tools/
+cp $CRATESPRO_DIR/.env $BUILD_DIR/.env
+cd $CRATESPRO_DIR
 
 ### Step 2: Build Docker images
 docker build -t $ANALYSIS_TOOL_WORKER_IMAGE -f $IMAGES_DIR/analysis-tool-worker.Dockerfile $BUILD_DIR

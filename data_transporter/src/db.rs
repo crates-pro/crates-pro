@@ -1423,6 +1423,39 @@ impl DBHandler {
             .unwrap();
         Ok(())
     }
+    pub async fn insert_mirchecker_result_into_pg(
+        &self,
+        id: String,
+        result: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.client
+            .execute(
+                "INSERT INTO mirchecker_res(
+                        id,res) VALUES ($1, $2)
+                        ON CONFLICT (id)
+                        DO UPDATE SET res=$2;",
+                &[&id, &result],
+            )
+            .await
+            .unwrap();
+        Ok(())
+    }
+    pub async fn insert_mirchecker_failed_into_pg(
+        &self,
+        id: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.client
+            .execute(
+                "INSERT INTO mirchecker_run_failed(
+                        id) VALUES ($1)
+                        ON CONFLICT (id)
+                        DO NOTHING;",
+                &[&id],
+            )
+            .await
+            .unwrap();
+        Ok(())
+    }
     #[allow(clippy::len_zero)]
     pub async fn get_senseleak_from_pg(
         &self,
@@ -1441,6 +1474,48 @@ impl DBHandler {
         let mut real_res = "[]".to_string();
         if tmp_res.len() != 0 {
             real_res = tmp_res[0].clone();
+        }
+        Ok(real_res)
+    }
+    #[allow(clippy::len_zero)]
+    pub async fn get_mirchecker_from_pg(
+        &self,
+        id: String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let rows = self
+            .client
+            .query("SELECT * FROM mirchecker_res WHERE id=$1", &[&id])
+            .await
+            .unwrap();
+        let mut tmp_res = vec![];
+        for row in rows {
+            let s_res: String = row.get("res");
+            tmp_res.push(s_res);
+        }
+        let mut real_res = "".to_string();
+        if tmp_res.len() != 0 {
+            real_res = tmp_res[0].clone();
+        }
+        Ok(real_res)
+    }
+    #[allow(clippy::len_zero)]
+    pub async fn get_mirchecker_run_state_from_pg(
+        &self,
+        id: String,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        let rows = self
+            .client
+            .query("SELECT * FROM mirchecker_run_failed WHERE id=$1", &[&id])
+            .await
+            .unwrap();
+        let mut tmp_res = vec![];
+        for row in rows {
+            let s_res: String = row.get("id");
+            tmp_res.push(s_res);
+        }
+        let mut real_res = true;
+        if tmp_res.len() != 0 {
+            real_res = false;
         }
         Ok(real_res)
     }

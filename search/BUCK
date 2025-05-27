@@ -1,5 +1,5 @@
-rust_library(
-    name = "search",
+filegroup(
+    name = "search-0.1.0.crate",
     srcs = [
         "src/ai.rs",
         "src/crates_search.rs",
@@ -7,7 +7,12 @@ rust_library(
         "src/lib.rs",
         "src/search_prepare.rs"
     ],
-    crate_root = "src/lib.rs",
+)
+
+rust_library(
+    name = "search",
+    srcs = [":search-0.1.0.crate"],
+    crate_root = "search-0.1.0.crate/src/lib.rs",
     edition = "2021",
     deps = [
         "//third-party:pgvector",
