@@ -62,6 +62,18 @@ pub async fn update_repo(
 ) -> Result<(), anyhow::Error> {
     info!("更新之前clone的仓库: {}", target_dir.display());
 
+    TokioCommand::new("git")
+        .current_dir(target_dir)
+        .args(["reset", "--hard", "HEAD"])
+        .status()
+        .await?;
+
+    TokioCommand::new("git")
+        .current_dir(target_dir)
+        .args(["clean", "-fd"])
+        .status()
+        .await?;
+
     let args = vec![
         "-c",
         "credential.helper=reject",
@@ -72,6 +84,7 @@ pub async fn update_repo(
         "-c",
         "core.askpass=echo",
         "pull",
+        "--rebase",
     ];
     let status = TokioCommand::new("git")
         .current_dir(target_dir)

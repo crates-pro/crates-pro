@@ -36,4 +36,4 @@ This is a dump of the public information in the crates.io database.
         psql DATABASE_URL < import.sql
 
 
-Data Date: 2025-03-31
+Data Date: 2025-05-25

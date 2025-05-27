@@ -15,7 +15,7 @@ pub(crate) async fn sync_repo_with_sha(
     let url_stream = stg.query_programs_stream(cratesio).await.unwrap();
 
     url_stream
-        .try_for_each_concurrent(4, |model| {
+        .try_for_each_concurrent(16, |model| {
             let context = context.clone();
             let base_dir = context.base_dir.clone();
 
@@ -51,11 +51,11 @@ pub(crate) async fn update_programs(context: Context) -> Result<(), BoxError> {
     Ok(())
 }
 
-pub(crate) async fn sync_crates_io(context: Context) -> Result<(), BoxError> {
+pub(crate) async fn update_crates_nodeid(context: Context) -> Result<(), BoxError> {
     let stg = context.github_handler_stg();
     let crates_stream = stg.query_crates_stream().await.unwrap();
     crates_stream
-        .try_for_each_concurrent(8, |model| {
+        .try_for_each_concurrent(16, |model| {
             let context = context.clone();
             async move {
                 let repository = model.repository.clone().unwrap();

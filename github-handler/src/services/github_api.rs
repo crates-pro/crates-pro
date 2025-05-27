@@ -397,7 +397,7 @@ impl GitHubApiClient {
 
     pub async fn start_graphql_sync(&self, context: &Context) -> Result<(), Error> {
         let date = NaiveDate::parse_from_str("2010-06-16", "%Y-%m-%d").unwrap();
-        let end_date = NaiveDate::parse_from_str("2025-04-01", "%Y-%m-%d").unwrap();
+        let end_date = NaiveDate::parse_from_str("2025-05-23", "%Y-%m-%d").unwrap();
         // let threshold_date = NaiveDate::parse_from_str("2015-01-01", "%Y-%m-%d").unwrap();
 
         let dates: Vec<NaiveDate> = {
