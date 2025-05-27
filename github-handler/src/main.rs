@@ -68,7 +68,9 @@ enum Commands {
         /// 仓库名称
         repo: String,
     },
-    SyncCratesio,
+    /// 给crates 表和关联的programs 表设置nodeid
+    UpdateCratesNodeid,
+    /// 给programs设置 in_cratesio 字段
     UpdateProgram,
 }
 
@@ -120,11 +122,12 @@ async fn main() -> Result<(), BoxError> {
         }
 
         Some(Commands::AnalyzeAll { cratesio, not_analyzed }) => {
+            tracing::info!("cratesio:{}, not_analyzed:{}", cratesio, not_analyzed);
             contributor_analysis::analyze_all(context, cratesio, not_analyzed).await?;
         }
 
-        Some(Commands::SyncCratesio) => {
-            sync_repo::sync_crates_io(context).await?;
+        Some(Commands::UpdateCratesNodeid) => {
+            sync_repo::update_crates_nodeid(context).await?;
         }
 
         Some(Commands::SyncRepo { cratesio }) => {

@@ -380,16 +380,16 @@ pub(crate) async fn analyze_git_contributors(
         analyzed_users.push(a_user);
 
         // 存储贡献者关系
-        if let Err(e) = context
-            .github_handler_stg()
-            .store_contributor(repository_id, user.id, contributor.contributions)
-            .await
-        {
-            error!(
-                "存储贡献者关系失败: {}/{} -> {}: {}",
-                owner, repo, user.login, e
-            );
-        }
+        // if let Err(e) = context
+        //     .github_handler_stg()
+        //     .store_contributor(repository_id, user.id, contributor.contributions)
+        //     .await
+        // {
+        //     error!(
+        //         "存储贡献者关系失败: {}/{} -> {}: {}",
+        //         owner, repo, user.login, e
+        //     );
+        // }
     }
 
     // 查询并显示贡献者统计
