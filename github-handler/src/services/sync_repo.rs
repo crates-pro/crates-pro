@@ -32,13 +32,14 @@ pub(crate) async fn sync_repo_with_sha(
                 if let Some((owner, repo)) = utils::parse_to_owner_and_repo(&model.github_url) {
                     let nested_path = utils::repo_dir(base_dir, &owner, &repo);
                     if nested_path.exists() {
-                        if let Ok(_) = git::update_repo(&nested_path, &owner, &repo).await {
+                        if git::update_repo(&nested_path, &owner, &repo).await.is_ok() {
                             save_sync_time(model, &stg).await?;
                         }
-                    } else {
-                        if let Ok(_) = git::clone_repo(&nested_path, &owner, &repo, false).await {
-                            save_sync_time(model, &stg).await?;
-                        }
+                    } else if git::clone_repo(&nested_path, &owner, &repo, false)
+                        .await
+                        .is_ok()
+                    {
+                        save_sync_time(model, &stg).await?;
                     }
                 }
                 Ok(())
