@@ -30,6 +30,7 @@ pub struct Model {
     #[sea_orm(unique)]
     pub github_node_id: String,
     pub updated_at: Option<DateTime>,
+    pub repo_sync_at: Option<DateTime>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

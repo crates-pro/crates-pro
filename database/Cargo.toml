@@ -12,6 +12,7 @@ path = "src/lib.rs"
 [dependencies]
 entity = { workspace = true }
 model = { workspace = true }
+migration = { workspace = true }
 
 tracing = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

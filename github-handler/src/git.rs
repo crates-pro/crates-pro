@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use tokio::process::Command as TokioCommand;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 pub async fn clone_repo(
     target_dir: &Path,
@@ -33,12 +33,12 @@ pub async fn clone_repo(
 
     match status {
         Ok(status) if !status.success() => {
-            warn!("克隆仓库失败: {}，可能需要认证或不存在，跳过此仓库", status);
-            return Ok(());
+            error!("克隆仓库失败: {}，可能需要认证或不存在，跳过此仓库", status);
+            return Err(anyhow::Error::msg("clone failed"));
         }
         Err(e) => {
-            warn!("执行git命令失败: {}，跳过此仓库", e);
-            return Ok(());
+            error!("执行git命令失败: {}，跳过此仓库", e);
+            return Err(e.into());
         }
         _ => {}
     }
@@ -101,6 +101,7 @@ pub async fn update_repo(
         }
         Err(e) => {
             eprintln!("Error executing git command: {}", e);
+            return Err(e.into());
         }
     }
     Ok(())

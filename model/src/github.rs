@@ -225,6 +225,7 @@ impl From<RestfulRepository> for programs::ActiveModel {
             in_cratesio: Set(false),
             github_node_id: Set(item.node_id),
             updated_at: Set(Some(chrono::Utc::now().naive_utc())),
+            repo_sync_at: Set(None)
         }
     }
 }

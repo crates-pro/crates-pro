@@ -42,6 +42,9 @@ enum Commands {
         // 只拉取cratesio仓库
         #[arg(long, action = ArgAction::SetTrue)]
         cratesio: bool,
+        // 跳过几日之内的同步
+        #[arg(long, default_value_t = 10)]
+        skip_days: i32,
     },
     /// 分析所有拉取的仓库地址
     AnalyzeAll {
@@ -121,7 +124,10 @@ async fn main() -> Result<(), BoxError> {
             github_client.start_graphql_sync(&context).await?;
         }
 
-        Some(Commands::AnalyzeAll { cratesio, not_analyzed }) => {
+        Some(Commands::AnalyzeAll {
+            cratesio,
+            not_analyzed,
+        }) => {
             tracing::info!("cratesio:{}, not_analyzed:{}", cratesio, not_analyzed);
             contributor_analysis::analyze_all(context, cratesio, not_analyzed).await?;
         }
@@ -130,8 +136,8 @@ async fn main() -> Result<(), BoxError> {
             sync_repo::update_crates_nodeid(context).await?;
         }
 
-        Some(Commands::SyncRepo { cratesio }) => {
-            sync_repo::sync_repo_with_sha(context, cratesio).await?;
+        Some(Commands::SyncRepo { cratesio,skip_days }) => {
+            sync_repo::sync_repo_with_sha(context, cratesio, skip_days).await?;
         }
 
         Some(Commands::UpdateProgram) => {
