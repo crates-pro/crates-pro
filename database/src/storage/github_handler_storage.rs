@@ -61,6 +61,7 @@ impl GithubHanlderStorage {
                         programs::Column::GithubUrl,
                         programs::Column::RepoCreatedAt,
                         programs::Column::UpdatedAt,
+                        programs::Column::RepoSyncAt,
                     ])
                     .to_owned(),
             )

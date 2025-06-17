@@ -590,6 +590,7 @@ async fn convert_to_model(item: Repository, save_models: &mut Vec<programs::Acti
         in_cratesio: Set(false),
         github_node_id: Set(item.id),
         updated_at: Set(Some(chrono::Utc::now().naive_utc())),
+        repo_sync_at: Set(None),
     };
     save_models.push(model);
 }

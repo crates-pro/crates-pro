@@ -1,3 +1,5 @@
+use migration::{Migrator, MigratorTrait};
+
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr};
 use std::time::Duration;
 use tracing::log;
@@ -14,5 +16,8 @@ pub async fn database_connection(db_url: &str) -> Result<DatabaseConnection, DbE
         .max_lifetime(Duration::from_secs(8))
         .sqlx_logging(true)
         .sqlx_logging_level(log::LevelFilter::Debug);
-    Database::connect(opt).await
+    let conn = Database::connect(opt).await?;
+
+    Migrator::up(&conn, None).await.unwrap();
+    Ok(conn)
 }

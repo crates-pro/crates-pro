@@ -1,8 +1,9 @@
 use crate::{git, utils, BoxError};
-use database::storage::Context;
+use chrono::{Duration, Utc};
+use database::storage::{github_handler_storage::GithubHanlderStorage, Context};
 use entity::programs;
 use futures::{StreamExt, TryStreamExt};
-use sea_orm::{ActiveValue::Set, IntoActiveModel};
+use sea_orm::{ActiveValue::Set, DbErr, IntoActiveModel};
 use tracing::error;
 
 use super::github_api::GitHubApiClient;
@@ -10,24 +11,35 @@ use super::github_api::GitHubApiClient;
 pub(crate) async fn sync_repo_with_sha(
     context: Context,
     cratesio: bool,
+    skip_days: i32,
 ) -> Result<(), anyhow::Error> {
     let stg = context.github_handler_stg();
     let url_stream = stg.query_programs_stream(cratesio).await.unwrap();
+    let skip_days_ago = Utc::now().naive_utc() - Duration::days(skip_days.into());
 
     url_stream
         .try_for_each_concurrent(16, |model| {
             let context = context.clone();
             let base_dir = context.base_dir.clone();
-
+            let model = model.clone();
+            let stg = stg.clone();
             async move {
+                if let Some(sync_date) = model.repo_sync_at {
+                    if sync_date > skip_days_ago {
+                        return Ok(());
+                    }
+                }
                 if let Some((owner, repo)) = utils::parse_to_owner_and_repo(&model.github_url) {
                     let nested_path = utils::repo_dir(base_dir, &owner, &repo);
                     if nested_path.exists() {
-                        git::update_repo(&nested_path, &owner, &repo).await.unwrap();
-                    } else {
-                        git::clone_repo(&nested_path, &owner, &repo, false)
-                            .await
-                            .unwrap();
+                        if git::update_repo(&nested_path, &owner, &repo).await.is_ok() {
+                            save_sync_time(model, &stg).await?;
+                        }
+                    } else if git::clone_repo(&nested_path, &owner, &repo, false)
+                        .await
+                        .is_ok()
+                    {
+                        save_sync_time(model, &stg).await?;
                     }
                 }
                 Ok(())
@@ -35,6 +47,12 @@ pub(crate) async fn sync_repo_with_sha(
         })
         .await?;
     Ok(())
+}
+
+async fn save_sync_time(model: programs::Model, stg: &GithubHanlderStorage) -> Result<(), DbErr> {
+    let mut a_model = model.into_active_model();
+    a_model.repo_sync_at = Set(Some(chrono::Utc::now().naive_utc()));
+    stg.save_or_update_programs(vec![a_model]).await
 }
 
 pub(crate) async fn update_programs(context: Context) -> Result<(), BoxError> {
