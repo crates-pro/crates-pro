@@ -283,7 +283,7 @@ pub async fn run_api_server() -> std::io::Result<()> {
     .await
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema,Hash,PartialEq,Eq)]
 pub struct NameVersion {
     pub name: String,
     pub version: String,
