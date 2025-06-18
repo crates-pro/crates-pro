@@ -572,7 +572,7 @@ impl DBHandler {
         tracing::info!("enter get direct_rustsec");
         let rows = self
             .client
-            .query("SELECT * FROM rustsecs;", &[])
+            .query("SELECT * FROM rustsecs WHERE cratename=$1;", &[&cname])
             .await
             .unwrap();
         let mut get_direct_rust_sec = vec![];
@@ -636,35 +636,35 @@ impl DBHandler {
         &self,
         nameversion: HashSet<String>,
     ) -> Result<Vec<NewRustsec>, Error> {
-        let rows = self
-            .client
-            .query("SELECT * FROM rustsecs;", &[])
-            .await
-            .unwrap();
-        let mut get_all_rust_sec = vec![];
-        for row in rows {
-            let t_aliases: String = row.get("aliases");
-            let parts: Vec<&str> = t_aliases.split(';').collect();
-            let mut real_aliases = vec![];
-            for part in parts {
-                real_aliases.push(part.to_string());
-            }
-            let rs = RustSec {
-                id: row.get("id"),
-                cratename: row.get("cratename"),
-                patched: row.get("patched"),
-                aliases: real_aliases.clone(),
-                small_desc: row.get("small_desc"),
-            };
-            get_all_rust_sec.push(rs.clone());
-        }
         let mut getres = vec![];
         for nv in nameversion {
             let parts: Vec<&str> = nv.split('/').collect();
             let cname = parts[0].to_string();
             let version = parts[1].to_string();
+            let rows = self
+                .client
+                .query("SELECT * FROM rustsecs where cratename=$1;", &[&cname])
+                .await
+                .unwrap();
+            let mut get_all_rust_sec = vec![];
+            for row in rows {
+                let t_aliases: String = row.get("aliases");
+                let parts: Vec<&str> = t_aliases.split(';').collect();
+                let mut real_aliases = vec![];
+                for part in parts {
+                    real_aliases.push(part.to_string());
+                }
+                let rs = RustSec {
+                    id: row.get("id"),
+                    cratename: row.get("cratename"),
+                    patched: row.get("patched"),
+                    aliases: real_aliases.clone(),
+                    small_desc: row.get("small_desc"),
+                };
+                get_all_rust_sec.push(rs.clone());
+            }
             for rc in get_all_rust_sec.clone() {
-                if rc.cratename.clone() == cname {
+                if rc.cratename.clone() == cname.clone() {
                     let matched = self
                         .match_version(rc.clone().patched, version.to_string())
                         .await

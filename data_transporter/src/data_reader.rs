@@ -7,6 +7,7 @@ use std::{
     cmp::Ordering,
     collections::{HashSet, VecDeque},
     error::Error,
+    time::Instant,
 };
 use tokio_postgres::NoTls;
 use tudriver::tugraph_client::TuGraphClient;
@@ -82,14 +83,14 @@ pub trait DataReaderTrait {
     ) -> Result<HashSet<String>, Box<dyn Error>>;
     async fn new_get_all_dependencies(
         &self,
-        namespace: String,
-        nameversion: String,
+        nodes: Vec<NameVersion>,
     ) -> Result<HashSet<String>, Box<dyn Error>>;
     /*#[allow(dead_code)]
     async fn get_all_dependents(
         &self,
         nameversion: NameVersion,
     ) -> Result<HashSet<String>, Box<dyn Error>>;*/
+    #[allow(dead_code)]
     async fn new_get_all_dependents(
         &self,
         namespace: String,
@@ -161,12 +162,48 @@ impl DataReaderTrait for DataReader {
     ) -> Result<DependentInfo, Box<dyn Error>> {
         let namespace = nsfront.clone() + "/" + &nsbehind.clone();
         let nameversion = name.clone() + "/" + &version.clone();
-        let direct_nodes = self
-            .new_get_direct_dependent_nodes(&namespace, &nameversion)
-            .await
-            .unwrap();
+        let mut direct_nodes = vec![];
+        if version.clone() == *"all" {
+            let lib_versions = self
+                .new_get_lib_version(namespace.clone(), name.clone())
+                .await
+                .unwrap();
+            let mut getversions = vec![];
+            for version in lib_versions {
+                getversions.push(version);
+            }
+            getversions.sort_by(|a, b| {
+                let version_a = Version::parse(a);
+                let version_b = Version::parse(b);
+
+                match (version_a, version_b) {
+                    (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
+                    (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => Ordering::Equal,
+                }
+            });
+            let mut visited = HashSet::new();
+            for nversion in &getversions {
+                let tmp_name_and_version = name.clone() + "/" + nversion;
+                let tmp_direct_nodes = self
+                    .new_get_direct_dependent_nodes(&namespace, &tmp_name_and_version)
+                    .await
+                    .unwrap();
+                for node in tmp_direct_nodes {
+                    if visited.insert(node.clone()) {
+                        direct_nodes.push(node.clone());
+                    }
+                }
+            }
+        } else {
+            direct_nodes = self
+                .new_get_direct_dependent_nodes(&namespace, &nameversion)
+                .await
+                .unwrap();
+        }
         let getdirect_count = direct_nodes.len();
-        let all_dependent_nodes = self
+        /*let all_dependent_nodes = self
             .new_get_all_dependents(namespace.clone(), nameversion.clone())
             .await
             .unwrap();
@@ -184,7 +221,7 @@ impl DataReaderTrait for DataReader {
                 indirect_dependent.push(node);
             }
         }
-        let indirect_dependent_count = indirect_dependent.len();
+        let indirect_dependent_count = indirect_dependent.len();*/
         let mut deps = vec![];
         let mut count1 = 0;
         for item in direct_nodes {
@@ -199,7 +236,7 @@ impl DataReaderTrait for DataReader {
                 break;
             }
         }
-        let mut count2 = 0;
+        /*let mut count2 = 0;
         for item in indirect_dependent {
             let parts: Vec<&str> = item.split('/').collect();
             let dep = DependentData {
@@ -212,11 +249,11 @@ impl DataReaderTrait for DataReader {
                 break;
             }
             deps.push(dep);
-        }
+        }*/
 
         let res_deps = DependentInfo {
             direct_count: getdirect_count,
-            indirect_count: indirect_dependent_count,
+            indirect_count: 0,
             data: deps,
         };
         Ok(res_deps)
@@ -231,13 +268,49 @@ impl DataReaderTrait for DataReader {
         let namespace = nsfront.clone() + "/" + &nsbehind.clone();
         let nameversion = name.clone() + "/" + &version.clone();
         tracing::info!("{} {}", namespace.clone(), nameversion.clone());
-        let direct_nodes = self
-            .new_get_direct_dependency_nodes(&namespace, &nameversion)
-            .await
-            .unwrap();
+        let mut direct_nodes = vec![];
+        if version.clone() == *"all" {
+            let lib_versions = self
+                .new_get_lib_version(namespace.clone(), name.clone())
+                .await
+                .unwrap();
+            let mut getversions = vec![];
+            for version in lib_versions {
+                getversions.push(version);
+            }
+            getversions.sort_by(|a, b| {
+                let version_a = Version::parse(a);
+                let version_b = Version::parse(b);
+
+                match (version_a, version_b) {
+                    (Ok(v_a), Ok(v_b)) => v_b.cmp(&v_a), // 从高到低排序
+                    (Ok(_), Err(_)) => Ordering::Less,   // 无法解析的版本号认为更小
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => Ordering::Equal,
+                }
+            });
+            let mut visited = HashSet::new();
+            for nversion in &getversions {
+                let tmp_name_and_version = name.clone() + "/" + nversion;
+                let tmp_direct_nodes = self
+                    .new_get_direct_dependency_nodes(&namespace, &tmp_name_and_version)
+                    .await
+                    .unwrap();
+                for node in tmp_direct_nodes {
+                    if visited.insert(node.clone()) {
+                        direct_nodes.push(node.clone());
+                    }
+                }
+            }
+        } else {
+            direct_nodes = self
+                .new_get_direct_dependency_nodes(&namespace, &nameversion)
+                .await
+                .unwrap();
+        }
         let getdirect_count = direct_nodes.len();
         let all_dependency_nodes = self
-            .new_get_all_dependencies(namespace.clone(), nameversion.clone())
+            .new_get_all_dependencies(direct_nodes.clone())
             .await
             .unwrap();
         let mut indirect_dependency = vec![];
@@ -315,68 +388,7 @@ impl DataReaderTrait for DataReader {
         if docurl == *"null" || docurl == *"None" {
             docurl = "".to_string();
         }
-        let direct_dependency_nodes = self
-            .new_get_direct_dependency_nodes(&namespace, &name_and_version)
-            .await
-            .unwrap();
-        let direct_dependency_count = direct_dependency_nodes.len();
-        tracing::info!(
-            "finish get_direct_dependency_nodes:{}",
-            direct_dependency_count
-        ); //ok
-        let all_dependency_nodes = self
-            .new_get_all_dependencies(namespace.clone(), name_and_version.clone())
-            .await
-            .unwrap();
-        let mut indirect_dependency = vec![];
-        for node in all_dependency_nodes.clone() {
-            let mut dr = false;
-            for node2 in direct_dependency_nodes.clone() {
-                let nv = node2.name.clone() + "/" + &node2.version.clone();
-                if node == nv {
-                    dr = true;
-                    break;
-                }
-            }
-            if !dr {
-                indirect_dependency.push(node);
-            }
-        }
-        let indirect_dependency_count = indirect_dependency.len();
-        //get dependent count
-        let direct_dependent_nodes = self
-            .new_get_direct_dependent_nodes(&namespace, &name_and_version)
-            .await
-            .unwrap();
-        let direct_dependent_count = direct_dependent_nodes.len();
-        tracing::info!(
-            "finish get_direct_dependent_nodes:{}",
-            direct_dependent_count
-        );
-        let db_connection_config = db_connection_config_from_env();
-        #[allow(unused_variables)]
-        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
-            .await
-            .unwrap();
-        tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                eprintln!("connection error: {}", e);
-            }
-        });
-        tracing::info!("finish connect pg");
-        let dbhandler = DBHandler { client };
-        let getcves = dbhandler
-            .get_direct_rustsec(&nname, &nversion)
-            .await
-            .unwrap();
-        let get_dependency_cves = dbhandler
-            .get_dependency_rustsec(all_dependency_nodes.clone())
-            .await
-            .unwrap();
-        let getlicense = dbhandler
-            .get_license_by_name(&namespace, &nname)
-            .await
-            .unwrap();
+        let time_get_version = Instant::now();
         let lib_versions = self
             .new_get_lib_version(namespace.clone(), nname.clone())
             .await
@@ -396,6 +408,129 @@ impl DataReaderTrait for DataReader {
                 (Err(_), Err(_)) => Ordering::Equal,
             }
         });
+        let get_version_time = time_get_version.elapsed();
+        tracing::info!("get_version_time:{:?}", get_version_time);
+        let mut direct_dependency_nodes = vec![];
+        let time_get_direct_dependency = Instant::now();
+        if nversion.clone() == *"all" {
+            let mut visited = HashSet::new();
+            for version in &getversions {
+                let tmp_name_and_version = nname.clone() + "/" + version;
+                let tmp_direct_nodes = self
+                    .new_get_direct_dependency_nodes(&namespace, &tmp_name_and_version)
+                    .await
+                    .unwrap();
+                for node in tmp_direct_nodes {
+                    if visited.insert(node.clone()) {
+                        direct_dependency_nodes.push(node.clone());
+                    }
+                }
+            }
+        } else {
+            direct_dependency_nodes = self
+                .new_get_direct_dependency_nodes(&namespace, &name_and_version)
+                .await
+                .unwrap();
+        }
+        let direct_dependency_count = direct_dependency_nodes.len();
+        tracing::info!(
+            "finish get_direct_dependency_nodes:{}",
+            direct_dependency_count
+        ); //ok
+        let get_direct_dep_time = time_get_direct_dependency.elapsed();
+        tracing::info!("get_direct_dep:{:?}", get_direct_dep_time);
+        let time_get_indirect_depcy_time = Instant::now();
+        let all_dependency_nodes = self
+            .new_get_all_dependencies(direct_dependency_nodes.clone())
+            .await
+            .unwrap();
+        let mut indirect_dependency = vec![];
+        for node in all_dependency_nodes.clone() {
+            let mut dr = false;
+            for node2 in direct_dependency_nodes.clone() {
+                let nv = node2.name.clone() + "/" + &node2.version.clone();
+                if node == nv {
+                    dr = true;
+                    break;
+                }
+            }
+            if !dr {
+                indirect_dependency.push(node);
+            }
+        }
+        let indirect_dependency_count = indirect_dependency.len();
+        let get_indirect_depcy_time = time_get_indirect_depcy_time.elapsed();
+        tracing::info!("get_indirect_depcy_time:{:?}", get_indirect_depcy_time);
+        //get dependent count
+        let mut direct_dependent_nodes = vec![];
+        let time1 = Instant::now();
+        if nversion.clone() == *"all" {
+            let mut visited = HashSet::new();
+            for version in &getversions {
+                let tmp_name_and_version = nname.clone() + "/" + version;
+                let tmp_direct_nodes = self
+                    .new_get_direct_dependent_nodes(&namespace, &tmp_name_and_version)
+                    .await
+                    .unwrap();
+                for node in tmp_direct_nodes {
+                    if visited.insert(node.clone()) {
+                        direct_dependent_nodes.push(node.clone());
+                    }
+                }
+            }
+        } else {
+            direct_dependent_nodes = self
+                .new_get_direct_dependent_nodes(&namespace, &name_and_version)
+                .await
+                .unwrap();
+        }
+        let direct_dependent_count = direct_dependent_nodes.len();
+        tracing::info!(
+            "finish get_direct_dependent_nodes:{}",
+            direct_dependent_count
+        );
+        let get_dept_time = time1.elapsed();
+        tracing::info!("get_dept_time:{:?}", get_dept_time);
+        let time2 = Instant::now();
+        let db_connection_config = db_connection_config_from_env();
+        #[allow(unused_variables)]
+        let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+            .await
+            .unwrap();
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+        tracing::info!("finish connect pg");
+        let dbhandler = DBHandler { client };
+        let mut getcves = vec![];
+        if nversion.clone() == *"all" {
+            let mut visited = HashSet::new();
+            for version in &getversions {
+                let tmp_direct_nodes = dbhandler.get_direct_rustsec(&nname, version).await.unwrap();
+                for node in tmp_direct_nodes {
+                    if visited.insert(node.clone()) {
+                        getcves.push(node.clone());
+                    }
+                }
+            }
+        } else {
+            getcves = dbhandler
+                .get_direct_rustsec(&nname, &nversion)
+                .await
+                .unwrap();
+        }
+        let get_dependency_cves = dbhandler
+            .get_dependency_rustsec(all_dependency_nodes.clone())
+            .await
+            .unwrap();
+        let get_cve_time = time2.elapsed();
+        tracing::info!("get_cve_time:{:?}", get_cve_time);
+        let getlicense = dbhandler
+            .get_license_by_name(&namespace, &nname)
+            .await
+            .unwrap();
         let dcy_count = DependencyCount {
             direct: direct_dependency_count,
             indirect: indirect_dependency_count,
@@ -600,8 +735,12 @@ RETURN n.doc_url
         let mut visited = HashSet::new();
         let name_and_version = nameversion.name.clone() + "/" + &nameversion.version.clone();
         queue.push_back(name_and_version.to_string());
-
+        let mut count = 0;
         while let Some(current) = queue.pop_front() {
+            count += 1;
+            if count == 2000 {
+                break;
+            }
             if visited.insert(current.clone()) {
                 for dep in self.get_direct_dependency_nodes(&current).await.unwrap() {
                     let tmp = dep.name.clone() + "/" + &dep.version.clone();
@@ -615,23 +754,18 @@ RETURN n.doc_url
     }
     async fn new_get_all_dependencies(
         &self,
-        namespace: String,
-        nameversion: String,
+        nodes: Vec<NameVersion>,
     ) -> Result<HashSet<String>, Box<dyn Error>> {
         let mut queue = VecDeque::new();
         let mut visited = HashSet::new();
-        for node in self
-            .new_get_direct_dependency_nodes(&namespace, &nameversion)
-            .await
-            .unwrap()
-        {
+        for node in nodes {
             let nameandversion = node.clone().name + "/" + &node.clone().version;
             queue.push_back(nameandversion.clone());
         }
         let mut count = 0;
         while let Some(current) = queue.pop_front() {
             count += 1;
-            if count == 500 {
+            if count == 2000 {
                 break;
             }
             if visited.insert(current.clone()) {
@@ -1044,8 +1178,10 @@ RETURN lv.version",
             namespace,
             name,
         );
-
+        let time1 = Instant::now();
         let results = self.client.exec_query(&query).await.unwrap();
+        let query_time = time1.elapsed();
+        tracing::info!("query_statement_need_time:{:?}", query_time);
         let unique_items: HashSet<String> = results.clone().into_iter().collect();
 
         let mut realres = vec![];
