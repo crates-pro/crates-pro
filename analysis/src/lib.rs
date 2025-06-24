@@ -29,18 +29,18 @@ struct Config {
 }
 
 /// FIXME(hongwang):
-/// 1. 这个函数本应实现一个通用的分析框架，能够根据tools.json动态适配不同的分析工具和命令，
-///    但目前实现方式比较死板，所有命令参数和流程都写死在代码里，扩展性和灵活性较差。
-/// 2. tools.json中的run字段本应支持任意命令模板，但现在只适配了gitleaks的固定命令，
-///    没有真正做到通用化，导致后续增加新工具或命令时需要频繁修改代码。
-/// 3. 代码结构上，命令拼接、输出处理、结果入库等逻辑都混杂在主流程里，
-///    缺乏清晰的分层和可插拔机制，不利于维护和测试。
-/// 4. 建议重构为：
-///    - 支持tools.json中run字段为命令模板（如可用占位符），动态渲染参数
-///    - 每个tool的执行、输出、入库逻辑可通过trait或回调自定义
-///    - 主流程只负责调度和通用异常处理，具体细节交给tool实现
-/// 5. 目前的实现方式导致tools.json的灵活性和可扩展性大打折扣，
-///    违背了配置驱动和插件化的初衷。
+/// 1. This function is intended to implement a general analysis framework that can dynamically adapt to different analysis tools and commands based on tools.json.
+///    However, the current implementation is rigid, with all command parameters and processes hardcoded, resulting in poor scalability and flexibility.
+/// 2. The "run" field in tools.json is supposed to support arbitrary command templates, but currently only supports the fixed command for gitleaks,
+///    which is not truly generic. Adding new tools or commands requires frequent code changes.
+/// 3. In terms of code structure, command construction, output processing, and result storage logic are all mixed in the main process,
+///    lacking clear layering and a pluggable mechanism, which is not conducive to maintenance and testing.
+/// 4. Refactoring suggestions:
+///    - Support the "run" field in tools.json as a command template (e.g., with placeholders), and render parameters dynamically
+///    - Allow each tool's execution, output, and storage logic to be customized via traits or callbacks
+///    - The main process should only handle scheduling and general exception handling, delegating specific details to the tool implementation
+/// 5. The current implementation greatly reduces the flexibility and extensibility of tools.json,
+///    which goes against the original intention of configuration-driven and plugin-based design.
 #[allow(unused_variables)]
 #[allow(clippy::needless_borrows_for_generic_args)]
 #[allow(clippy::let_unit_value)]
@@ -159,10 +159,13 @@ pub async fn analyse_once_mirchecker(
         .arg("--")
         .arg("--show_entries")
         .current_dir(&repo_path);
-    let output3 = run_command(&mut mir_checker_cmd).map_err(|e| {
-        let _ = dbhandler.insert_mirchecker_failed_into_pg(id.clone());
-        format!("Failed to execute run command for : {}", e)
-    })?;
+    let output3 = match run_command(&mut mir_checker_cmd) {
+        Ok(out) => out,
+        Err(e) => {
+            let _ = dbhandler.insert_mirchecker_failed_into_pg(id.clone()).await;
+            return Err(format!("Failed to execute run command for : {}", e).into());
+        }
+    };
     tracing::info!("start get stdout_str");
     let stdout_str = String::from_utf8(output3.stdout)?;
     tracing::info!("finish get stdout_str");
