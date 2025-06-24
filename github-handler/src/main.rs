@@ -136,7 +136,10 @@ async fn main() -> Result<(), BoxError> {
             sync_repo::update_crates_nodeid(context).await?;
         }
 
-        Some(Commands::SyncRepo { cratesio,skip_days }) => {
+        Some(Commands::SyncRepo {
+            cratesio,
+            skip_days,
+        }) => {
             sync_repo::sync_repo_with_sha(context, cratesio, skip_days).await?;
         }
 

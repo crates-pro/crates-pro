@@ -1,4 +1,5 @@
-//use url::Url;
+use std::path::Path;
+use std::process::Command;
 
 /// An auxiliary function
 ///
@@ -45,4 +46,40 @@ pub(crate) async fn extract_namespace(url_str: &str) -> Result<String, String> {
     );
 
     Ok(namespace)
+}
+
+#[allow(dead_code)]
+fn init_git(repo_path: &str) -> Result<(), ()> {
+    if let Err(e) = std::env::set_current_dir(Path::new(repo_path)) {
+        println!("Failed to change directory: {}", e);
+    } else {
+        let init_output = Command::new("git")
+            .arg("init")
+            .output()
+            .expect("Failed to execute git init");
+        if !init_output.status.success() {
+            let error_msg = String::from_utf8_lossy(&init_output.stderr);
+            println!("git init failed: {}", error_msg);
+        }
+        let add_output = Command::new("git")
+            .arg("add")
+            .arg(".")
+            .output()
+            .expect("Failed to execute git add");
+        if !add_output.status.success() {
+            let error_msg = String::from_utf8_lossy(&add_output.stderr);
+            println!("git add failed: {}", error_msg);
+        }
+        let commit_output = Command::new("git")
+            .arg("commit")
+            .arg("-m")
+            .arg("first commit")
+            .output()
+            .expect("Failed to execute git commit");
+        if !commit_output.status.success() {
+            let error_msg = String::from_utf8_lossy(&commit_output.stderr);
+            println!("git commit failed: {}", error_msg);
+        }
+    }
+    Ok(())
 }

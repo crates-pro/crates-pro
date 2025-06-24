@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::process::Command;
 
-use entity::sea_orm_active_enums::SyncStatusEnum;
 use entity::repo_sync_result;
+use entity::sea_orm_active_enums::SyncStatusEnum;
 use regex::Regex;
 use sea_orm::ActiveModelTrait;
 use sea_orm::Set;

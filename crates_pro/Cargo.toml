@@ -8,26 +8,6 @@ default-run = "crates_pro"
 name = "crates_pro"
 path = "src/main.rs"
 
-[[bin]]
-name = "analyze"
-path = "src/bin/bin_analyze.rs"
-
-[[bin]]
-name = "data_transport"
-path = "src/bin/bin_data_transport.rs"
-
-[[bin]]
-name = "repo_import"
-path = "src/bin/bin_repo_import.rs"
-
-[[bin]]
-name = "benchmark_controller"
-path = "src/bin/benchmark_controller.rs"
-
-[[bin]]
-name = "senseleak_controller"
-path = "src/bin/senseleak_controller.rs"
-
 [dependencies]
 analysis = { workspace = true }
 data_transporter = { workspace = true }
@@ -35,7 +15,6 @@ model = { workspace = true }
 tudriver = { workspace = true }
 repo_import = { workspace = true }
 
-# third-party (第三方依赖, 不写具体版本号, 具体版本只在根目录 Cargo.toml 中出现)
 dotenvy = { workspace = true }
 futures = { workspace = true }
 futures-util = { workspace = true }

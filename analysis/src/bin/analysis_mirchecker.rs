@@ -1,5 +1,5 @@
+use analysis::analyse_once_mirchecker;
 use analysis::kafka_handler::KafkaReader;
-use analysis::{ analyse_once_mirchecker};
 use std::{
     env,
     fs::File,

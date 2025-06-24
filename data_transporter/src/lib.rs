@@ -2,8 +2,8 @@ mod data_packer;
 mod data_reader;
 pub mod db;
 mod handler;
-mod transporter;
 mod redis_store;
+mod transporter;
 
 use model::tugraph_model::UVersion;
 use search::search_prepare;
@@ -30,21 +30,21 @@ pub struct Pagination {
     page: usize,
     per_page: usize,
 }
-#[derive(Deserialize, Debug, ToSchema,Serialize,Clone)]
+#[derive(Deserialize, Debug, ToSchema, Serialize, Clone)]
 pub struct Loginfo {
     email: String,
-    image:String,
+    image: String,
     name: String,
 }
-#[derive(Deserialize, Debug, ToSchema,Serialize,Clone)]
+#[derive(Deserialize, Debug, ToSchema, Serialize, Clone)]
 pub struct Userinfo {
-    user:Loginfo,
-    expires:String,
+    user: Loginfo,
+    expires: String,
 }
-#[derive(Deserialize, Debug, ToSchema,Serialize,Clone)]
+#[derive(Deserialize, Debug, ToSchema, Serialize, Clone)]
 pub struct UploadedCrate {
-    name:String,
-    time:String,
+    name: String,
+    time: String,
 }
 #[allow(non_snake_case)]
 #[derive(Debug, Deserialize)]
@@ -123,7 +123,6 @@ async fn get_tugraph_api_handler() -> ApiHandler {
             // route::DependentInfo,
             // route::DependentData,
             // route::Crateinfo,
-            
             // route::Versionpage,
             // route::NewRustsec,
             // NameVersion,
@@ -159,131 +158,160 @@ pub async fn run_api_server() -> std::io::Result<()> {
         App::new()
             .service(
                 SwaggerUi::new("/swagger-ui/{_:.*}")
-                    .url("/api-docs/openapi.json", ApiDoc::openapi())
+                    .url("/api-docs/openapi.json", ApiDoc::openapi()),
             )
             .route(
                 "/api/cvelist",
-                web::get().to(
-                    || async move {
-                        handler::get_cves().await
-                    },
-                ),
+                web::get().to(|| async move { handler::get_cves().await }),
             )
             .route(
                 "/api/crates",
-                web::get().to(|| async move {
-                    handler::get_all_crates().await
-                }),
+                web::get().to(|| async move { handler::get_all_crates().await }),
             )
             .route(
                 "/api/crates/{cratename}",
+                web::get().to(|name: web::Path<String>| async move {
+                    handler::get_crate_details(name.into_inner().into()).await
+                }),
+            )
+            .route(
+                "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/versions",
                 web::get().to(
-                    |name: web::Path<String>| async move {
-                        handler::get_crate_details(name.into_inner().into()).await
+                    |path: web::Path<(String, String, String, String)>| async move {
+                        let (nsfront, nsbehind, cratename, version) = path.into_inner();
+                        handler::new_get_version_page(nsfront, nsbehind, cratename, version).await
                     },
                 ),
             )
-            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/versions", 
-            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
-                let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                handler::new_get_version_page(nsfront,nsbehind,cratename,version).await
-            }))
-            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graphpage", 
-            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
-                let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                handler::new_get_graph(nsfront,nsbehind,cratename,version).await
-            }))
-
             .route(
-                "/api/submit",
-                web::post().to(
-                    | payload: Multipart| async move {
-                        handler::upload_crate(payload).await
+                "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graphpage",
+                web::get().to(
+                    |path: web::Path<(String, String, String, String)>| async move {
+                        let (nsfront, nsbehind, cratename, version) = path.into_inner();
+                        handler::new_get_graph(nsfront, nsbehind, cratename, version).await
                     },
                 ),
+            )
+            .route(
+                "/api/submit",
+                web::post()
+                    .to(|payload: Multipart| async move { handler::upload_crate(payload).await }),
             )
             .route(
                 "/api/submitCrate",
-                web::post().to(
-                    | payload: Multipart| async move {
-                        tracing::info!("enter submitcrate");
-                        handler::upload_crate(payload).await
+                web::post().to(|payload: Multipart| async move {
+                    tracing::info!("enter submitcrate");
+                    handler::upload_crate(payload).await
+                }),
+            )
+            .route(
+                "/api/submitUserinfo",
+                web::post().to(|payload: String| async move {
+                    //web::Json<Userinfo>
+                    tracing::info!("enter submitUserinfo");
+                    tracing::info!("payload:{}", payload.clone());
+                    let query: Root = serde_json::from_str(&payload).unwrap();
+                    tracing::info!("userinfo {:?}", query);
+                    handler::submituserinfo(query.requestBody.session).await
+                }),
+            )
+            .route(
+                "/api/profile",
+                web::post().to(|payload: String| async move {
+                    tracing::info!("enter profile");
+                    tracing::info!("payload:{}", payload.clone());
+                    let query: RequestBody2 = serde_json::from_str(&payload).unwrap();
+                    tracing::info!("profile email:{}", query.requestBody.clone());
+                    handler::query_upload_crate(query.requestBody).await
+                }),
+            )
+            .route(
+                "/api/search",
+                web::post().to(|payload: web::Json<Query>| async move {
+                    let query = payload.into_inner();
+                    handler::query_crates(query).await
+                }),
+            )
+            .route(
+                "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies",
+                web::get().to(
+                    |path: web::Path<(String, String, String, String)>| async move {
+                        let (nsfront, nsbehind, cratename, version) = path.into_inner();
+                        handler::dependency_redis_cache(cratename, version, nsfront, nsbehind).await
                     },
                 ),
             )
-            .route("/api/submitUserinfo", web::post().to(
-                |payload: String| async move{
-                    //web::Json<Userinfo>
-                    tracing::info!("enter submitUserinfo");
-                    tracing::info!("payload:{}",payload.clone());
-                    let query:Root = serde_json::from_str(&payload).unwrap();
-                    tracing::info!("userinfo {:?}",query);
-                    handler::submituserinfo(query.requestBody.session).await
-            },),)
-            .route("/api/profile", web::post().to(
-                |payload: String| async move{
-                    tracing::info!("enter profile");
-                    tracing::info!("payload:{}",payload.clone());
-                    let query:RequestBody2 = serde_json::from_str(&payload).unwrap();
-                    tracing::info!("profile email:{}",query.requestBody.clone());
-                    handler::query_upload_crate(query.requestBody).await
-            },),)
-            .route("/api/search", web::post().to(
-                |payload: web::Json<Query>| async move{
-                    let query = payload.into_inner();
-                    handler::query_crates(query).await
-            },),)
-            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies", 
-            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
-                let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                handler::dependency_redis_cache(cratename,version,nsfront,nsbehind).await
-            }))
-            /* .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencycache", 
+            /* .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencycache",
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 handler::new_get_dependency(cratename,version,nsfront,nsbehind).await
             }))*/
-            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graph", 
-            web::get().to(|_path: web::Path<(String, String,String,String)>|async move{
-                HttpResponse::Ok().json(())
-            }))
-            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependents", 
-            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
-                let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                handler::dependent_redis_cache(cratename,version,nsfront,nsbehind).await
-            }))
-            /* .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependentcache", 
+            .route(
+                "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependencies/graph",
+                web::get().to(
+                    |_path: web::Path<(String, String, String, String)>| async move {
+                        HttpResponse::Ok().json(())
+                    },
+                ),
+            )
+            .route(
+                "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependents",
+                web::get().to(
+                    |path: web::Path<(String, String, String, String)>| async move {
+                        let (nsfront, nsbehind, cratename, version) = path.into_inner();
+                        handler::dependent_redis_cache(cratename, version, nsfront, nsbehind).await
+                    },
+                ),
+            )
+            /* .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/dependentcache",
             web::get().to(|path: web::Path<(String, String,String,String)>|async move{
                 let (nsfront,nsbehind,cratename, version) = path.into_inner();
                 handler::new_get_dependent(cratename,version,nsfront,nsbehind).await
             }))*/
-            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}", 
-            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
-                let (nsfront,nsbehind,cratename, version) = path.into_inner();
-                handler::new_get_crates_front_info_from_redis(cratename,version,nsfront,nsbehind).await
-            }))
-            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/senseleak", 
-            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
-                let (nsfront,nsbehind,_cratename,_versionn) = path.into_inner();
-                handler::get_senseleak(nsfront, nsbehind).await
-            }))
-            .route("/api/graph/{cratename}/{version}/direct", 
-            web::get().to(|path: web::Path<(String,String)>|async move{
-                let (cratename, version) = path.into_inner();
-                handler::get_direct_dep_for_graph(cratename,version).await
-            }))
-            .route("/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/mirchecker", 
-            web::get().to(|path: web::Path<(String, String,String,String)>|async move{
-                let (nsfront,nsbehind,cratename,version) = path.into_inner();
-                handler::get_mirchecker(nsfront, nsbehind,cratename,version).await
-            }))
+            .route(
+                "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}",
+                web::get().to(
+                    |path: web::Path<(String, String, String, String)>| async move {
+                        let (nsfront, nsbehind, cratename, version) = path.into_inner();
+                        handler::new_get_crates_front_info_from_redis(
+                            cratename, version, nsfront, nsbehind,
+                        )
+                        .await
+                    },
+                ),
+            )
+            .route(
+                "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/senseleak",
+                web::get().to(
+                    |path: web::Path<(String, String, String, String)>| async move {
+                        let (nsfront, nsbehind, _cratename, _versionn) = path.into_inner();
+                        handler::get_senseleak(nsfront, nsbehind).await
+                    },
+                ),
+            )
+            .route(
+                "/api/graph/{cratename}/{version}/direct",
+                web::get().to(|path: web::Path<(String, String)>| async move {
+                    let (cratename, version) = path.into_inner();
+                    handler::get_direct_dep_for_graph(cratename, version).await
+                }),
+            )
+            .route(
+                "/api/crates/{nsfront}/{nsbehind}/{cratename}/{version}/mirchecker",
+                web::get().to(
+                    |path: web::Path<(String, String, String, String)>| async move {
+                        let (nsfront, nsbehind, cratename, version) = path.into_inner();
+                        handler::get_mirchecker(nsfront, nsbehind, cratename, version).await
+                    },
+                ),
+            )
     })
     .bind("0.0.0.0:6888")?
     .run()
     .await
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema,Hash,PartialEq,Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema, Hash, PartialEq, Eq)]
 pub struct NameVersion {
     pub name: String,
     pub version: String,

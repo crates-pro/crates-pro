@@ -10,7 +10,7 @@ use std::{
 };
 
 use chrono::Utc;
-use entity::{sea_orm_active_enums::SyncStatusEnum, repo_sync_result};
+use entity::{repo_sync_result, sea_orm_active_enums::SyncStatusEnum};
 use flate2::bufread::GzDecoder;
 use git2::{Repository, Signature};
 use kafka_model::message_model;

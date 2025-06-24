@@ -1,10 +1,10 @@
 use std::{path::PathBuf, sync::Arc};
 
-use init::database_connection;
 use github_handler_storage::GithubHanlderStorage;
+use init::database_connection;
 
-pub mod init;
 pub mod github_handler_storage;
+pub mod init;
 
 #[derive(Clone)]
 pub struct Context {

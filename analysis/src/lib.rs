@@ -118,41 +118,7 @@ pub async fn analyse_once(
 
     Ok(())
 }
-#[allow(dead_code)]
-fn init_git(repo_path: &str) -> Result<(), ()> {
-    if let Err(e) = std::env::set_current_dir(Path::new(repo_path)) {
-        println!("Failed to change directory: {}", e);
-    } else {
-        let init_output = Command::new("git")
-            .arg("init")
-            .output()
-            .expect("Failed to execute git init");
-        if !init_output.status.success() {
-            let error_msg = String::from_utf8_lossy(&init_output.stderr);
-            println!("git init failed: {}", error_msg);
-        }
-        let add_output = Command::new("git")
-            .arg("add")
-            .arg(".")
-            .output()
-            .expect("Failed to execute git add");
-        if !add_output.status.success() {
-            let error_msg = String::from_utf8_lossy(&add_output.stderr);
-            println!("git add failed: {}", error_msg);
-        }
-        let commit_output = Command::new("git")
-            .arg("commit")
-            .arg("-m")
-            .arg("first commit")
-            .output()
-            .expect("Failed to execute git commit");
-        if !commit_output.status.success() {
-            let error_msg = String::from_utf8_lossy(&commit_output.stderr);
-            println!("git commit failed: {}", error_msg);
-        }
-    }
-    Ok(())
-}
+
 #[allow(unused_variables)]
 #[allow(clippy::needless_borrows_for_generic_args)]
 #[allow(clippy::let_unit_value)]
@@ -162,7 +128,6 @@ pub async fn analyse_once_mirchecker(
     kafka_reader: &KafkaReader,
     output_path: &str,
 ) -> Result<(), Box<dyn Error>> {
-
     let message = kafka_reader.read_single_message_mirchecker().await.unwrap();
     tracing::info!("Analysis receive {:?}", message);
     tracing::info!(
@@ -180,146 +145,136 @@ pub async fn analyse_once_mirchecker(
     tracing::info!("code_path:{:?}", repo_path.clone());
 
     let db_connection_config = db_connection_config_from_env();
-            #[allow(unused_variables)]
-            let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
-                .await
-                .unwrap();
-            tokio::spawn(async move {
-                if let Err(e) = connection.await {
-                    eprintln!("connection error: {}", e);
-                }
-            });
-            let dbhandler = DBHandler { client };
-            let id = namespace.clone() + "/" + &message.name + "/" + &message.version;
-            
-            let output2 = Command::new("cargo")
+    #[allow(unused_variables)]
+    let (client, connection) = tokio_postgres::connect(&db_connection_config, NoTls)
+        .await
+        .unwrap();
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+    let dbhandler = DBHandler { client };
+    let id = namespace.clone() + "/" + &message.name + "/" + &message.version;
+
+    let output2 = Command::new("cargo")
+        .arg("clean")
+        .current_dir(&repo_path) // 指定工作目录
+        .output()
+        .expect("Failed to cargo clean");
+    if !output2.status.success() {
+        let error_msg = String::from_utf8_lossy(&output2.stderr);
+        tracing::info!("cargo clean Command failed with error: {}", error_msg);
+        return Err(format!("Failed to execute run command for : {}", error_msg).into());
+    }
+    tracing::info!("finish cargo clean");
+    let output3 = Command::new("/workdir/cargo-mir-checker")
+        .arg("mir-checker")
+        .arg("--")
+        .arg("--show_entries")
+        .current_dir(&repo_path) // 指定工作目录
+        .output()
+        .expect("Failed to execute cargo-mir-checker");
+    if !output3.status.success() {
+        let error_msg = String::from_utf8_lossy(&output3.stderr);
+        tracing::info!("show entry Command failed ");
+        let _ = dbhandler
+            .insert_mirchecker_failed_into_pg(id.clone())
+            .await
+            .unwrap();
+        return Err(format!("Failed to execute run command for : {}", error_msg).into());
+    }
+    tracing::info!("start get stdout_str");
+    let stdout_str = String::from_utf8(output3.stdout)?;
+    tracing::info!("finish get stdout_str");
+    let entries: Vec<String> = stdout_str
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.trim().to_string())
+        .collect();
+    tracing::info!("show entries success:");
+    tracing::info!("finish show entries");
+    let mut all_outputs = vec![];
+    for entry in entries {
+        let output3 = Command::new("cargo")
             .arg("clean")
-            .current_dir(&repo_path)  // 指定工作目录
+            .current_dir(&repo_path) // 指定工作目录
             .output()
             .expect("Failed to cargo clean");
-            if !output2.status.success() {
-                let error_msg = String::from_utf8_lossy(&output2.stderr);
-                tracing::info!("cargo clean Command failed with error: {}", error_msg);
-                return Err(format!(
-                    "Failed to execute run command for : {}",
-                     error_msg
-                )
-                .into());
-            }
-            tracing::info!("finish cargo clean");
-            let output3 = Command::new("/workdir/cargo-mir-checker")
+        if !output3.status.success() {
+            let error_msg = String::from_utf8_lossy(&output3.stderr);
+            tracing::info!("cargo clean Command failed with error: {}", error_msg);
+            return Err(format!("Failed to execute run command for : {}", error_msg).into());
+        }
+        let output4 = Command::new("/workdir/cargo-mir-checker")
             .arg("mir-checker")
             .arg("--")
-            .arg("--show_entries")
-            .current_dir(&repo_path)  // 指定工作目录
+            .arg("--entry")
+            .arg(&entry)
+            .current_dir(&repo_path) // 指定工作目录
             .output()
             .expect("Failed to execute cargo-mir-checker");
-            if !output3.status.success() {
-                let error_msg = String::from_utf8_lossy(&output3.stderr);
-                tracing::info!("show entry Command failed ");
-                let _ = dbhandler
-                .insert_mirchecker_failed_into_pg(id.clone())
-                .await
-                .unwrap();
-                return Err(format!(
-                    "Failed to execute run command for : {}",
-                     error_msg
-                )
-                .into());
-            }
-            tracing::info!("start get stdout_str");
-            let stdout_str = String::from_utf8(output3.stdout)?;
-            tracing::info!("finish get stdout_str");
-            let entries: Vec<String> = stdout_str
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .map(|line| line.trim().to_string())
-            .collect();
-            tracing::info!("show entries success:");
-            tracing::info!("finish show entries");
-            let mut all_outputs = vec![];
-            for entry in entries{
-                let output3 = Command::new("cargo")
-                .arg("clean")
-                .current_dir(&repo_path)  // 指定工作目录
-                .output()
-                .expect("Failed to cargo clean");
-                if !output3.status.success() {
-                    let error_msg = String::from_utf8_lossy(&output3.stderr);
-                    tracing::info!("cargo clean Command failed with error: {}", error_msg);
-                    return Err(format!(
-                        "Failed to execute run command for : {}",
-                        error_msg
-                    )
-                    .into());
-                }
-                let output4 = Command::new("/workdir/cargo-mir-checker")
-                .arg("mir-checker")
-                .arg("--")
-                .arg("--entry")
-                .arg(&entry)
-                .current_dir(&repo_path)  // 指定工作目录
-                .output()
-                .expect("Failed to execute cargo-mir-checker");
-                if !output4.status.success() {
-                    let error_msg = String::from_utf8_lossy(&output4.stderr);
-                    tracing::info!("test entry {} Command failed: {}",entry.clone(),error_msg);
-                }
-                tracing::info!("entry: {},output: {:?}",entry.clone(),output4);
-                let stderr_str = String::from_utf8_lossy(&output4.stderr);
-                let mut warning_blocks = Vec::new();
-                let mut current_block = String::new();
-                let mut in_warning_block = false;
-                for line in stderr_str.lines() {
-                    if line.starts_with("warning: [MirChecker]") {
-                        // 保存已收集的块（如果有）
-                        if in_warning_block && !current_block.is_empty() {
-                            warning_blocks.push(current_block.clone());
-                        }
-                        // 开始新的块
-                        in_warning_block = true;
-                        current_block.clear();
-                        current_block.push_str(line);
-                        current_block.push('\n');
-                    } else if in_warning_block {
-                        if line.starts_with(" INFO") {
-                            if !current_block.is_empty() {
-                                warning_blocks.push(current_block.clone());
-                            }
-                            current_block.clear();
-                            in_warning_block = false;
-                        }
-                        else{
-                            current_block.push_str(line);
-                            current_block.push('\n');
-                        }
-                    }
-                }
+        if !output4.status.success() {
+            let error_msg = String::from_utf8_lossy(&output4.stderr);
+            tracing::info!("test entry {} Command failed: {}", entry.clone(), error_msg);
+        }
+        tracing::info!("entry: {},output: {:?}", entry.clone(), output4);
+        let stderr_str = String::from_utf8_lossy(&output4.stderr);
+        let mut warning_blocks = Vec::new();
+        let mut current_block = String::new();
+        let mut in_warning_block = false;
+        for line in stderr_str.lines() {
+            if line.starts_with("warning: [MirChecker]") {
+                // 保存已收集的块（如果有）
                 if in_warning_block && !current_block.is_empty() {
-                    warning_blocks.push(current_block);
+                    warning_blocks.push(current_block.clone());
                 }
-                if !warning_blocks.is_empty() {
-                    tracing::info!("共提取了 {} 个警告块:", warning_blocks.len());
-                    for (i, block) in warning_blocks.iter().enumerate() {
-                        tracing::info!("警告块 {}:\n{}", i + 1, block);
+                // 开始新的块
+                in_warning_block = true;
+                current_block.clear();
+                current_block.push_str(line);
+                current_block.push('\n');
+            } else if in_warning_block {
+                if line.starts_with(" INFO") {
+                    if !current_block.is_empty() {
+                        warning_blocks.push(current_block.clone());
                     }
+                    current_block.clear();
+                    in_warning_block = false;
                 } else {
-                    tracing::info!("未找到符合条件的警告块");
-                }
-                let combined_warnings: String = warning_blocks.join("\n");
-                tracing::info!("entry: {}, all mirchecker warning: {}",entry.clone(),combined_warnings.clone());
-                if !combined_warnings.is_empty(){
-                    all_outputs.push(combined_warnings.clone());
+                    current_block.push_str(line);
+                    current_block.push('\n');
                 }
             }
-            //insert into pg
-            let real_res = all_outputs.join("\n");
+        }
+        if in_warning_block && !current_block.is_empty() {
+            warning_blocks.push(current_block);
+        }
+        if !warning_blocks.is_empty() {
+            tracing::info!("共提取了 {} 个警告块:", warning_blocks.len());
+            for (i, block) in warning_blocks.iter().enumerate() {
+                tracing::info!("警告块 {}:\n{}", i + 1, block);
+            }
+        } else {
+            tracing::info!("未找到符合条件的警告块");
+        }
+        let combined_warnings: String = warning_blocks.join("\n");
+        tracing::info!(
+            "entry: {}, all mirchecker warning: {}",
+            entry.clone(),
+            combined_warnings.clone()
+        );
+        if !combined_warnings.is_empty() {
+            all_outputs.push(combined_warnings.clone());
+        }
+    }
+    //insert into pg
+    let real_res = all_outputs.join("\n");
 
-            let _ = dbhandler
-                .insert_mirchecker_result_into_pg(id.clone(), real_res.clone())
-                .await
-                .unwrap();
-        
+    let _ = dbhandler
+        .insert_mirchecker_result_into_pg(id.clone(), real_res.clone())
+        .await
+        .unwrap();
 
     Ok(())
 }
