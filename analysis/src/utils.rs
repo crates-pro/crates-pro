@@ -1,5 +1,11 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::{
+    env,
+    fs::File,
+    time::{SystemTime, UNIX_EPOCH},
+};
+use tracing_subscriber::EnvFilter;
 
 /// An auxiliary function
 ///
@@ -48,8 +54,25 @@ pub(crate) async fn extract_namespace(url_str: &str) -> Result<String, String> {
     Ok(namespace)
 }
 
+// 通用：namespace和repo_path处理
+pub async fn extract_namespace_and_path(
+    url: &str,
+    base_path: &str,
+    name: &str,
+    version: Option<&str>,
+) -> (String, PathBuf) {
+    let namespace = extract_namespace(url).await.unwrap();
+    let repo_path = match version {
+        Some(ver) => PathBuf::from(base_path)
+            .join(&namespace)
+            .join(format!("{}-{}", name, ver)),
+        None => PathBuf::from(base_path).join(&namespace),
+    };
+    (namespace, repo_path)
+}
+
 #[allow(dead_code)]
-fn init_git(repo_path: &str) -> Result<(), ()> {
+pub fn init_git(repo_path: &str) -> Result<(), ()> {
     if let Err(e) = std::env::set_current_dir(Path::new(repo_path)) {
         println!("Failed to change directory: {}", e);
     } else {
@@ -82,4 +105,50 @@ fn init_git(repo_path: &str) -> Result<(), ()> {
         }
     }
     Ok(())
+}
+
+pub fn init_logger(tool_name: &str) -> File {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let log_path = format!("/var/target/{}_{}_log.ans", tool_name, timestamp);
+    let file = File::create(&log_path).expect("Unable to create log file");
+    tracing_subscriber::fmt()
+        .with_writer(file.try_clone().unwrap())
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+    tracing::info!("Starting with log file: {}", log_path);
+    file
+}
+
+pub fn load_env() -> (String, String, String) {
+    dotenvy::dotenv().ok();
+    let kafka_broker = env::var("KAFKA_BROKER").unwrap();
+    let consumer_group_id = env::var("KAFKA_CONSUMER_GROUP_ID").unwrap();
+    let analysis_topic = env::var("KAFKA_ANALYSIS_TOPIC").unwrap();
+    tracing::debug!(
+        "kafka_broker: {}, consumer_group_id: {}, analysis_topic: {}",
+        kafka_broker,
+        consumer_group_id,
+        analysis_topic
+    );
+    (kafka_broker, consumer_group_id, analysis_topic)
+}
+
+// 通用：命令执行与错误处理
+pub fn run_command(cmd: &mut Command) -> Result<std::process::Output, String> {
+    let output = cmd.output().map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        let error_msg = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(error_msg);
+    }
+    Ok(output)
+}
+
+// 通用：目录创建
+pub async fn ensure_dir_exists(path: &Path) {
+    if !path.is_dir() {
+        let _ = tokio::fs::create_dir_all(path).await;
+    }
 }

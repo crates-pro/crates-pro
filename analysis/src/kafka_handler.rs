@@ -29,7 +29,6 @@ impl KafkaReader {
     #[allow(clippy::needless_return)]
     pub async fn read_single_message(&self) -> Result<repo_sync_model::MessageModel, KafkaError> {
         tracing::info!("enter read_single_message");
-        tracing::info!("enter read_single_message loop");
 
         match self.consumer.recv().await {
             Ok(message) => {
