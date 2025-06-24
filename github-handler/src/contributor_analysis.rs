@@ -1,16 +1,18 @@
-use chrono::{DateTime, FixedOffset};
-use database::storage::Context;
-use entity::{github_user, programs};
-use futures::TryStreamExt;
-use model::github::{AnalyzedUser, ContributorAnalysis};
-use sea_orm::ActiveValue::Set;
-use sea_orm::IntoActiveModel;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
+
+use chrono::{DateTime, FixedOffset};
+use futures::{stream, StreamExt, TryStreamExt};
+use sea_orm::ActiveValue::Set;
+use sea_orm::IntoActiveModel;
 use tokio::process::Command as TokioCommand;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+
+use database::storage::Context;
+use entity::{github_user, programs};
+use model::github::{AnalyzedUser, ContributorAnalysis};
 
 use crate::{contributor_analysis, services::github_api::GitHubApiClient, BoxError};
 use crate::{git, utils};
@@ -33,7 +35,7 @@ pub async fn analyze_contributor_timezone(
         return None;
     }
     // 用于分析的邮箱可能存在多个不同的值，如profile 设置的值，commit时设置的值
-    debug!("分析作者 {:?} 的时区统计", analyzed_emails);
+    info!("分析作者 {:?} 的时区统计", analyzed_emails);
 
     let mut commits = vec![];
     for email in analyzed_emails {
@@ -145,7 +147,56 @@ async fn get_author_commits(repo_path: &PathBuf, author_email: &str) -> Option<V
     Some(commits)
 }
 
+async fn analyze_contributor(
+    context: Context,
+    owner: &str,
+    repo: &str,
+    repository_id: Uuid,
+    user: AnalyzedUser,
+) -> Result<(), anyhow::Error> {
+    debug!("分析仓库 {}/{} 的贡献者地理位置", owner, repo);
+    let base_dir = context.base_dir.clone();
+    let target_dir = utils::repo_dir(base_dir, owner, repo);
+
+    // 使用贡献者的邮箱进行时区分析
+    if user.commit_email.is_none() && user.profile_email.is_none() {
+        error!("用户 {} 没有邮箱信息", user.login);
+        return Ok(());
+    }
+
+    let mut analyzed_emails = HashSet::new();
+
+    for email in [user.profile_email.as_ref(), user.commit_email.as_ref()]
+        .into_iter()
+        .flatten()
+    {
+        analyzed_emails.insert(email.clone());
+    }
+    // 分析该贡献者的时区情况
+    let analysis =
+        match contributor_analysis::analyze_contributor_timezone(&target_dir, &analyzed_emails)
+            .await
+        {
+            Some(result) => result,
+            None => {
+                warn!("无法分析用户 {} 的时区信息", user.login);
+                return Ok(());
+            }
+        };
+
+    // 存储贡献者位置分析
+    if let Err(e) = context
+        .github_handler_stg()
+        .store_contributor_location(repository_id, user.user_id, &analysis)
+        .await
+    {
+        error!("存储贡献者位置分析失败: {}", e);
+    }
+    Ok(())
+}
+
 // 分析贡献者国别位置
+#[allow(dead_code)]
 async fn analyze_contributor_locations(
     context: Context,
     owner: &str,
@@ -243,7 +294,9 @@ async fn analyze_contributor_locations(
     };
 
     info!(
-        "时区分析完成: 总计 {} 位贡献者, 其中中国贡献者 {} 位 ({:.1}%), 海外贡献者 {} 位 ({:.1}%)",
+        "{}/{} 时区分析完成: 总计 {} 位贡献者, 其中中国贡献者 {} 位 ({:.1}%), 海外贡献者 {} 位 ({:.1}%)",
+        owner,
+        repo,
         total_contributors,
         china_contributors,
         china_percentage,
@@ -297,8 +350,8 @@ pub(crate) async fn analyze_git_contributors(
     context: Context,
     owner: &str,
     repo: &str,
-) -> Result<(), BoxError> {
-    debug!("分析仓库贡献者: {}/{}", owner, repo);
+) -> Result<(), anyhow::Error> {
+    info!("分析仓库贡献者: {}/{}", owner, repo);
 
     // 创建GitHub API客户端
     let github_client = GitHubApiClient::new();
@@ -332,65 +385,74 @@ pub(crate) async fn analyze_git_contributors(
     };
 
     // 获取仓库贡献者
-    let contributors = github_client
+    let contributors = match github_client
         .get_all_repository_contributors(owner, repo)
-        .await?;
+        .await
+    {
+        Ok(res) => res,
+        Err(e) => {
+            tracing::error!("{:?}", e);
+            return Err(anyhow::anyhow!("API Err"));
+        }
+    };
 
-    // 存储所有获取的用户信息，用于后续分析
-    let mut analyzed_users: Vec<AnalyzedUser> = Vec::new();
-
-    // 存储贡献者信息
-    for contributor in &contributors {
-        let user = match context
-            .github_handler_stg()
-            .get_user_by_name(&contributor.login)
-            .await
-            .unwrap()
-        {
-            Some(user) => user,
-            None => {
-                // 获取并存储用户详细信息
-                let user = match github_client.get_user_details(&contributor.login).await {
-                    Ok(user) => user,
-                    Err(e) => {
-                        warn!("获取用户 {} 详情失败: {}", contributor.login, e);
-                        continue;
+    // let analyzed_users: Vec<AnalyzedUser> =
+    stream::iter(contributors)
+        .for_each_concurrent(8, |contributor| {
+            let context = context.clone();
+            let github_client = GitHubApiClient::new();
+            async move {
+                let user = match context
+                    .github_handler_stg()
+                    .get_user_by_name(&contributor.login)
+                    .await
+                    .unwrap()
+                {
+                    Some(user) => user,
+                    None => {
+                        // 获取并存储用户详细信息
+                        let user = match github_client.get_user_details(&contributor.login).await {
+                            Ok(user) => user,
+                            Err(e) => {
+                                warn!("获取用户 {} 失败: {}", contributor.login, e);
+                                return;
+                            }
+                        };
+                        if user.is_bot() {
+                            info!("skip bot:{}:", user.login);
+                            return;
+                        }
+                        let a_model: github_user::ActiveModel = user.into();
+                        context
+                            .github_handler_stg()
+                            .store_user(a_model)
+                            .await
+                            .unwrap()
                     }
                 };
 
-                if user.is_bot() {
-                    info!("skip bot:{}:", user.login);
-                    continue;
+                // 从commit 获取email
+                let commit_email: Option<String> = match github_client
+                    .get_user_email_from_commits(owner, repo, &contributor.login)
+                    .await
+                {
+                    Ok(res) => res,
+                    Err(e) => {
+                        error!("{}", e);
+                        return;
+                    }
+                };
+
+                let mut a_user: AnalyzedUser = user.clone().into();
+                a_user.commit_email = commit_email;
+
+                match analyze_contributor(context, owner, repo, repository_id, a_user).await {
+                    Ok(_) => {}
+                    Err(e) => error!("{}", e),
                 }
-
-                let a_model: github_user::ActiveModel = user.into();
-                // 存储用户到数据库
-                context.github_handler_stg().store_user(a_model).await?
             }
-        };
-
-        // 从commit 获取email
-        let commit_email = github_client
-            .get_user_email_from_commits(owner, repo, &contributor.login)
-            .await?;
-
-        let mut a_user: AnalyzedUser = user.clone().into();
-        a_user.commit_email = commit_email;
-        // 保存用户信息用于后续分析
-        analyzed_users.push(a_user);
-
-        // 存储贡献者关系
-        // if let Err(e) = context
-        //     .github_handler_stg()
-        //     .store_contributor(repository_id, user.id, contributor.contributions)
-        //     .await
-        // {
-        //     error!(
-        //         "存储贡献者关系失败: {}/{} -> {}: {}",
-        //         owner, repo, user.login, e
-        //     );
-        // }
-    }
+        })
+        .await;
 
     // 查询并显示贡献者统计
     // match context
@@ -415,7 +477,7 @@ pub(crate) async fn analyze_git_contributors(
     // }
 
     // 分析贡献者国别 - 传递已获取的用户信息
-    analyze_contributor_locations(context, owner, repo, repository_id, &analyzed_users).await?;
+    // analyze_contributor_locations(context, owner, repo, repository_id, &analyzed_users).await?;
 
     Ok(())
 }
