@@ -152,10 +152,7 @@ impl GithubHanlderStorage {
         let res = github_user::Entity::insert(user)
             .on_conflict(
                 sea_query::OnConflict::column(github_user::Column::GithubId)
-                    .update_columns([
-                        github_user::Column::Name,
-                        github_user::Column::Email,
-                    ])
+                    .update_columns([github_user::Column::Name, github_user::Column::Email])
                     .to_owned(),
             )
             .exec_with_returning(self.get_connection())

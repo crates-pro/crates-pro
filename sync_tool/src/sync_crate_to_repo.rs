@@ -20,7 +20,7 @@ use tar::Archive;
 use url::Url;
 use walkdir::{DirEntry, WalkDir};
 
-use entity::{sea_orm_active_enums::SyncStatusEnum, repo_sync_result};
+use entity::{repo_sync_result, sea_orm_active_enums::SyncStatusEnum};
 
 use crate::{
     kafka::{self},

@@ -6,9 +6,6 @@ filegroup(
         "src/cli.rs",
         "src/core_controller.rs",
         "src/main.rs",
-        "src/bin/bin_analyze.rs",
-        "src/bin/bin_data_transport.rs",
-        "src/bin/bin_repo_import.rs",
     ],
 )
 
