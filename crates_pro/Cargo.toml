@@ -27,4 +27,4 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [dev-dependencies]
-serial_test = "0.5"
+serial_test = "3.4"
