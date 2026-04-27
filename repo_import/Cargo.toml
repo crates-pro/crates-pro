@@ -41,4 +41,4 @@ walkdir = { workspace = true }
 
 [dev-dependencies]
 # 开发依赖可以不写在根目录 Cargo.toml 中
-mockall = "0.13"
+mockall = "0.14"
